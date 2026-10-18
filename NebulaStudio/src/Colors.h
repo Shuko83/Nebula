@@ -28,7 +28,10 @@
 // for a large one and for the edges of what can be used.
 [[nodiscard]] inline qreal contrast(const QColor& first, const QColor& second)
 {
-    const auto [darker, lighter] = std::minmax(luminance(first), luminance(second));
+    // Named: std::minmax returns references, which would outlive temporaries.
+    const qreal firstLuminance = luminance(first);
+    const qreal secondLuminance = luminance(second);
+    const auto [darker, lighter] = std::minmax(firstLuminance, secondLuminance);
     return (lighter + 0.05) / (darker + 0.05);
 }
 
