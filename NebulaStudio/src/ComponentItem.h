@@ -5,6 +5,7 @@
 
 #include <QColor>
 #include <QGraphicsObject>
+#include <QIcon>
 #include <QList>
 #include <QString>
 #include <QStringList>
@@ -43,6 +44,10 @@ class ComponentItem : public QGraphicsObject
     void editName();
     // Whether it can be moved, and its name edited by double-clicking it: it is until told otherwise.
     void setEditable(bool editable);
+    // Shows it as something that opens, a galaxy: icon before the name of what it is an instance of, and about at the
+    // start of its tooltip, in place of the id of its component. Double-clicking it below its name, or anywhere while
+    // it is not editable, asks for it to be opened: see openRequested().
+    void setOpenable(const QIcon& icon, const QString& about);
 
     [[nodiscard]] QRectF boundingRect() const override;
     void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
@@ -50,6 +55,8 @@ class ComponentItem : public QGraphicsObject
   signals:
     // name was typed in place of its name, on one line: its component is still to be named so.
     void nameEdited(const QString& name);
+    // It was double-clicked to be opened, see setOpenable(): it does not open by itself.
+    void openRequested();
 
   protected:
     // Not moved while its name is edited: the double-click that edits it still holds it, and the view scrolling to
@@ -69,6 +76,8 @@ class ComponentItem : public QGraphicsObject
     QStringList m_unbound; // Component::unboundMandatoryInterfaces(), as refreshInterfaces() last read them
     QColor m_color;
     bool m_editable = true;
+    QIcon m_icon;    // Before the name of its component, when it opens
+    QString m_about; // The start of its tooltip, when it opens
     // Its children.
     QList<InterfaceItem*> m_consumedInterfaces;
     QList<InterfaceItem*> m_providedInterfaces;

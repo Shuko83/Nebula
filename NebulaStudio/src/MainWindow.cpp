@@ -27,10 +27,13 @@
 #include <QSplitter>
 #include <QStatusBar>
 #include <QTabWidget>
+#include <QToolButton>
 #include <QTreeView>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <array>
 #include <cstddef>
+#include <memory>
 #include <optional>
 
 #include "ComponentItem.h"
@@ -177,10 +180,13 @@ MainWindow::MainWindow(const QCommandLineParser* commandLine, QWidget* parent)
     pluginListLayout->addWidget(openButton, 0, Qt::AlignLeft);
     pluginListLayout->addWidget(m_pluginView);
 
-    // The galaxies of a directory, those the application knows the plugins of opened from their viewer, or activated.
+    // The galaxies of a directory, those the application knows the plugins of opened from their viewer, or activated,
+    // and dragged into the edition zone.
     m_galaxyModel = new GalaxyModel(m_application, this);
     m_galaxyViewer = new GalaxyViewer(*m_galaxyModel);
     m_galaxyView = createView(*m_galaxyModel);
+    m_galaxyView->setDragEnabled(true);
+    m_galaxyView->setDragDropMode(QAbstractItemView::DragOnly);
     connect(m_galaxyView->selectionModel(), &QItemSelectionModel::currentRowChanged, this,
             [this](const QModelIndex& current)
             { m_galaxyViewer->setFilePath(current.data(GalaxyModel::FilePathRole).toString()); });
@@ -258,19 +264,57 @@ MainWindow::MainWindow(const QCommandLineParser* commandLine, QWidget* parent)
     m_editionView->setDragMode(QGraphicsView::RubberBandDrag);
     m_editionView->setAcceptDrops(true);
     connect(m_scene, &QGraphicsScene::selectionChanged, this,
-            [this] { m_propertyEditor->setComponent(m_scene->selectedComponent()); });
+            [this]
+            {
+                if(m_editionView->scene() == m_scene)
+                {
+                    m_propertyEditor->setComponent(m_scene->selectedComponent());
+                }
+            });
     // In the status bar rather than in a box, which would open in the middle of the click that ends an edition.
-    const auto tell = [this](const QString& message) { statusBar()->showMessage(message, MessageDuration); };
-    connect(m_scene, &EditionScene::refused, this, tell);
-    connect(m_scene, &EditionScene::told, this, tell);
+    connect(m_scene, &EditionScene::refused, this, &MainWindow::tell);
+    connect(m_scene, &EditionScene::told, this, &MainWindow::tell);
+    connect(m_scene, &EditionScene::galaxyOpened, this, &MainWindow::enterGalaxy);
+    // The plugins it loaded, and their components.
+    connect(m_scene, &EditionScene::galaxyPlaced, this,
+            [this]
+            {
+                m_pluginModel->refresh();
+                m_pluginViewer->refresh();
+                m_componentModel->refresh();
+            });
     // Nor in the middle of a run, which goes on without the file.
-    connect(&m_application, &Nebula::Universe::settingsFileFailed, this, tell);
+    connect(&m_application, &Nebula::Universe::settingsFileFailed, this, &MainWindow::tell);
+    // The galaxy shown is closed before it goes, with those it holds.
+    connect(&m_application, &Nebula::Universe::componentsChanged, this,
+            [this]
+            {
+                const Nebula::Galaxy* shown = m_galaxyScenes.isEmpty() ? nullptr : m_galaxyScenes.first()->galaxy();
+                if(shown != nullptr && std::ranges::none_of(m_application.components(),
+                                                            [shown](const std::unique_ptr<Nebula::Component>& component)
+                                                            { return component.get() == shown; }))
+                {
+                    showDepth(0);
+                }
+            });
+
+    // Where the galaxy shown is: the application, then the galaxies it is in, each a button that shows it again.
+    m_path = new QWidget;
+    auto* pathLayout = new QHBoxLayout(m_path);
+    pathLayout->setContentsMargins({});
+    m_path->hide();
+    auto* zone = new QWidget;
+    auto* zoneLayout = new QVBoxLayout(zone);
+    zoneLayout->setContentsMargins({});
+    zoneLayout->addWidget(m_path);
+    zoneLayout->addWidget(m_editionView);
 
     // What keeps components from working; activating one shows it, selected, in the middle of the edition zone.
     auto* problemList = new ProblemList(m_application);
     connect(problemList, &ProblemList::componentActivated, this,
             [this](const QString& name)
             {
+                showDepth(0); // Where the components of the application are
                 const Nebula::Component* component = m_application.component(name);
                 const ComponentItem* item = component != nullptr ? m_scene->select(*component) : nullptr;
                 if(item != nullptr)
@@ -283,7 +327,7 @@ MainWindow::MainWindow(const QCommandLineParser* commandLine, QWidget* parent)
     // The properties of the component selected in the edition zone, under it, then the problems; the zone takes the
     // room.
     auto* editionSplitter = new QSplitter(Qt::Vertical);
-    editionSplitter->addWidget(m_editionView);
+    editionSplitter->addWidget(zone);
     editionSplitter->addWidget(m_propertyEditor);
     editionSplitter->addWidget(problemList);
     editionSplitter->setStretchFactor(0, 1);
@@ -329,6 +373,11 @@ MainWindow::~MainWindow()
     m_application.disconnect(this);
     m_scene->disconnect(this);
     m_propertyEditor->setComponent(nullptr);
+    for(EditionScene* scene : std::as_const(m_galaxyScenes))
+    {
+        scene->disconnect(this);
+    }
+    qDeleteAll(m_galaxyScenes); // They show the components of the galaxies of m_application
     delete m_scene;
 }
 
@@ -343,6 +392,7 @@ bool MainWindow::openProjectFile(const QString& filePath)
                              tr("%1 cannot be opened:\n%2").arg(QDir::toNativeSeparators(filePath), error));
         return false;
     }
+    m_application.setFilePath(filePath); // Its galaxies are relative to it
     const QStringList problems = m_scene->load(*project);
     // The plugins of the project, loaded with it, and their components; those opened from their file are known from
     // now on, and so are the galaxies they were missing from.
@@ -365,9 +415,12 @@ bool MainWindow::saveProjectFile(const QString& filePath)
 {
     // The title of a zone, or the name of a component, is no longer edited: what was typed is taken before it is saved.
     m_scene->setFocusItem(nullptr);
+    const QString previousFile = m_application.filePath();
+    m_application.setFilePath(filePath); // Its galaxies are written relative to it
     QSaveFile file(filePath);
     if(!file.open(QIODevice::WriteOnly) || file.write(QJsonDocument(m_scene->save()).toJson()) < 0 || !file.commit())
     {
+        m_application.setFilePath(previousFile);
         QMessageBox::warning(this, tr("Save project"),
                              tr("%1 cannot be saved:\n%2").arg(QDir::toNativeSeparators(filePath), file.errorString()));
         return false;
@@ -457,6 +510,7 @@ void MainWindow::openPlugin()
 void MainWindow::setProjectFile(const QString& filePath)
 {
     m_projectFile = filePath;
+    m_application.setFilePath(filePath); // Before it is saved: its galaxies are relative to it
     m_savedProject = m_scene->save();
     setWindowTitle(filePath.isEmpty() ? tr("NebulaStudio")
                                       : tr("%1 - NebulaStudio").arg(QFileInfo(filePath).fileName()));
@@ -556,6 +610,89 @@ void MainWindow::chooseGalaxyDirectory()
         setGalaxyDirectory(directory);
         m_galaxyView->setCurrentIndex(m_galaxyModel->index(0, 0));
     }
+}
+
+void MainWindow::enterGalaxy(Nebula::Galaxy& galaxy)
+{
+    auto* scene = new EditionScene(m_application, Nebula::ComponentFactory::instance(), galaxy, this);
+    connect(scene, &QGraphicsScene::selectionChanged, this,
+            [this, scene]
+            {
+                if(m_editionView->scene() == scene)
+                {
+                    m_propertyEditor->setComponent(scene->selectedComponent());
+                }
+            });
+    connect(scene, &EditionScene::refused, this, &MainWindow::tell);
+    connect(scene, &EditionScene::told, this, &MainWindow::tell);
+    connect(scene, &EditionScene::galaxyOpened, this, &MainWindow::enterGalaxy);
+    m_galaxyScenes.append(scene);
+    showDepth(m_galaxyScenes.size());
+}
+
+void MainWindow::showDepth(qsizetype depth)
+{
+    EditionScene* shown = depth == 0 ? m_scene : m_galaxyScenes.at(depth - 1);
+    m_editionView->setScene(shown); // Before those further down go
+    while(m_galaxyScenes.size() > depth)
+    {
+        EditionScene* closed = m_galaxyScenes.takeLast();
+        closed->disconnect(this);
+        delete closed;
+    }
+    // The components of a galaxy have the values of its file.
+    m_propertyEditor->setReadOnly(depth > 0);
+    m_propertyEditor->setComponent(shown->selectedComponent());
+    refreshPath();
+}
+
+void MainWindow::refreshPath()
+{
+    // Again from the start: the names may have changed since. Later: one of its buttons may be the one being clicked.
+    QLayout* path = m_path->layout();
+    while(QLayoutItem* item = path->takeAt(0))
+    {
+        if(QWidget* widget = item->widget())
+        {
+            widget->hide();
+            widget->deleteLater();
+        }
+        delete item;
+    }
+    m_path->setVisible(!m_galaxyScenes.isEmpty());
+    if(m_galaxyScenes.isEmpty())
+    {
+        return;
+    }
+    const auto addLevel = [this, path](qsizetype depth, const QIcon& levelIcon, const QString& name)
+    {
+        if(depth == m_galaxyScenes.size())
+        {
+            auto* current = new QLabel(name); // The one shown
+            current->setFont(titleFont(current->font()));
+            path->addWidget(current);
+            return;
+        }
+        auto* button = new QToolButton;
+        button->setText(name);
+        button->setIcon(levelIcon);
+        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        button->setAutoRaise(true);
+        connect(button, &QToolButton::clicked, this, [this, depth] { showDepth(depth); });
+        path->addWidget(button);
+        path->addWidget(new QLabel(QStringLiteral("›"))); // ›
+    };
+    addLevel(0, icon(GlossaryTerm::Universe), tr("Application"));
+    for(qsizetype depth = 1; depth <= m_galaxyScenes.size(); ++depth)
+    {
+        addLevel(depth, icon(GlossaryTerm::Galaxy), m_galaxyScenes.at(depth - 1)->galaxy()->objectName());
+    }
+    static_cast<QHBoxLayout*>(path)->addStretch();
+}
+
+void MainWindow::tell(const QString& message)
+{
+    statusBar()->showMessage(message, MessageDuration);
 }
 
 void MainWindow::openGalaxy(const QString& filePath)

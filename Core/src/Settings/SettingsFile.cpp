@@ -21,6 +21,7 @@
 #include <utility>
 
 #include "Application/ProjectJson.h"
+#include "Nebula/Application/Galaxy.h"
 #include "Nebula/Application/Universe.h"
 #include "Nebula/Component/Component.h"
 
@@ -177,8 +178,8 @@ bool writeSettings(const QString& filePath, const QJsonObject& content, QString&
 
 } // namespace
 
-SettingsFile::SettingsFile(Universe& application, QString fileName)
-    : m_application(application), m_fileName(std::move(fileName))
+SettingsFile::SettingsFile(Universe& application, QString fileName, Galaxy* galaxy)
+    : m_application(application), m_galaxy(galaxy), m_fileName(std::move(fileName))
 {
 }
 
@@ -248,7 +249,9 @@ bool SettingsFile::add(const SettingsEntry& entry)
 {
     const auto known = [&entry](const std::unique_ptr<Component>& component)
     { return component.get() == entry.component; };
-    if(entry.component == nullptr || !std::ranges::any_of(m_application.components(), known) ||
+    const std::vector<std::unique_ptr<Component>>& components =
+        m_galaxy != nullptr ? m_galaxy->components() : m_application.components();
+    if(entry.component == nullptr || !std::ranges::any_of(components, known) ||
        !canHold(*entry.component, entry.object, entry.property) || m_application.settingsFile(entry) != nullptr)
     {
         return false;

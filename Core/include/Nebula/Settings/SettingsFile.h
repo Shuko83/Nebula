@@ -16,6 +16,7 @@ namespace Nebula
 {
 
 class Component;
+class Galaxy;
 class Universe;
 
 // A property a settings file holds: one of a component of the application, or of one of the objects the component
@@ -67,8 +68,9 @@ class CORE_EXPORT SettingsFile : public QObject
     [[nodiscard]] const QList<SettingsEntry>& entries() const;
     [[nodiscard]] bool contains(const SettingsEntry& entry) const;
     // Holds entry from the next time the application starts. Returns false, changing nothing, when entry is not a
-    // property it can hold, see canHold(), of a component of the application, or when a file of the application holds
-    // it already. An entry leaves once its object, or its component, is destroyed.
+    // property it can hold, see canHold(), of a component of the application, or of the galaxy the file is of, see
+    // Universe::instantiateGalaxy(), or when a file of the application holds it already. An entry leaves once its
+    // object, or its component, is destroyed.
     bool add(const SettingsEntry& entry);
     // No longer holds entry from the next time the application starts.
     void remove(const SettingsEntry& entry);
@@ -101,8 +103,9 @@ class CORE_EXPORT SettingsFile : public QObject
         QVariant defaultValue; // The value of the project
     };
 
-    // fileName is one no other file of application has.
-    SettingsFile(Universe& application, QString fileName);
+    // fileName is one no other file of application has. It holds the properties of the components of galaxy, one of
+    // those of application, or of the application itself when galaxy is nullptr.
+    SettingsFile(Universe& application, QString fileName, Galaxy* galaxy = nullptr);
 
     // Gives the properties it holds the values of its file, writes their default values to it first when it does not
     // exist or misses some, and follows their changes.
@@ -123,6 +126,7 @@ class CORE_EXPORT SettingsFile : public QObject
 
   private:
     Universe& m_application;
+    Galaxy* m_galaxy = nullptr; // Whose components it holds the properties of; nullptr for those of the application
     QString m_fileName;
     QString m_directory;
     QList<SettingsEntry> m_entries;

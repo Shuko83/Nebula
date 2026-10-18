@@ -31,7 +31,7 @@ qu'avec des tests verts.
 | --- | --- |
 | `tests/CMakeLists.txt` | `nebula_add_test()`, la sortie des tests dans `<build>/tests/bin[/<config>]` |
 | `tests/Components/` | Bibliothèque statique `TestComponents` : les composants écrits pour les tests |
-| `tests/Core/` | Un test par classe de Core : `TestComponent`, `TestComponentFactory`, `TestPluginManager`, `TestUniverse`, `TestSettingsFile` |
+| `tests/Core/` | Un test par classe de Core : `TestComponent`, `TestComponentFactory`, `TestPluginManager`, `TestUniverse`, `TestGalaxy`, `TestSettingsFile` |
 | `tests/NebulaStudio/` | Les classes de NebulaStudio qui se passent de sa fenêtre : `TestColors`, `TestTheme`, `TestPluginModel`, `TestComponentModel`, `TestGalaxyModel` |
 
 Les tests ne sont ni installés ni copiés dans le paquet.

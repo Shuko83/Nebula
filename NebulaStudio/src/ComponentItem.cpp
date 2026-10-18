@@ -39,6 +39,8 @@ constexpr int WarningMarkFontSize = 10; // In pixels
 // How much of the color of its name the name of its component keeps over the color of an item, as it is fainter over
 // the ones of the style.
 constexpr float ComponentNameOpacity = 0.7F;
+// Between the icon of an item that opens and the name of its component.
+constexpr qreal IconSpacing = 4;
 
 // What the name of an item of color is written in: of the style when it has none; read over its color otherwise, as
 // it shows over the item, which it lets through when it is translucent.
@@ -105,6 +107,14 @@ void ComponentItem::setEditable(bool editable)
 {
     m_editable = editable;
     setFlag(ItemIsMovable, editable);
+}
+
+void ComponentItem::setOpenable(const QIcon& icon, const QString& about)
+{
+    m_icon = icon;
+    m_about = about;
+    refreshInterfaces(); // Its tooltip
+    update();
 }
 
 QRectF ComponentItem::boundingRect() const
@@ -184,8 +194,23 @@ void ComponentItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* opt
 
     painter->setFont(font);
     painter->setPen(componentInk);
-    painter->drawText(componentRect, Qt::AlignCenter,
-                      QFontMetricsF(font).elidedText(m_componentName, Qt::ElideRight, componentRect.width()));
+    if(m_icon.isNull())
+    {
+        painter->drawText(componentRect, Qt::AlignCenter,
+                          QFontMetricsF(font).elidedText(m_componentName, Qt::ElideRight, componentRect.width()));
+        return;
+    }
+    // The icon before the name, both in the middle.
+    const qreal iconSize = componentRect.height();
+    const QFontMetricsF metrics(font);
+    const QString componentName =
+        metrics.elidedText(m_componentName, Qt::ElideRight, componentRect.width() - iconSize - IconSpacing);
+    const qreal width = iconSize + IconSpacing + metrics.horizontalAdvance(componentName);
+    const QRectF iconRect(componentRect.center().x() - width / 2, componentRect.top(), iconSize, iconSize);
+    m_icon.paint(painter, iconRect.toAlignedRect());
+    painter->drawText(QRectF(iconRect.right() + IconSpacing, componentRect.top(),
+                             componentRect.right() - iconRect.right() - IconSpacing, componentRect.height()),
+                      Qt::AlignLeft | Qt::AlignVCenter, componentName);
 }
 
 void ComponentItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
@@ -198,7 +223,15 @@ void ComponentItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 
 void ComponentItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
 {
-    if(m_editable && event->button() == Qt::LeftButton && Header.contains(event->pos()))
+    // One that opens keeps the line of its name to be renamed, the rest of it to be opened.
+    const QRectF nameArea =
+        m_icon.isNull() ? Header : QRectF(Header.topLeft(), QPointF(Header.right(), NameRect.bottom()));
+    if(event->button() == Qt::LeftButton && !m_icon.isNull() && !(m_editable && nameArea.contains(event->pos())))
+    {
+        emit openRequested();
+        event->accept();
+    }
+    else if(m_editable && event->button() == Qt::LeftButton && nameArea.contains(event->pos()))
     {
         editName();
     }
@@ -242,7 +275,11 @@ void ComponentItem::refreshInterfaces()
     {
         consumed->setMissing(unbound.contains(consumed->name()));
     }
-    QString toolTip = m_component.componentId();
+    QString toolTip = m_about.isEmpty() ? m_component.componentId() : m_about;
+    if(!m_icon.isNull())
+    {
+        toolTip += u'\n' + tr("Double-click below its name to open it");
+    }
     if(!unbound.isEmpty())
     {
         toolTip += u'\n' + tr("Does not work: %1 bound to nothing").arg(unbound.join(QStringLiteral(", "))) + u'\n' +

@@ -11,11 +11,13 @@
 #include <QPointer>
 #include <QString>
 #include <QStringList>
+#include <map>
 #include <memory>
 #include <optional>
 #include <vector>
 
 #include "Core_export.h"
+#include "Nebula/Application/Galaxy.h"
 #include "Nebula/Application/GalaxyInfo.h"
 #include "Nebula/Component/Component.h"
 #include "Nebula/Plugin/PluginManager.h"
@@ -30,7 +32,8 @@ namespace Nebula
 // each named, as its objectName, after its component and a number, e.g. Greeter1. It is read from a project file, as
 // NebulaStudio writes them, see README.md, or assembled with instantiate() and Component::bindInterface().
 // A project file is a galaxy, named after its file: readGalaxy() tells what it is without loading it, and
-// missingPlugins() whether it can be loaded.
+// missingPlugins() whether it can be loaded. instantiateGalaxy() places it in the application, as one component, a
+// Galaxy, as many times as wanted.
 // It is either edited or running, as its components are. While it runs, it is not assembled: its components are
 // neither instantiated, renamed nor removed. What changes their properties meanwhile, its settings files or its
 // components themselves, is undone once it stops: they have the values of the edition again, the ones save() writes.
@@ -73,16 +76,24 @@ class CORE_EXPORT Universe : public QObject
     // load(), which looks for a plugin it does not know in the file its project gives it, the file is not looked at.
     [[nodiscard]] QStringList missingPlugins(const GalaxyInfo& galaxy) const;
     // Replaces its components with those of project, as save() wrote it, and its description with the one of project:
-    // loads its plugins, instantiates its components, sets their properties, binds their interfaces and adds its
-    // settings files. Returns what could not be restored, a sentence each: none when everything was.
+    // loads its plugins, instantiates its components, sets their properties, places its galaxies, see
+    // instantiateGalaxy(), binds their interfaces and adds its settings files. Returns what could not be restored, a
+    // sentence each, those of its galaxies included: none when everything was.
     QStringList load(const QJsonObject& project);
-    // load() of the project the file filePath holds. Returns false, with errorString() set, when the file cannot be
-    // read, nothing being changed then, and when anything could not be restored.
+    // load() of the project the file filePath holds, from then on its filePath(). Returns false, with errorString()
+    // set, when the file cannot be read, nothing being changed then, and when anything could not be restored.
     bool open(const QString& filePath);
-    // Its components as a project: its "version", its "description" when it has one, the "plugins" they are from, the
-    // "components" with their properties and their "bindings", and its "settings" files when it has some. While it
-    // runs, the properties have the values they had when it started, those of the edition.
+    // Its components as a project: its "version", its "description" when it has one, the "plugins" they are from,
+    // those of its galaxies included, the "components" with their properties, or the "galaxy" file of a galaxy, and
+    // their "bindings", and its "settings" files when it has some. While it runs, the properties have the values they
+    // had when it started, those of the edition.
     [[nodiscard]] QJsonObject save() const;
+
+    // The project file it is read from and saved to, absolute; empty until it is set, or opened. The file of a galaxy
+    // is written relative to its directory, and read from it, from the current directory when it has none; a galaxy
+    // that holds it, directly or not, cannot be placed in it.
+    [[nodiscard]] QString filePath() const;
+    void setFilePath(const QString& filePath);
 
     // What it is for, in a few words, that its project holds: the description of the galaxy its file is. Empty until
     // it is given one, and once it is cleared.
@@ -92,17 +103,28 @@ class CORE_EXPORT Universe : public QObject
     // Creates componentId, in the Editing state; nullptr when it is not registered, or while it runs. It is named name,
     // as one read from a project is, unless name is empty or the name of another instance.
     Component* instantiate(const QString& componentId, const QString& name = {});
-    // Names instance, one of its components, name: what component() finds it by, and a project holds it as. Returns
-    // false, changing nothing, when name is empty or the name of another instance, and while it runs.
+    // Places the galaxy of the project file filePath in it, a Galaxy named name, unless name is empty or the name of
+    // another instance: after its galaxy and a number then, Clock1 for Clock.nbp. Its plugins are found by their id
+    // among plugins(), not by their file, and loaded when they are not yet; the galaxies it holds, at a path relative
+    // to its file, are placed in it the same way. Its settings files are among those of the application, named after
+    // it, as each instance of the galaxy has them: settings.json of Clock1 is Clock1.settings.json, and the one of a
+    // galaxy Clock1 in Home1 is Home1.Clock1.settings.json. What could not be restored is told by Galaxy::problems().
+    // Returns nullptr, with errorString() set, while it runs, when the file cannot be read, when one of its plugins is
+    // unknown or cannot be loaded, and when it would hold itself or the file of the application, directly or not.
+    Galaxy* instantiateGalaxy(const QString& filePath, const QString& name = {});
+    // Names instance, one of its components, name: what component() finds it by, and a project holds it as; the
+    // settings files of a galaxy are named after it again. Returns false, changing nothing, when name is empty or the
+    // name of another instance, and while it runs.
     bool rename(Component& instance, const QString& name);
     // Destroys instance, one of its components: nothing may refer to it any longer. What was bound to its interfaces
     // is unbound from them. Returns false, doing nothing, when it is not one of its components, and while it runs.
     bool remove(Component& instance);
-    // In the order they were instantiated.
+    // In the order they were instantiated, its galaxies among them: not the components they hold.
     [[nodiscard]] const std::vector<std::unique_ptr<Component>>& components() const;
     // The one named name; nullptr when none is.
     [[nodiscard]] Component* component(const QString& name) const;
-    // Those of the plugin pluginId, in the order they were instantiated.
+    // Those of the plugin pluginId, and the galaxies that hold one, directly or not, in the order they were
+    // instantiated.
     [[nodiscard]] QList<Component*> componentsOf(const QString& pluginId) const;
     // Stops it, destroys its components and its settings files, and empties its description: nothing may refer to them
     // any longer.
@@ -114,17 +136,19 @@ class CORE_EXPORT Universe : public QObject
     // Destroys file, one of its settings files, written and stopped first when it runs: its properties have their
     // default values again. Does nothing when it is not one of them.
     void removeSettingsFile(SettingsFile& file);
-    // In the order they were added.
+    // In the order they were added; not those of its galaxies, see Galaxy::settingsFiles().
     [[nodiscard]] const std::vector<std::unique_ptr<SettingsFile>>& settingsFiles() const;
-    // The one of its settings files that holds entry; nullptr when none does.
+    // The one of its settings files, or of those of its galaxies, that holds entry; nullptr when none does.
     [[nodiscard]] SettingsFile* settingsFile(const SettingsEntry& entry) const;
-    // The one of its settings files named fileName, whatever its case; nullptr when none is.
+    // The one of its settings files, or of those of its galaxies, named fileName, whatever its case; nullptr when
+    // none is.
     [[nodiscard]] SettingsFile* settingsFile(const QString& fileName) const;
 
-    // Keeps the values the properties of its components, and of their objects, have: those of the edition. Then gives
-    // the properties its settings files hold the values of their files, and starts its components, in the order they
-    // were instantiated. Returns false, with errorString() set, when one refuses: those it started are stopped again,
-    // and it is edited again, as stop() leaves it. Returns true, doing nothing, while it runs.
+    // Keeps the values the properties of its components, of their objects and of the components of its galaxies have:
+    // those of the edition. Then gives the properties its settings files, and those of its galaxies, hold the values
+    // of their files, and starts its components, in the order they were instantiated. Returns false, with
+    // errorString() set, when one refuses: those it started are stopped again, and it is edited again, as stop()
+    // leaves it. Returns true, doing nothing, while it runs.
     bool start();
     // Stops its components, the last one instantiated first, then its settings files, which write the values of the
     // user, and gives the properties the values of the edition again. Does nothing while it does not run.
@@ -137,7 +161,7 @@ class CORE_EXPORT Universe : public QObject
     // unloaded, its components being removed all the same.
     bool unloadPlugin(const QString& pluginId);
 
-    // Why open(), start() or unloadPlugin() returned false.
+    // Why open(), instantiateGalaxy(), start() or unloadPlugin() returned false.
     [[nodiscard]] QString errorString() const;
 
   signals:
@@ -160,23 +184,65 @@ class CORE_EXPORT Universe : public QObject
         QJsonObject values; // By name
     };
 
+    // Where a project is loaded: the application itself, or one of its galaxies.
+    struct Scope
+    {
+        Galaxy* galaxy = nullptr; // nullptr for the application
+        QDir directory;           // The files of its galaxies are relative to it
+        QStringList files;        // Canonical: those of the galaxies it is in, and of the application, it cannot hold
+        QString prefix;           // Of the names of its settings files: the galaxies it is in, each with a dot
+        QString* cycle = nullptr; // Set, in a galaxy, when one it holds would hold itself: it is refused then
+    };
+
+    // The directory of its file, canonical when it exists; empty when it has no file.
+    [[nodiscard]] QString projectDirectory() const;
+
+    // The scope of its own project.
+    [[nodiscard]] Scope applicationScope() const;
+    // Fills scope with the components of project, its galaxies, their links and its settings files, as load() does,
+    // the plugins being loaded. Returns what could not be restored.
+    QStringList loadScope(const Scope& scope, const QJsonObject& project);
+    // Places in scope the galaxy json, a component of a project, see createGalaxy(). Returns what could not be
+    // restored, it missing included.
+    QStringList loadGalaxy(const Scope& scope, const QJsonObject& json);
+    // The galaxy of filePath, named name in parent, see instantiateGalaxy(); nullptr, with error set, when it cannot
+    // be placed there. Not added to parent yet.
+    std::unique_ptr<Galaxy> createGalaxy(const QString& filePath, const QString& name, const Scope& parent,
+                                         QString& error);
+    [[nodiscard]] std::vector<std::unique_ptr<Component>>& scopeComponents(const Scope& scope);
+    // The one of scope named name; nullptr when none is.
+    [[nodiscard]] Component* scopeComponent(const Scope& scope, const QString& name) const;
+    // name, unless it is empty or the name of one of scope: base and the first number none is named with then.
+    [[nodiscard]] QString freeName(const Scope& scope, const QString& name, const QString& base) const;
+    // Adds component to scope, named after freeName(); nullptr when component is nullptr.
+    Component* adopt(const Scope& scope, std::unique_ptr<Component> component, const QString& name,
+                     const QString& base);
+    // A settings file of scope, named fileName when it is not empty, after its galaxy in a galaxy; when the name is
+    // taken, it is named as addSettingsFile() names it, which problems tells.
+    SettingsFile& addSettingsFile(const Scope& scope, const QString& fileName, QStringList& problems);
+    // Its settings files, then those of its galaxies, in the order they start.
+    [[nodiscard]] QList<SettingsFile*> allSettingsFiles() const;
+    // Names the settings files of galaxy, and of the galaxies it holds, after prefix, as createGalaxy() does.
+    void nameSettingsFiles(Galaxy& galaxy, const QString& prefix);
+    // Adds the plugin of component, or those of the components of a galaxy, to pluginFiles, by id.
+    void addPluginFiles(const Component& component, std::map<QString, QString>& pluginFiles) const;
+
     // The properties a project holds of object, among properties: those of the edition while it runs.
     [[nodiscard]] QJsonObject savedValues(const QObject& object, const QList<QMetaProperty>& properties) const;
     // Keeps the values of the edition, see EditedValues.
     void keepEditedValues();
+    // Those of component and of its objects, or of the components of a galaxy.
+    void keepEditedValues(Component& component);
     // Once its components no longer run: stops its settings files, then gives the properties the values of the
     // edition again, and forgets them.
     void returnToEdition();
-    // Whether an instance is named name.
-    [[nodiscard]] bool contains(const QString& name) const;
-    // componentName and the first number no instance is named with.
-    [[nodiscard]] QString newName(const QString& componentName) const;
     // settings.json, or settings<n>.json with the first number from 2 no settings file is named with.
     [[nodiscard]] QString newSettingsFileName() const;
     void setRunning(bool running);
 
     PluginManager m_plugins; // Before m_components: it unloads its plugins once their components are destroyed
     QDir m_pluginRoot;
+    QString m_filePath;
     QString m_description;
     std::vector<std::unique_ptr<Component>> m_components;
     std::vector<std::unique_ptr<SettingsFile>> m_settingsFiles; // Destroyed first: their entries are of m_components

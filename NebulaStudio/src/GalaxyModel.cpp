@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
+#include <QMimeData>
 #include <QStyle>
 #include <algorithm>
 
@@ -125,6 +126,34 @@ QVariant GalaxyModel::headerData(int section, Qt::Orientation orientation, int r
     default:
         return {};
     }
+}
+
+Qt::ItemFlags GalaxyModel::flags(const QModelIndex& index) const
+{
+    // An invalid index is asked for the flags of the root, which checkIndex() would warn about.
+    const Qt::ItemFlags flags = QAbstractTableModel::flags(index);
+    if(!index.isValid() || !checkIndex(index, CheckIndexOption::ParentIsInvalid))
+    {
+        return flags;
+    }
+    return m_galaxies.at(index.row()).isLoadable() ? flags | Qt::ItemIsDragEnabled : flags;
+}
+
+QStringList GalaxyModel::mimeTypes() const
+{
+    return {MimeType};
+}
+
+QMimeData* GalaxyModel::mimeData(const QModelIndexList& indexes) const
+{
+    // The view selects a single row, one index per column: they all hold the same file.
+    if(indexes.isEmpty())
+    {
+        return nullptr;
+    }
+    auto* data = new QMimeData;
+    data->setData(MimeType, indexes.first().data(FilePathRole).toString().toUtf8());
+    return data;
 }
 
 QString GalaxyModel::directory() const

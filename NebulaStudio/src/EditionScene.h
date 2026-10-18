@@ -9,6 +9,8 @@
 #include <QList>
 #include <QStringList>
 #include <cstddef>
+#include <memory>
+#include <vector>
 
 class ComponentItem;
 class InterfaceItem;
@@ -20,6 +22,7 @@ namespace Nebula
 {
 class Component;
 class ComponentFactory;
+class Galaxy;
 class Universe;
 class SettingsFile;
 } // namespace Nebula
@@ -37,13 +40,23 @@ class SettingsFile;
 // again when it is double-clicked or from its own menu, which writes its default values or removes it.
 // None of this is done while the application runs, see Universe: its components can still be selected, but
 // nothing is dropped, moved, linked, renamed, recolored, added or removed until it is stopped.
+// A galaxy dragged from a GalaxyModel is placed in the application the same way, see Universe::instantiateGalaxy();
+// double-clicking it below its name asks for it to be opened, see galaxyOpened(), in another scene that shows it
+// without editing it.
 class EditionScene : public QGraphicsScene
 {
     Q_OBJECT
 
   public:
     EditionScene(Nebula::Universe& application, const Nebula::ComponentFactory& factory, QObject* parent = nullptr);
+    // Shows galaxy, one of the galaxies of application or of those they hold, as its file holds it, where its file
+    // shows them: it is not edited, nothing is dropped, linked, moved, renamed or removed in it. Its galaxies open as
+    // those of the application do. galaxy outlives the scene.
+    EditionScene(Nebula::Universe& application, const Nebula::ComponentFactory& factory, const Nebula::Galaxy& galaxy,
+                 QObject* parent = nullptr);
 
+    // The galaxy it shows; nullptr when it shows the application.
+    [[nodiscard]] const Nebula::Galaxy* galaxy() const;
     // The component selected, when a single one is; nullptr otherwise. See selectionChanged().
     [[nodiscard]] Nebula::Component* selectedComponent() const;
     // Selects component alone, one of the application, and returns what shows it; nullptr, selecting nothing, when it
@@ -66,6 +79,10 @@ class EditionScene : public QGraphicsScene
     void refused(const QString& why);
     // What was just asked of it is done, which is worth telling; what is a sentence to show.
     void told(const QString& what);
+    // galaxy, one it shows, was double-clicked to be opened: the scene does not open it by itself.
+    void galaxyOpened(Nebula::Galaxy& galaxy);
+    // galaxy was dropped and placed in the application, which loaded the plugins it needs.
+    void galaxyPlaced(Nebula::Galaxy& galaxy);
 
   protected:
     void dragEnterEvent(QGraphicsSceneDragDropEvent* event) override;
@@ -85,12 +102,15 @@ class EditionScene : public QGraphicsScene
     void drawBackground(QPainter* painter, const QRectF& rect) override;
 
   private:
-    // Whether the application is edited: it does not run.
+    // Whether what it shows is edited: the application, while it does not run.
     [[nodiscard]] bool isEditable() const;
     // Lets the mouse move its items, or keeps it from doing so, see isEditable().
     void setEditable(bool editable);
-    // Tells through refused() that what was asked is not done while the application runs.
-    void refuseWhileRunning();
+    // Tells through refused() why what was asked is not done: the application runs, or a galaxy is shown.
+    void refuseEdition();
+    // Shows components, with their links, files and the zones of project, which tells where they are.
+    void show(const std::vector<std::unique_ptr<Nebula::Component>>& components,
+              const std::vector<std::unique_ptr<Nebula::SettingsFile>>& files, const QJsonObject& project);
     // The interface whose dot is at position; nullptr when there is none.
     [[nodiscard]] InterfaceItem* interfaceAt(const QPointF& position) const;
     // The interface the link being drawn would be bound to if released at position; nullptr when there is none.
@@ -127,6 +147,7 @@ class EditionScene : public QGraphicsScene
 
     Nebula::Universe& m_application;
     const Nebula::ComponentFactory& m_factory;
+    const Nebula::Galaxy* m_galaxy = nullptr;   // The one shown, not edited; nullptr when it is the application
     InterfaceItem* m_linkSource = nullptr;      // Where the link being drawn starts; nullptr when none is
     QGraphicsPathItem* m_pendingLink = nullptr; // The link being drawn
     std::size_t m_zoneCount = 0;                // The zones added so far: each takes the next color

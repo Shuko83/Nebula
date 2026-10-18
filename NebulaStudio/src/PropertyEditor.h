@@ -39,6 +39,9 @@ class PropertyEditor : public QWidget
 
     // Shows the editable properties of component; none when it is nullptr.
     void setComponent(Nebula::Component* component);
+    // Whether the values are only shown, as they are while the application runs: those of the components of a
+    // galaxy, the ones of its file, are. They are edited until told otherwise.
+    void setReadOnly(bool readOnly);
 
   protected:
     // Gives the titles of the groups the background of the palette when it changes, as the color scheme does.
@@ -67,6 +70,7 @@ class PropertyEditor : public QWidget
     const Nebula::Universe& m_application;
     const Nebula::ComponentFactory& m_factory;
     QPointer<Nebula::Component> m_component;
+    bool m_readOnly = false;
     QList<Row> m_rows; // One per row of m_table
 
     QStackedWidget* m_stack = nullptr;

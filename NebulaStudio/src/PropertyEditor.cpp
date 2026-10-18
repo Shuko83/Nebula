@@ -101,6 +101,15 @@ void PropertyEditor::setComponent(Nebula::Component* component)
     rebuild();
 }
 
+void PropertyEditor::setReadOnly(bool readOnly)
+{
+    if(readOnly != m_readOnly)
+    {
+        m_readOnly = readOnly;
+        rebuild();
+    }
+}
+
 void PropertyEditor::changeEvent(QEvent* event)
 {
     QWidget::changeEvent(event);
@@ -193,8 +202,8 @@ void PropertyEditor::rebuild()
     const QSignalBlocker blocker(m_table); // itemChanged is for the values edited in the table
     m_table->setRowCount(0);               // Closes the editor of a value shown until now
     // A click on a value edits it, while the application is edited.
-    m_table->setEditTriggers(m_application.isRunning() ? QAbstractItemView::NoEditTriggers
-                                                       : QAbstractItemView::AllEditTriggers);
+    m_table->setEditTriggers(m_readOnly || m_application.isRunning() ? QAbstractItemView::NoEditTriggers
+                                                                     : QAbstractItemView::AllEditTriggers);
     m_table->clearSpans();
     m_table->setRowCount(static_cast<int>(m_rows.size()));
     const QMetaMethod refresh = metaObject()->method(metaObject()->indexOfSlot("refreshValues()"));
@@ -240,8 +249,19 @@ void PropertyEditor::rebuild()
 
 void PropertyEditor::refreshPlaceholder()
 {
-    m_placeholder->setText(m_component == nullptr ? tr("Select a component of the application to edit its properties")
-                                                  : tr("%1 has no editable property").arg(m_component->objectName()));
+    if(m_component == nullptr)
+    {
+        m_placeholder->setText(tr("Select a component of the application to edit its properties"));
+    }
+    else if(qobject_cast<const Nebula::Galaxy*>(m_component) != nullptr)
+    {
+        m_placeholder->setText(
+            tr("%1 is a galaxy: double-click it to see its components").arg(m_component->objectName()));
+    }
+    else
+    {
+        m_placeholder->setText(tr("%1 has no editable property").arg(m_component->objectName()));
+    }
 }
 
 void PropertyEditor::write(const QTableWidgetItem* item)
