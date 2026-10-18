@@ -144,9 +144,42 @@ std::optional<QJsonObject> Universe::read(const QString& filePath, QString& erro
     return project;
 }
 
+std::optional<GalaxyInfo> Universe::readGalaxy(const QString& filePath, QString& error)
+{
+    const std::optional<QJsonObject> project = read(filePath, error);
+    if(!project)
+    {
+        return std::nullopt;
+    }
+    GalaxyInfo galaxy{.name = QFileInfo(filePath).completeBaseName(),
+                      .description = project->value(u"description").toString(),
+                      .plugins = {},
+                      .filePath = filePath};
+    const QJsonArray plugins = project->value(u"plugins").toArray();
+    for(const QJsonValue& plugin : plugins)
+    {
+        galaxy.plugins.append(plugin.toObject().value(u"id").toString());
+    }
+    return galaxy;
+}
+
+QStringList Universe::missingPlugins(const GalaxyInfo& galaxy) const
+{
+    QStringList missing;
+    for(const QString& pluginId : galaxy.plugins)
+    {
+        if(!m_plugins.plugin(pluginId) && !missing.contains(pluginId))
+        {
+            missing.append(pluginId);
+        }
+    }
+    return missing;
+}
+
 QStringList Universe::load(const QJsonObject& project)
 {
     clear();
+    m_description = project.value(u"description").toString();
     QStringList problems;
 
     const QJsonArray plugins = project.value(u"plugins").toArray();
@@ -360,6 +393,10 @@ QJsonObject Universe::save() const
 
     QJsonObject project;
     project.insert(u"version", ProjectVersion);
+    if(!m_description.isEmpty()) // As settings: the projects without one are written as they were
+    {
+        project.insert(u"description", m_description);
+    }
     project.insert(u"plugins", plugins);
     project.insert(u"components", components);
     project.insert(u"bindings", bindings);
@@ -368,6 +405,16 @@ QJsonObject Universe::save() const
         project.insert(u"settings", settings);
     }
     return project;
+}
+
+QString Universe::description() const
+{
+    return m_description;
+}
+
+void Universe::setDescription(const QString& description)
+{
+    m_description = description;
 }
 
 Component* Universe::instantiate(const QString& componentId, const QString& name)
@@ -453,6 +500,7 @@ void Universe::clear()
         m_settingsFiles.clear();
         emit settingsFilesChanged();
     }
+    m_description.clear();
 }
 
 SettingsFile& Universe::addSettingsFile()

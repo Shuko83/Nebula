@@ -14,6 +14,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QInputDialog>
 #include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
@@ -25,6 +26,7 @@
 #include <QSortFilterProxyModel>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QTreeView>
 #include <QVBoxLayout>
 #include <array>
@@ -36,6 +38,8 @@
 #include "ComponentViewer.h"
 #include "EditionScene.h"
 #include "EditionView.h"
+#include "GalaxyModel.h"
+#include "GalaxyViewer.h"
 #include "Nebula/Component/ComponentFactory.h"
 #include "PluginModel.h"
 #include "PluginViewer.h"
@@ -85,17 +89,22 @@ QTreeView* createView(QAbstractItemModel& model)
     return view;
 }
 
-// view above viewer, under title.
-QWidget* createPanel(const QString& title, QWidget* view, QWidget* viewer)
+// view above viewer.
+QSplitter* createSplitter(QWidget* view, QWidget* viewer)
 {
     auto* splitter = new QSplitter(Qt::Vertical);
     splitter->addWidget(view);
     splitter->addWidget(viewer);
     splitter->setStretchFactor(1, 1);
+    return splitter;
+}
 
+// view above viewer, under title.
+QWidget* createPanel(const QString& title, QWidget* view, QWidget* viewer)
+{
     auto* panel = new QGroupBox(title);
     auto* layout = new QVBoxLayout(panel);
-    layout->addWidget(splitter);
+    layout->addWidget(createSplitter(view, viewer));
     return panel;
 }
 
@@ -116,6 +125,9 @@ MainWindow::MainWindow(const QCommandLineParser* commandLine, QWidget* parent)
     QAction* openAction = fileMenu->addAction(tr("&Open..."), QKeySequence::Open, this, &MainWindow::openProject);
     fileMenu->addAction(tr("&Save"), QKeySequence::Save, this, &MainWindow::saveProject);
     fileMenu->addAction(tr("Save &As..."), QKeySequence::SaveAs, this, &MainWindow::saveProjectAs);
+    fileMenu->addSeparator();
+    QAction* descriptionAction = fileMenu->addAction(tr("&Description..."), this, &MainWindow::editDescription);
+    descriptionAction->setIcon(icon(GlossaryTerm::Galaxy)); // The one of the galaxy its file is
 
     // The zoom of the edition zone, also changed there with + and -, or with Ctrl and the mouse wheel.
     QMenu* viewMenu = menuBar()->addMenu(tr("&View"));
@@ -130,13 +142,15 @@ MainWindow::MainWindow(const QCommandLineParser* commandLine, QWidget* parent)
         runMenu->addAction(tr("S&top"), QKeySequence(Qt::SHIFT | Qt::Key_F5), &m_application, &Nebula::Universe::stop);
     stopAction->setEnabled(false);
     connect(&m_application, &Nebula::Universe::runningChanged, this,
-            [this, newAction, openAction, startAction, stopAction](bool running)
+            [this, newAction, openAction, descriptionAction, startAction, stopAction](bool running)
             {
                 newAction->setEnabled(!running);
                 openAction->setEnabled(!running);
+                descriptionAction->setEnabled(!running);
                 startAction->setEnabled(!running);
                 stopAction->setEnabled(running);
                 m_pluginViewer->setUnloadAllowed(!running); // What runs keeps its plugin
+                m_galaxyViewer->setOpenAllowed(!running);
             });
 
     if(commandLine != nullptr)
@@ -162,6 +176,32 @@ MainWindow::MainWindow(const QCommandLineParser* commandLine, QWidget* parent)
     pluginListLayout->setContentsMargins({});
     pluginListLayout->addWidget(openButton, 0, Qt::AlignLeft);
     pluginListLayout->addWidget(m_pluginView);
+
+    // The galaxies of a directory, those the application knows the plugins of opened from their viewer, or activated.
+    m_galaxyModel = new GalaxyModel(m_application, this);
+    m_galaxyViewer = new GalaxyViewer(*m_galaxyModel);
+    m_galaxyView = createView(*m_galaxyModel);
+    connect(m_galaxyView->selectionModel(), &QItemSelectionModel::currentRowChanged, this,
+            [this](const QModelIndex& current)
+            { m_galaxyViewer->setFilePath(current.data(GalaxyModel::FilePathRole).toString()); });
+    connect(m_galaxyView, &QAbstractItemView::activated, this,
+            [this](const QModelIndex& index) { openGalaxy(index.data(GalaxyModel::FilePathRole).toString()); });
+    connect(m_galaxyViewer, &GalaxyViewer::openRequested, this, &MainWindow::openGalaxy);
+
+    m_galaxyDirectory = new QLineEdit;
+    m_galaxyDirectory->setReadOnly(true);
+    m_galaxyDirectory->setToolTip(tr("The directory whose galaxies are listed"));
+    auto* chooseButton = new QPushButton(tr("Choose directory..."));
+    chooseButton->setToolTip(tr("List the galaxies of another directory"));
+    connect(chooseButton, &QPushButton::clicked, this, &MainWindow::chooseGalaxyDirectory);
+    auto* directoryBar = new QHBoxLayout;
+    directoryBar->addWidget(m_galaxyDirectory, 1);
+    directoryBar->addWidget(chooseButton);
+    auto* galaxyList = new QWidget;
+    auto* galaxyListLayout = new QVBoxLayout(galaxyList);
+    galaxyListLayout->setContentsMargins({});
+    galaxyListLayout->addLayout(directoryBar);
+    galaxyListLayout->addWidget(m_galaxyView);
 
     // The components whose name, description or category, as chosen next to the search bar, holds what is typed there,
     // whatever its case. The proxy hands what is dragged over to the model, which makes the data.
@@ -252,9 +292,15 @@ MainWindow::MainWindow(const QCommandLineParser* commandLine, QWidget* parent)
     auto* editionLayout = new QVBoxLayout(edition);
     editionLayout->addWidget(editionSplitter);
 
+    // What the application is made from, on the disk: the plugins, and the galaxies in another tab.
+    auto* sources = new QTabWidget;
+    sources->setDocumentMode(true); // Without a frame, on the background of the window, as the other panels are
+    sources->addTab(createSplitter(pluginList, m_pluginViewer), tr("Plugins"));
+    sources->addTab(createSplitter(galaxyList, m_galaxyViewer), icon(GlossaryTerm::Galaxy), tr("Galaxies"));
+
     // The edition zone between the plugins and the components, next to the list a component is dragged from.
     auto* splitter = new QSplitter(Qt::Horizontal);
-    splitter->addWidget(createPanel(tr("Plugins"), pluginList, m_pluginViewer));
+    splitter->addWidget(sources);
     splitter->addWidget(edition);
     splitter->addWidget(createPanel(tr("Components"), componentList, m_componentViewer));
     splitter->setStretchFactor(1, 1);
@@ -269,6 +315,8 @@ MainWindow::MainWindow(const QCommandLineParser* commandLine, QWidget* parent)
     connect(m_editionView, &EditionView::zoomChanged, zoomLabel, showZoom);
     statusBar()->addPermanentWidget(zoomLabel);
     m_pluginView->setCurrentIndex(m_pluginModel->index(0, 0));
+    setGalaxyDirectory(defaultProjectDirectory()); // Where the projects are saved unless told otherwise
+    m_galaxyView->setCurrentIndex(m_galaxyModel->index(0, 0));
     setProjectFile({});
     resize(1440, 800);
 }
@@ -296,10 +344,12 @@ bool MainWindow::openProjectFile(const QString& filePath)
         return false;
     }
     const QStringList problems = m_scene->load(*project);
-    // The plugins of the project, loaded with it, and their components.
+    // The plugins of the project, loaded with it, and their components; those opened from their file are known from
+    // now on, and so are the galaxies they were missing from.
     m_pluginModel->refresh();
     m_pluginViewer->refresh();
     m_componentModel->refresh();
+    m_galaxyModel->refresh();
     // No longer its file when part of it is missing: saving would write over what could not be restored.
     setProjectFile(problems.isEmpty() ? filePath : QString());
     if(!problems.isEmpty())
@@ -323,6 +373,7 @@ bool MainWindow::saveProjectFile(const QString& filePath)
         return false;
     }
     setProjectFile(filePath);
+    m_galaxyModel->refresh(); // Its directory may have just been made, which nothing followed yet
     return true;
 }
 
@@ -395,6 +446,7 @@ void MainWindow::openPlugin()
         return;
     }
     m_pluginModel->refresh();
+    m_galaxyModel->refresh(); // Those that missed it are loadable now
     m_pluginView->setCurrentIndex(m_pluginModel->indexOf(info->id));
     if(!m_application.plugins().isLoaded(info->id))
     {
@@ -475,4 +527,43 @@ void MainWindow::start()
         QMessageBox::warning(this, tr("Start"),
                              tr("The application cannot be started:\n%1").arg(m_application.errorString()));
     }
+}
+
+void MainWindow::editDescription()
+{
+    bool accepted = false;
+    const QString description = QInputDialog::getMultiLineText(
+        this, tr("Description"), tr("What the application is for, shown with its galaxy in the Galaxies tab:"),
+        m_application.description(), &accepted);
+    if(accepted)
+    {
+        m_application.setDescription(description.trimmed()); // None when only blanks are left
+    }
+}
+
+void MainWindow::setGalaxyDirectory(const QString& directory)
+{
+    m_galaxyModel->setDirectory(directory);
+    m_galaxyDirectory->setText(QDir::toNativeSeparators(m_galaxyModel->directory()));
+}
+
+void MainWindow::chooseGalaxyDirectory()
+{
+    const QString directory =
+        QFileDialog::getExistingDirectory(this, tr("Galaxies directory"), m_galaxyModel->directory());
+    if(!directory.isEmpty())
+    {
+        setGalaxyDirectory(directory);
+        m_galaxyView->setCurrentIndex(m_galaxyModel->index(0, 0));
+    }
+}
+
+void MainWindow::openGalaxy(const QString& filePath)
+{
+    const std::optional<GalaxyModel::Galaxy> galaxy = m_galaxyModel->galaxy(filePath);
+    if(!galaxy || !galaxy->isLoadable() || m_application.isRunning() || !saveChanges())
+    {
+        return;
+    }
+    openProjectFile(filePath);
 }

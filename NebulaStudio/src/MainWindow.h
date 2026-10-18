@@ -13,19 +13,24 @@ class ComponentModel;
 class ComponentViewer;
 class EditionScene;
 class EditionView;
+class GalaxyModel;
+class GalaxyViewer;
 class PluginModel;
 class PluginViewer;
 class PropertyEditor;
 class QCommandLineParser;
+class QLineEdit;
 class QTreeView;
 
 // Lists the plugins of <application directory>/plugins, and of the directories given on its command line, and the
 // components of the loaded ones, each with a viewer of the one selected; a plugin is loaded from its viewer, or opened
 // from anywhere on the disk, and the components are searched for by a part of their name, of their description or of
-// their category (Ctrl+F). Between them, the edition zone, where a component dropped from its list is instantiated,
+// their category (Ctrl+F). Next to the plugins, in another tab, the galaxies of a directory, scene/ until another one
+// is chosen: the project files there, each telling whether the application knows its plugins, opened from its viewer
+// when it does. Between them, the edition zone, where a component dropped from its list is instantiated,
 // above the editor of the properties of the one selected there, and the list of what keeps components from working,
-// see ProblemList. Its File menu saves what is in the edition zone to a
-// project file, and opens it again; its View menu zooms the edition zone in and out, at the zoom level its status bar
+// see ProblemList. Its File menu saves what is in the edition zone to a project file, with the description of its
+// galaxy, and opens it again; its View menu zooms the edition zone in and out, at the zoom level its status bar
 // tells; its Run menu starts the application assembled there, which is not edited while it runs, and stops it.
 class MainWindow : public QMainWindow
 {
@@ -73,6 +78,16 @@ class MainWindow : public QMainWindow
     bool saveProjectAs();
     // Starts the application; tells why when it cannot be.
     void start();
+    // Asks for the description of the application, the one its galaxy has once it is saved.
+    void editDescription();
+
+    // Lists the galaxies of directory, and tells which one above them.
+    void setGalaxyDirectory(const QString& directory);
+    // Asks for the directory whose galaxies are listed.
+    void chooseGalaxyDirectory();
+    // Opens the galaxy of the file filePath, once the changes of the application are saved or given up. Does nothing
+    // when it cannot be loaded, as its viewer tells, and while the application runs.
+    void openGalaxy(const QString& filePath);
 
     Nebula::Universe m_application; // What is assembled in the edition zone, with the plugins it is made from
     QString m_openDirectory;        // Where openPlugin() starts browsing: the directory of the last plugin opened
@@ -86,4 +101,8 @@ class MainWindow : public QMainWindow
     ComponentModel* m_componentModel = nullptr;
     ComponentViewer* m_componentViewer = nullptr;
     PropertyEditor* m_propertyEditor = nullptr; // Of the component selected in m_editionView
+    GalaxyModel* m_galaxyModel = nullptr;
+    QTreeView* m_galaxyView = nullptr;
+    GalaxyViewer* m_galaxyViewer = nullptr;
+    QLineEdit* m_galaxyDirectory = nullptr; // Tells the directory of m_galaxyModel
 };
