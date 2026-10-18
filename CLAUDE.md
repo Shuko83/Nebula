@@ -17,8 +17,8 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `exemple/ExampleUniverseApp` | exe console + Widgets | Le `main` type : options de `Universe::addCommandLineOptions()`, `applyCommandLine()`, `open()` du projet passé en argument, puis `start()` |
 | `CMakeUtils/` | sous-module git | `cmu_add_target` / `cmu_add_executable` / `cmu_add_shared_library` |
 | `docs/release-notes/` | — | Notes de chaque version, `<x.y.z>.md` : le texte de sa release GitHub |
-| `docs/glossary.md` | — | Glossaire Nebula (Nebula, Univers, Galaxy, Astre, Comet), en anglais puis en français, référencé par le README : le vocabulaire à employer pour nommer code, documentation et interface ; Nebula et Univers (la classe `Universe`) sont déjà employés |
-| `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Core/` et `NebulaStudio/` (Colors, Theme, PluginModel, ComponentModel, sources recompilées), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`. `PluginManager` se teste sur `ExamplePlugin` et `ExternalPlugin`. Rien n'est installé |
+| `docs/glossary.md` | — | Glossaire Nebula (Nebula, Univers, Galaxy, Astre, Comet), en anglais puis en français, référencé par le README : le vocabulaire à employer pour nommer code, documentation et interface ; Nebula et Univers (la classe `Universe`) sont déjà employés, et Galaxy pour un fichier de projet (`GalaxyInfo`, onglet **Galaxies**) |
+| `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Core/` et `NebulaStudio/` (Colors, Theme, PluginModel, ComponentModel, GalaxyModel, sources recompilées), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`. `PluginManager` se teste sur `ExamplePlugin` et `ExternalPlugin`. Rien n'est installé |
 | `docs/testing.md` | — | Lancer, déboguer et écrire les tests, en français |
 | `CFmake/` | non suivi, dépôt à part | Ne fait pas partie du build : ne pas y toucher |
 
@@ -107,8 +107,14 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   Signal `componentsChanged` après `instantiate()`, `remove()` et `clear()` (s'il y avait des instances).
 - Projet : `read(fichier, erreur)` statique (lecture + contrôle de version), `load(json)` qui renvoie la liste de ce
   qui n'a pas pu être restauré, `open(fichier)` = les deux, strict (`false` au moindre problème), `save()` qui écrit
-  `version`, `plugins`, `components` (nom, type, propriétés inscriptibles qui font l'aller-retour JSON, et `objects` : celles de ses
-  `propertyObjects()`, retrouvés à l'ouverture par nom puis par ordre d'ajout) et `bindings`.
+  `version`, `description` (si elle n'est pas vide), `plugins`, `components` (nom, type, propriétés inscriptibles qui font l'aller-retour JSON, et `objects` : celles de ses
+  `propertyObjects()`, retrouvés à l'ouverture par nom puis par ordre d'ajout) et `bindings`. `description()` /
+  `setDescription()` : celle du projet, remplacée par `load()`, vidée par `clear()`.
+- Galaxy : un fichier de projet, nommé d'après son fichier. `readGalaxy(fichier, erreur)` (statique) le lit sans le
+  charger, en `GalaxyInfo {name, description, plugins, filePath}` (`include/Nebula/Application/GalaxyInfo.h`, `name`
+  = `completeBaseName()`, `plugins` = les ids de `plugins`) ; `missingPlugins(galaxy)` : ceux de ses plugins dont
+  `plugins()` ne connaît pas l'id, chargés ou non. Vide = chargeable. Contrairement à `load()`, le `file` d'un plugin
+  n'est pas regardé (issue #41 : une galaxy trouve ses plugins par id parmi ceux connus).
 - Les chemins des plugins sont relatifs à `pluginRoot` (dossier de l'exécutable par défaut, `setPluginRoot()`) ; un
   chemin absolu dans un fichier reste lu tel quel. Seuls les plugins des composants présents sont écrits. À
   l'ouverture, un plugin est d'abord cherché par son id parmi ceux connus, son fichier n'est qu'un recours.
@@ -148,16 +154,18 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 
 ## NebulaStudio
 
-`main.cpp` → `SplashScreen`, puis `MainWindow` : trois panneaux dans un splitter horizontal. `SettingsItem`,
+`main.cpp` → `SplashScreen`, puis `MainWindow` : trois panneaux dans un splitter horizontal, celui de gauche un
+`QTabWidget` en mode document (onglets **Plugins** et **Galaxies**). `SettingsItem`,
 `SettingsLinkItem` et `SettingsDialog` sont dans `src/Settings/`, inclus par `"Settings/SettingsItem.h"`.
 
 | Classe | Rôle |
 | --- | --- |
 | `Theme` (`Theme.h`) | Fonctions libres, comme `Colors.h` : `ThemeColors`, les jetons de couleur nommés par usage (`space`, `field`, `surface`, `edge`, `text`, `mutedText`, `accent`, `onAccent`…), définis une fois par schéma dans `Theme.cpp` (`themeColors(Qt::ColorScheme)`, sombre si le système ne dit rien) ; `warning` / `onWarning` (ambre, ce qui ne fonctionne pas) n'ont pas de rôle dans la palette : on les lit par `currentThemeColors()` au moment de peindre ; `applyTheme()`, appelé par `main.cpp` juste après le `QApplication`, met le style Fusion (le seul qui peint tout aux couleurs de la palette), charge Space Grotesk Bold depuis les ressources et donne à l'application la palette du schéma du système, puis à chaque `QStyleHints::colorSchemeChanged` ; `titleFont(police)` : Space Grotesk gras, la famille de départ en repli, pour les noms des items, l'éditeur de nom, les titres de groupes du `PropertyEditor` et le splash ; `icon(GlossaryTerm)` et `logoPath()`, voir Logo et icônes. Chaque texte et son fond, et les bords de ce qui s'utilise, tiennent le niveau AA des WCAG (4,5 et 3) |
 | `SplashScreen` | `QSplashScreen` dont l'image est peinte aux couleurs de la palette depuis `NebulaStudio_info.h` (produit, version, Qt, compilateur, date de build, copyright) et la licence ; `read()` est émis une fois, deux secondes après son premier affichage ou au premier clic. `main.cpp` le montre (`processEvents()` sans les entrées utilisateur, pour qu'un clic attende la connexion), construit `MainWindow`, puis sur `read()` montre la fenêtre, appelle `finish()` et ouvre le projet passé en argument |
-| `MainWindow` | Possède l'`Universe` (donc le `PluginManager` et les instances) ; `load()`, `unload()` (confirmation quand des instances du plugin sont dans la scène, puis `EditionScene::remove()` et `Universe::unloadPlugin()`), `openPlugin()` ; rafraîchit les modèles après un chargement ou un déchargement. Menus **File**, **View** (zoom de la vue : **Zoom In** Ctrl++, **Zoom Out** Ctrl+-, **Actual Size** Ctrl+0) et **Run** (voir plus bas). Barre d'état : `refused` et `told` de la scène, `settingsFileFailed` de l'application, et le niveau de zoom en widget permanent. Au centre, splitter vertical : vue de la scène, `PropertyEditor`, `ProblemList` (son `componentActivated` → `EditionScene::select()` puis `centerOn()`). Son destructeur détruit la scène avant l'application |
+| `MainWindow` | Possède l'`Universe` (donc le `PluginManager` et les instances) ; `load()`, `unload()` (confirmation quand des instances du plugin sont dans la scène, puis `EditionScene::remove()` et `Universe::unloadPlugin()`), `openPlugin()` ; rafraîchit les modèles après un chargement ou un déchargement (`GalaxyModel` aussi après **Open plugin...**, une ouverture et un enregistrement de projet). Onglet **Galaxies** : dossier en lecture seule et **Choose directory...** (`setGalaxyDirectory()`, `scene/` au départ, non mémorisé), liste, `GalaxyViewer` ; son `openRequested` et l'activation d'une ligne → `openGalaxy()` (chargeable, hors exécution, puis `saveChanges()` et `openProjectFile()`). Menus **File** (dont **Description...** : `QInputDialog::getMultiLineText()`, texte rogné, désactivé pendant l'exécution), **View** (zoom de la vue : **Zoom In** Ctrl++, **Zoom Out** Ctrl+-, **Actual Size** Ctrl+0) et **Run** (voir plus bas). Barre d'état : `refused` et `told` de la scène, `settingsFileFailed` de l'application, et le niveau de zoom en widget permanent. Au centre, splitter vertical : vue de la scène, `PropertyEditor`, `ProblemList` (son `componentActivated` → `EditionScene::select()` puis `centerOn()`). Son destructeur détruit la scène avant l'application |
 | `ProblemList` | `QTreeWidget` (Component, Problem, How to fix it) d'une ligne par interface de `Component::unboundMandatoryInterfaces()`, l'aide nommant les interfaces fournies du même type (`Ticker1.display`), ou une phrase quand il n'y en a pas. Suit `Universe::componentsChanged`, et `interfacesChanged` / `objectNameChanged` de chaque composant ; reconstruit en différé (`scheduleRefresh()`, file d'événements), car ces signaux arrivent pendant une destruction. Activation d'une ligne = `componentActivated(nom)` |
 | `PluginModel` / `PluginViewer` | Liste des plugins (Name, Version, State ; `IdRole`) et fiche avec boutons **Load** et **Unload** (signaux `loadRequested`, `unloadRequested`) ; `setUnloadAllowed(false)` désactive **Unload** pendant l'exécution |
+| `GalaxyModel` / `GalaxyViewer` | Liste des galaxies d'un dossier (`setDirectory()`, `*.nbp` triés par nom sans casse ; Name avec l'icône Galaxy et la description en infobulle, State : Loadable, Missing plugins ou Unreadable, avec l'icône d'avertissement du style et ce qui manque en infobulle ; `FilePathRole`), une `Galaxy {filePath, info, error, missingPlugins}` par ligne, `isLoadable()` ; une non chargeable est en `mutedText` (`ForegroundRole`). `refresh()` relit tout : retire, insère à sa place, met à jour (`dataChanged`), comme `PluginModel`. Un `QFileSystemWatcher` suit le dossier une fois qu'il existe et chacun de ses fichiers (voir Pièges). La fiche (inspecteur) : nom, description, fichier, plugins, état, puis, si elle n'est pas chargeable, une erreur en `warning` (remis sur `PaletteChange`) avec l'icône d'avertissement : les plugins manquants et comment les faire connaître, ou pourquoi le fichier est illisible ; bouton **Open** (`openRequested`), désactivé par `setOpenAllowed(false)` pendant l'exécution. Elle suit `dataChanged`, `rowsInserted` et `rowsRemoved` du modèle |
 | `ComponentModel` / `ComponentViewer` | Liste des composants (Name, Category, Plugin ; la description en infobulle), glissables au format `application/x-nebula-component` (id en UTF-8), et fiche avec toutes les propriétés ; `refresh()` insère les composants enregistrés depuis et retire ceux d'un plugin déchargé. La vue la montre à travers un `QSortFilterProxyModel` créé par `MainWindow` : barre de recherche (Ctrl+F), sans casse, sur la colonne et le rôle de la liste déroulante à côté (`SearchFields` dans `MainWindow.cpp`) : Name en `DisplayRole` (nom), Name en `ToolTipRole` (description), Category en `DisplayRole` (catégorie). Un rôle d'index de la vue se lit donc à travers le proxy (`data()`), pas de `row()` à passer au modèle |
 | `EditionScene` | `QGraphicsScene` 4000×3000, grille de 20 : dépôt = `Universe::instantiate()`, tracé des liens entre points d'interface (`Component::bindInterface()`), menu contextuel des zones, des fichiers de réglages (**Add settings file** ouvre aussitôt sa fenêtre ; sur l'un d'eux : éditer, **Write default values**, supprimer) et du composant sous le curseur (renommer, couleur, supprimer), double-clic sur un fichier de réglages = `SettingsDialog` (ouvert par `open()`, pas `exec()`), touche Suppr = suppression des composants et fichiers sélectionnés sauf pendant l'édition d'un nom (`remove()` détruit l'item, donc ses liens, avant `Universe::remove()` / `removeSettingsFile()`), `selectedComponent()`, `select(composant)` (le sélectionne seul, renvoie son item) ; `remove(liste)` public pour le déchargement d'un plugin ; `save()` / `load()` / `reset()` pour les projets ; signaux `refused(why)` quand un nom est refusé ou un fichier non écrit, `told(what)` quand il l'est, affichés par `MainWindow` dans la barre d'état. Verrouillée pendant l'exécution (`isEditable()`, suit `runningChanged`) : `setEditable()` passe à chaque item (`ComponentItem::setEditable()`, `ItemIsMovable` d'un `SettingsItem`, `ZoneItem::setEditable()`), pas de dépôt ni de tracé de lien, double-clic sur un fichier de réglages ignoré, menu contextuel et Suppr remplacés par `refuseWhileRunning()` ; la sélection reste |
 | `EditionView` | `QGraphicsView` de la scène, avec un zoom (`zoom()`, `setZoom()` borné entre 0,25 et 4, `zoomIn()` / `zoomOut()` par pas de 1,25, `resetZoom()`, signal `zoomChanged`) : touches + et - autour du centre, si la scène ne les a pas prises (un nom en cours d'édition les reçoit d'abord), Ctrl+molette autour du point sous le curseur (défilement recalculé à la main, pas d'ancre `AnchorUnderMouse`). Le zoom n'est pas écrit dans le projet |
@@ -179,7 +187,7 @@ zones qui gardent 3 contre 1 sur les champs des deux schémas (`#6366F1`, `#C026
 lié à NebulaStudio (`find_package` dans son `CMakeLists.txt`) : `QSvgRenderer` dessine le logo sur le splash, et son
 moteur d'icônes, déployé par windeployqt (`iconengines/qsvgicon`), lit les `QIcon` des SVG : `logoPath()` pour
 `QApplication::setWindowIcon()` au début de `main.cpp`, `icon(GlossaryTerm)` de `Theme.h` pour **New** (Univers),
-**Add zone** (Galaxy), la liste des composants (Astre, `DecorationRole` de la colonne Name) et les fichiers de réglages
+**Add zone**, l'onglet **Galaxies**, ses lignes et **Description...** (Galaxy), la liste des composants (Astre, `DecorationRole` de la colonne Name) et les fichiers de réglages
 (Comet : **Add settings file**, **Edit settings file...**, `SettingsDialog`). `nebula.ico` (16 à 256 px, entrées PNG),
 par `nebulastudio.rc` (`IDI_ICON1`, ajouté sous Windows seulement, à côté de la ressource de version de CMakeUtils), est
 l'icône de `NebulaStudio.exe` : rendu du logo, à refaire quand il change, par un petit programme Qt qui le dessine avec
@@ -190,7 +198,8 @@ l'icône de `NebulaStudio.exe` : rendu du logo, à refaire quand il change, par 
 de NebulaStudio (`SpaceGrotesk-OFL.txt`). Seule la graisse Bold sert : en ajouter une autre, c'est l'ajouter au `.qrc`.
 
 **Fichier de projet `.nbp`** (JSON, version 1, format décrit dans le README)
-- Le contenu applicatif est lu et écrit par `Universe` (voir Core). `EditionScene::save()` y ajoute `x` / `y`
+- Le contenu applicatif est lu et écrit par `Universe` (voir Core), `description` comprise, que **File** >
+  **Description...** édite. `EditionScene::save()` y ajoute `x` / `y`
   et `color` (`#aarrggbb`, seulement si une couleur a été choisie) dans chaque composant (retrouvé par son nom),
   `x` / `y` dans chaque fichier de `settings` (par rang, dans l'ordre de `settingsFiles()`) et `zones` ;
   `EditionScene::load()` retire ses items, appelle `Universe::load()`, puis recrée un `ComponentItem` par
@@ -224,6 +233,10 @@ de NebulaStudio (`SpaceGrotesk-OFL.txt`). Seule la graisse Bold sert : en ajoute
   en compile un.
 - Composants non opérationnels : **Start** ne les signale pas et ne refuse rien ; seuls le « ! », l'ambre et
   `ProblemList` les montrent.
+- Galaxies : le tableau ne fait que lister et ouvrir. Une galaxy ne s'instancie pas encore comme un composant (#41,
+  #42) ; un plugin connu n'est pas vérifié contre les types des composants (il faudrait le charger) ; le dossier
+  choisi n'est pas mémorisé d'un lancement à l'autre ; la galaxy ouverte n'est pas marquée dans la liste. Le terme
+  Galaxy reste aussi sur les zones (`ZoneItem`, **Add zone**).
 - Fichiers de réglages : pas de fenêtre « Préférences » générique où l'utilisateur final éditerait tout un fichier
   (chaque composant montre les siens), pas de partage d'une même valeur entre deux instances, et le cas de plusieurs
   objets de même nom dans un composant (`index` d'une entrée) n'est exercé que par les tests (`Panel`).
@@ -265,6 +278,9 @@ de NebulaStudio (`SpaceGrotesk-OFL.txt`). Seule la graisse Bold sert : en ajoute
   partagent `ComponentFactory::instance()` : la seconde instancie des composants dont elle ne connaît pas le plugin,
   qui manque alors dans le projet enregistré. Ces instances survivent aussi au plugin quand la première le décharge
   ou est détruite : un `PluginManager` ne garde en vie que ce qu'il a chargé lui-même, et ne décharge que cela.
+- Un `QFileSystemWatcher` sur un dossier signale qu'un fichier y est ajouté, retiré ou renommé (donc un enregistrement
+  par `QSaveFile`), pas qu'un fichier existant est réécrit sur place : `GalaxyModel` suit aussi chaque fichier listé,
+  et les remet tous à chaque `refresh()` (un fichier remplacé est oublié du watcher).
 - Un plugin déchargé garde sa DLL en mémoire : `QPluginLoader` charge avec `PreventUnloadHint` par défaut, et il faut
   le laisser. Sans lui, la DLL part vraiment, mais le registre des métatypes de Qt garde des pointeurs vers les types
   du plugin (`QMetaType::fromName("IGreeter*")` plante après coup) et un `QVariant` lu d'une de ses propriétés pointe

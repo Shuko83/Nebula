@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "Core_export.h"
+#include "Nebula/Application/GalaxyInfo.h"
 #include "Nebula/Component/Component.h"
 #include "Nebula/Plugin/PluginManager.h"
 #include "Nebula/Settings/SettingsFile.h"
@@ -28,6 +29,8 @@ namespace Nebula
 // An application assembled from the components of the plugins, which it runs. It owns the instances of its components,
 // each named, as its objectName, after its component and a number, e.g. Greeter1. It is read from a project file, as
 // NebulaStudio writes them, see README.md, or assembled with instantiate() and Component::bindInterface().
+// A project file is a galaxy, named after its file: readGalaxy() tells what it is without loading it, and
+// missingPlugins() whether it can be loaded.
 // It is either edited or running, as its components are. While it runs, it is not assembled: its components are
 // neither instantiated, renamed nor removed. What changes their properties meanwhile, its settings files or its
 // components themselves, is undone once it stops: they have the values of the edition again, the ones save() writes.
@@ -63,17 +66,28 @@ class CORE_EXPORT Universe : public QObject
     // The project the file filePath holds; nullopt, with error set, when it cannot be read or is not a project of the
     // version this Core reads.
     [[nodiscard]] static std::optional<QJsonObject> read(const QString& filePath, QString& error);
-    // Replaces its components with those of project, as save() wrote it: loads its plugins, instantiates its
-    // components, sets their properties, binds their interfaces and adds its settings files. Returns what could not be
-    // restored, a sentence each: none when everything was.
+    // What the project file filePath tells of its galaxy, its name, its description and its plugins, without loading
+    // it; nullopt, with error set, when read() cannot read it.
+    [[nodiscard]] static std::optional<GalaxyInfo> readGalaxy(const QString& filePath, QString& error);
+    // The plugins of galaxy none of plugins() is, by id, in its order: it can be loaded when there are none. Unlike
+    // load(), which looks for a plugin it does not know in the file its project gives it, the file is not looked at.
+    [[nodiscard]] QStringList missingPlugins(const GalaxyInfo& galaxy) const;
+    // Replaces its components with those of project, as save() wrote it, and its description with the one of project:
+    // loads its plugins, instantiates its components, sets their properties, binds their interfaces and adds its
+    // settings files. Returns what could not be restored, a sentence each: none when everything was.
     QStringList load(const QJsonObject& project);
     // load() of the project the file filePath holds. Returns false, with errorString() set, when the file cannot be
     // read, nothing being changed then, and when anything could not be restored.
     bool open(const QString& filePath);
-    // Its components as a project: its "version", the "plugins" they are from, the "components" with their properties
-    // and their "bindings", and its "settings" files when it has some. While it runs, the properties have the values
-    // they had when it started, those of the edition.
+    // Its components as a project: its "version", its "description" when it has one, the "plugins" they are from, the
+    // "components" with their properties and their "bindings", and its "settings" files when it has some. While it
+    // runs, the properties have the values they had when it started, those of the edition.
     [[nodiscard]] QJsonObject save() const;
+
+    // What it is for, in a few words, that its project holds: the description of the galaxy its file is. Empty until
+    // it is given one, and once it is cleared.
+    [[nodiscard]] QString description() const;
+    void setDescription(const QString& description);
 
     // Creates componentId, in the Editing state; nullptr when it is not registered, or while it runs. It is named name,
     // as one read from a project is, unless name is empty or the name of another instance.
@@ -90,7 +104,8 @@ class CORE_EXPORT Universe : public QObject
     [[nodiscard]] Component* component(const QString& name) const;
     // Those of the plugin pluginId, in the order they were instantiated.
     [[nodiscard]] QList<Component*> componentsOf(const QString& pluginId) const;
-    // Stops it and destroys its components and its settings files: nothing may refer to them any longer.
+    // Stops it, destroys its components and its settings files, and empties its description: nothing may refer to them
+    // any longer.
     void clear();
 
     // Adds a settings file, which holds no property yet, named settings.json, or settings2.json, settings3.json... when
@@ -162,6 +177,7 @@ class CORE_EXPORT Universe : public QObject
 
     PluginManager m_plugins; // Before m_components: it unloads its plugins once their components are destroyed
     QDir m_pluginRoot;
+    QString m_description;
     std::vector<std::unique_ptr<Component>> m_components;
     std::vector<std::unique_ptr<SettingsFile>> m_settingsFiles; // Destroyed first: their entries are of m_components
     bool m_running = false;

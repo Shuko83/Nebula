@@ -88,6 +88,12 @@ class TestUniverse : public QObject
     void loadReportsProblems();
     void loadReplacesTheComponents();
     void open();
+    void saveAndLoadDescription_data();
+    void saveAndLoadDescription();
+    void readGalaxy_data();
+    void readGalaxy();
+    void missingPlugins_data();
+    void missingPlugins();
 
     void startAndStop();
     void startRefused();
@@ -474,6 +480,129 @@ void TestUniverse::open()
     QVERIFY(!universe.open(directory.filePath(QStringLiteral("missing.nbp"))));
     QVERIFY(!universe.errorString().isEmpty());
     QCOMPARE(names(universe), QStringList{"P"});
+}
+
+void TestUniverse::saveAndLoadDescription_data()
+{
+    QTest::addColumn<QString>("description");
+    QTest::addColumn<bool>("written"); // Whether the project has a "description"
+
+    QTest::newRow("none") << "" << false;
+    QTest::newRow("a sentence") << "Shows the time, ticking" << true;
+    QTest::newRow("several lines") << "First line\nSecond line, «accentuée»" << true;
+}
+
+void TestUniverse::saveAndLoadDescription()
+{
+    QFETCH(QString, description);
+    QFETCH(bool, written);
+
+    QJsonObject saved;
+    {
+        Universe universe;
+        QVERIFY(universe.description().isEmpty());
+        universe.setDescription(description);
+        QCOMPARE(universe.description(), description);
+        saved = universe.save();
+    }
+    QCOMPARE(saved.contains(u"description"), written);
+
+    // Replaced by the one of the project loaded, none when it has none.
+    Universe universe;
+    universe.setDescription(QStringLiteral("Before"));
+    QCOMPARE(universe.load(saved), QStringList());
+    QCOMPARE(universe.description(), description);
+
+    universe.setDescription(QStringLiteral("Before"));
+    universe.clear();
+    QVERIFY(universe.description().isEmpty());
+}
+
+void TestUniverse::readGalaxy_data()
+{
+    QTest::addColumn<QString>("fileName");
+    QTest::addColumn<QByteArray>("content"); // Of the file; none when null
+    QTest::addColumn<bool>("read");
+    QTest::addColumn<QString>("name");
+    QTest::addColumn<QString>("description");
+    QTest::addColumn<QStringList>("plugins");
+
+    QTest::newRow("empty project") << "Empty.nbp" << QByteArray(R"({"version": 1})") << true << "Empty" << ""
+                                   << QStringList{};
+    QTest::newRow("description and plugins")
+        << "Clock.nbp" << QByteArray(R"({"version": 1, "description": "Shows the time",
+                         "plugins": [{"id": "B.Plugin", "file": "b.nbdl"}, {"id": "A.Plugin", "file": "a.nbdl"}]})")
+        << true << "Clock" << "Shows the time" << QStringList{"B.Plugin", "A.Plugin"};
+    QTest::newRow("dots in its name") << "Clock.v2.nbp" << QByteArray(R"({"version": 1})") << true << "Clock.v2" << ""
+                                      << QStringList{};
+    QTest::newRow("another extension") << "Clock.json" << QByteArray(R"({"version": 1})") << true << "Clock" << ""
+                                       << QStringList{};
+    QTest::newRow("missing file") << "Missing.nbp" << QByteArray() << false << "" << "" << QStringList{};
+    QTest::newRow("not JSON") << "Broken.nbp" << QByteArray("{ version") << false << "" << "" << QStringList{};
+    QTest::newRow("another version") << "Future.nbp" << QByteArray(R"({"version": 2, "description": "Later"})") << false
+                                     << "" << "" << QStringList{};
+}
+
+void TestUniverse::readGalaxy()
+{
+    QFETCH(QString, fileName);
+    QFETCH(QByteArray, content);
+    QFETCH(bool, read);
+    QFETCH(QString, name);
+    QFETCH(QString, description);
+    QFETCH(QStringList, plugins);
+
+    const QTemporaryDir directory;
+    const QString filePath = directory.filePath(fileName);
+    if(!content.isNull())
+    {
+        QFile file(filePath);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(content);
+    }
+
+    QString error;
+    const std::optional<Nebula::GalaxyInfo> galaxy = Universe::readGalaxy(filePath, error);
+    QCOMPARE(galaxy.has_value(), read);
+    QCOMPARE(error.isEmpty(), read);
+    if(!galaxy)
+    {
+        return;
+    }
+    QCOMPARE(galaxy->name, name);
+    QCOMPARE(galaxy->description, description);
+    QCOMPARE(galaxy->plugins, plugins);
+    QCOMPARE(galaxy->filePath, filePath);
+}
+
+void TestUniverse::missingPlugins_data()
+{
+    QTest::addColumn<QStringList>("plugins"); // Of the galaxy
+    QTest::addColumn<QStringList>("missing");
+
+    QTest::newRow("none") << QStringList{} << QStringList{};
+    QTest::newRow("known, not loaded") << QStringList{ExamplePluginId} << QStringList{};
+    QTest::newRow("unknown") << QStringList{"Other.Plugin"} << QStringList{"Other.Plugin"};
+    QTest::newRow("known and unknown, in their order")
+        << QStringList{"Z.Plugin", ExamplePluginId, "A.Plugin"} << QStringList{"Z.Plugin", "A.Plugin"};
+    QTest::newRow("unknown twice") << QStringList{"Other.Plugin", "Other.Plugin"} << QStringList{"Other.Plugin"};
+    // Registered in the factory, by registerTestComponents(), but no plugin manager knows it.
+    const QString testPluginId = TestComponents::Id;
+    QTest::newRow("components of the tests") << QStringList{testPluginId} << QStringList{testPluginId};
+}
+
+void TestUniverse::missingPlugins()
+{
+    QFETCH(QStringList, plugins);
+    QFETCH(QStringList, missing);
+
+    Universe universe;
+    universe.plugins().scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
+    QCOMPARE(universe.missingPlugins({.name = QStringLiteral("Galaxy"),
+                                      .description = {},
+                                      .plugins = plugins,
+                                      .filePath = QStringLiteral("Galaxy.nbp")}),
+             missing);
 }
 
 void TestUniverse::startAndStop()
