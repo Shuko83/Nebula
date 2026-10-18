@@ -60,8 +60,9 @@ PropertyEditor::PropertyEditor(const Nebula::Universe& application, const Nebula
                                QWidget* parent)
     : QWidget(parent), m_application(application), m_factory(factory)
 {
-    // Which properties are in italics, and whether they are edited.
+    // Which properties are in italics, which ones a stargate exposes, and whether they are edited.
     connect(&m_application, &Nebula::Universe::settingsFilesChanged, this, &PropertyEditor::rebuild);
+    connect(&m_application, &Nebula::Universe::componentsChanged, this, &PropertyEditor::rebuild);
     connect(&m_application, &Nebula::Universe::runningChanged, this, &PropertyEditor::rebuild);
 
     m_placeholder = new QLabel;
@@ -153,6 +154,14 @@ void PropertyEditor::rebuild()
         }
     }
     m_rows.clear();
+    // What the stargates of the application expose, which the names tell.
+    for(const std::unique_ptr<Nebula::Component>& component : m_application.components())
+    {
+        if(const auto* stargate = qobject_cast<const Nebula::Stargate*>(component.get()))
+        {
+            connect(stargate, &Nebula::Stargate::changed, this, &PropertyEditor::rebuild, Qt::UniqueConnection);
+        }
+    }
 
     // Only what can be edited here: the other properties of a component are in the viewer of its component.
     const auto append = [this](QObject* object, const QList<QMetaProperty>& properties)
@@ -161,11 +170,30 @@ void PropertyEditor::rebuild()
         {
             if(isEditable(property))
             {
-                m_rows.append(Row{.object = object, .property = property, .title = {}});
+                m_rows.append(
+                    Row{.object = object, .property = property, .title = {}, .name = {}, .component = m_component});
             }
         }
     };
-    if(m_component != nullptr)
+    if(const auto* galaxy = qobject_cast<const Nebula::Galaxy*>(m_component))
+    {
+        // What its stargates expose, under the names they expose them as.
+        for(const Nebula::ExposedProperty& exposed : galaxy->exposedProperties())
+        {
+            const QMetaObject* metaObject = exposed.object->metaObject();
+            const QMetaProperty property =
+                metaObject->property(metaObject->indexOfProperty(exposed.property.toLatin1().constData()));
+            if(isEditable(property))
+            {
+                m_rows.append(Row{.object = exposed.object,
+                                  .property = property,
+                                  .title = {},
+                                  .name = exposed.name,
+                                  .component = exposed.component});
+            }
+        }
+    }
+    else if(m_component != nullptr)
     {
         if(const std::optional<Nebula::ComponentInfo> info = m_factory.component(m_component->componentId()))
         {
@@ -194,7 +222,8 @@ void PropertyEditor::rebuild()
             // No title for a group with nothing to edit.
             if(!name.isEmpty() && m_rows.size() > title)
             {
-                m_rows.insert(title, Row{.object = nullptr, .property = {}, .title = name});
+                m_rows.insert(title,
+                              Row{.object = nullptr, .property = {}, .title = name, .name = {}, .component = {}});
             }
         }
     }
@@ -221,10 +250,18 @@ void PropertyEditor::rebuild()
             continue;
         }
 
-        auto* name = new QTableWidgetItem(QString::fromLatin1(shown.property.name()));
+        const QString propertyName = QString::fromLatin1(shown.property.name());
+        auto* name = new QTableWidgetItem(shown.name.isEmpty() ? propertyName : shown.name);
         name->setFlags(Qt::ItemIsEnabled);
         name->setToolTip(QString::fromLatin1(shown.property.typeName()));
-        const Nebula::SettingsEntry entry{.component = m_component, .object = shown.object, .property = name->text()};
+        if(!shown.name.isEmpty() && shown.component != nullptr)
+        {
+            // Where it is in the galaxy.
+            name->setToolTip(tr("%1\nThe property %2 of %3 in the galaxy")
+                                 .arg(name->toolTip(), propertyName, shown.component->objectName()));
+        }
+        const Nebula::SettingsEntry entry{
+            .component = shown.component, .object = shown.object, .property = propertyName};
         if(const Nebula::SettingsFile* file = m_application.settingsFile(entry))
         {
             QFont font = name->font();
@@ -232,6 +269,12 @@ void PropertyEditor::rebuild()
             name->setFont(font);
             name->setToolTip(tr("%1\nDefault value: the user keeps the one they give it in %2")
                                  .arg(name->toolTip(), file->fileName()));
+        }
+        if(const auto [stargate, exposedAs] = exposedBy(shown); stargate != nullptr)
+        {
+            name->setIcon(icon(GlossaryTerm::Stargate));
+            name->setToolTip(tr("%1\nExposed by %2 as %3: each instance of the galaxy of the project sets it")
+                                 .arg(name->toolTip(), stargate->objectName(), exposedAs));
         }
         m_table->setItem(row, NameColumn, name);
         m_table->setItem(row, ValueColumn, new QTableWidgetItem); // Editable, as an item is by default
@@ -255,13 +298,40 @@ void PropertyEditor::refreshPlaceholder()
     }
     else if(qobject_cast<const Nebula::Galaxy*>(m_component) != nullptr)
     {
-        m_placeholder->setText(
-            tr("%1 is a galaxy: double-click it to see its components").arg(m_component->objectName()));
+        m_placeholder->setText(tr("%1 is a galaxy that exposes no property: double-click it to see its components")
+                                   .arg(m_component->objectName()));
+    }
+    else if(qobject_cast<const Nebula::Stargate*>(m_component) != nullptr)
+    {
+        m_placeholder->setText(tr("%1 is a stargate: double-click it to choose what the galaxy of the project exposes "
+                                  "through it")
+                                   .arg(m_component->objectName()));
     }
     else
     {
         m_placeholder->setText(tr("%1 has no editable property").arg(m_component->objectName()));
     }
+}
+
+std::pair<const Nebula::Stargate*, QString> PropertyEditor::exposedBy(const Row& row) const
+{
+    for(const std::unique_ptr<Nebula::Component>& component : m_application.components())
+    {
+        const auto* stargate = qobject_cast<const Nebula::Stargate*>(component.get());
+        if(stargate == nullptr)
+        {
+            continue;
+        }
+        for(const Nebula::ExposedProperty& exposed : stargate->properties())
+        {
+            if(exposed.component == row.component && exposed.object == row.object &&
+               exposed.property == QLatin1StringView(row.property.name()))
+            {
+                return {stargate, exposed.name};
+            }
+        }
+    }
+    return {nullptr, {}};
 }
 
 void PropertyEditor::write(const QTableWidgetItem* item)

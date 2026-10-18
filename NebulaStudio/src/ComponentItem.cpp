@@ -10,6 +10,7 @@
 #include <QPainterPath>
 #include <QPolygonF>
 #include <QStyleOptionGraphicsItem>
+#include <algorithm>
 #include <utility>
 
 #include "Colors.h"
@@ -39,8 +40,10 @@ constexpr int WarningMarkFontSize = 10; // In pixels
 // How much of the color of its name the name of its component keeps over the color of an item, as it is fainter over
 // the ones of the style.
 constexpr float ComponentNameOpacity = 0.7F;
-// Between the icon of an item that opens and the name of its component.
+// Between the icon of an item and the name of its component.
 constexpr qreal IconSpacing = 4;
+// Between the name of a row and what it is.
+constexpr qreal RowSpacing = 6;
 
 // What the name of an item of color is written in: of the style when it has none; read over its color otherwise, as
 // it shows over the item, which it lets through when it is translucent.
@@ -52,6 +55,28 @@ QColor nameColor(const QColor& color, const QPalette& palette)
     }
     const QColor background = over(palette.color(QPalette::Button), palette.color(QPalette::Base));
     return textColorOver(over(color, background));
+}
+
+// The names of items, in their order.
+QStringList namesOf(const QList<InterfaceItem*>& items)
+{
+    QStringList names;
+    for(const InterfaceItem* item : items)
+    {
+        names.append(item->name());
+    }
+    return names;
+}
+
+// The names of the first count of interfaces.
+QStringList namesOf(const QList<Nebula::InterfaceInfo>& interfaces, qsizetype count)
+{
+    QStringList names;
+    for(qsizetype index = 0; index < count && index < interfaces.size(); ++index)
+    {
+        names.append(interfaces.at(index).name);
+    }
+    return names;
 }
 
 } // namespace
@@ -109,17 +134,61 @@ void ComponentItem::setEditable(bool editable)
     setFlag(ItemIsMovable, editable);
 }
 
-void ComponentItem::setOpenable(const QIcon& icon, const QString& about)
+void ComponentItem::setIcon(const QIcon& icon)
 {
     m_icon = icon;
-    m_about = about;
-    refreshInterfaces(); // Its tooltip
     update();
+}
+
+void ComponentItem::setOpenable(const QString& about, const QString& howToOpen)
+{
+    m_openable = true;
+    m_about = about;
+    m_howToOpen = howToOpen;
+    refreshInterfaces(); // Its tooltip
+}
+
+void ComponentItem::setRows(const QList<Row>& rows)
+{
+    if(rows.size() != m_rows.size())
+    {
+        prepareGeometryChange();
+    }
+    m_rows = rows;
+    update();
+}
+
+void ComponentItem::setInterfacesRenamable(bool renamable)
+{
+    m_interfacesRenamable = renamable;
+}
+
+void ComponentItem::editInterfaceName(const InterfaceItem& interfaceItem)
+{
+    if(m_interfaceEditor == nullptr)
+    {
+        // Its child rather than the one of the interface: renaming it shows the interfaces again, in new items.
+        m_interfaceEditor = new NameEditor(*this, [this](const QString& name)
+                                           { emit interfaceNameEdited(m_editedKind, m_editedName, name); });
+        m_interfaceEditor->setFont(QApplication::font()); // The one the interfaces are painted in
+    }
+    m_editedKind = interfaceItem.kind();
+    m_editedName = interfaceItem.name();
+    const bool provided = interfaceItem.kind() == InterfaceItem::Kind::Provided;
+    m_interfaceEditor->edit(interfaceItem.name(), QApplication::palette().color(QPalette::ButtonText),
+                            interfaceItem.mapRectToParent(interfaceItem.nameRect()),
+                            provided ? Qt::AlignRight : Qt::AlignLeft);
+}
+
+bool ComponentItem::isNameEdited(const InterfaceItem& interfaceItem) const
+{
+    return m_interfaceEditor != nullptr && m_interfaceEditor->isVisible() && interfaceItem.kind() == m_editedKind &&
+           interfaceItem.name() == m_editedName;
 }
 
 QRectF ComponentItem::boundingRect() const
 {
-    const qsizetype rows = m_consumedInterfaces.size() + m_providedInterfaces.size();
+    const qsizetype rows = m_consumedInterfaces.size() + m_providedInterfaces.size() + m_rows.size();
     return Header.adjusted(0, 0, 0, static_cast<qreal>(rows) * InterfaceItem::RowHeight);
 }
 
@@ -183,7 +252,7 @@ void ComponentItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* opt
         painter->drawText(warning, Qt::AlignCenter, QStringLiteral("!"));
     }
 
-    if(!isNameEdited()) // Its name is otherwise the text being edited
+    if(m_nameEditor == nullptr || !m_nameEditor->isVisible()) // Its name is otherwise the text being edited
     {
         const QFont title = titleFont(font);
         painter->setFont(title);
@@ -192,17 +261,33 @@ void ComponentItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* opt
                           QFontMetricsF(title).elidedText(m_component.objectName(), Qt::ElideRight, NameRect.width()));
     }
 
+    // Its rows, under its interfaces: the name on the left, what it is on the right, both elided to share the width.
     painter->setFont(font);
+    const QFontMetricsF metrics(font);
+    const qreal rowWidth = Header.width() - 2 * Padding;
+    qreal rowTop = rowsTop();
+    for(const auto& [name, what] : std::as_const(m_rows))
+    {
+        const QRectF rowRect(Header.left() + Padding, rowTop, rowWidth, InterfaceItem::RowHeight);
+        const QString shownName = metrics.elidedText(name, Qt::ElideRight, (rowWidth - RowSpacing) / 2);
+        const qreal nameWidth = metrics.horizontalAdvance(shownName);
+        painter->setPen(palette.color(QPalette::ButtonText));
+        painter->drawText(rowRect, Qt::AlignLeft | Qt::AlignVCenter, shownName);
+        painter->setPen(palette.color(QPalette::PlaceholderText));
+        painter->drawText(rowRect, Qt::AlignRight | Qt::AlignVCenter,
+                          metrics.elidedText(what, Qt::ElideLeft, rowWidth - nameWidth - RowSpacing));
+        rowTop += InterfaceItem::RowHeight;
+    }
+
     painter->setPen(componentInk);
     if(m_icon.isNull())
     {
         painter->drawText(componentRect, Qt::AlignCenter,
-                          QFontMetricsF(font).elidedText(m_componentName, Qt::ElideRight, componentRect.width()));
+                          metrics.elidedText(m_componentName, Qt::ElideRight, componentRect.width()));
         return;
     }
     // The icon before the name, both in the middle.
     const qreal iconSize = componentRect.height();
-    const QFontMetricsF metrics(font);
     const QString componentName =
         metrics.elidedText(m_componentName, Qt::ElideRight, componentRect.width() - iconSize - IconSpacing);
     const qreal width = iconSize + IconSpacing + metrics.horizontalAdvance(componentName);
@@ -223,31 +308,69 @@ void ComponentItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 
 void ComponentItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
 {
-    // One that opens keeps the line of its name to be renamed, the rest of it to be opened.
-    const QRectF nameArea =
-        m_icon.isNull() ? Header : QRectF(Header.topLeft(), QPointF(Header.right(), NameRect.bottom()));
-    if(event->button() == Qt::LeftButton && !m_icon.isNull() && !(m_editable && nameArea.contains(event->pos())))
+    if(event->button() != Qt::LeftButton)
     {
-        emit openRequested();
-        event->accept();
+        QGraphicsObject::mouseDoubleClickEvent(event); // A press
+        return;
     }
-    else if(m_editable && event->button() == Qt::LeftButton && nameArea.contains(event->pos()))
+    // One that opens keeps the line of its name to be renamed, the rest of it to be opened.
+    const QRectF nameArea = m_openable ? QRectF(Header.topLeft(), QPointF(Header.right(), NameRect.bottom())) : Header;
+    const InterfaceItem* named = m_editable && m_interfacesRenamable ? interfaceNameAt(event->pos()) : nullptr;
+    if(m_editable && nameArea.contains(event->pos()))
     {
         editName();
     }
+    else if(named != nullptr)
+    {
+        editInterfaceName(*named);
+    }
+    else if(m_openable)
+    {
+        emit openRequested();
+    }
     else
     {
-        QGraphicsObject::mouseDoubleClickEvent(event); // A press
+        QGraphicsObject::mouseDoubleClickEvent(event);
+        return;
     }
+    event->accept();
 }
 
 bool ComponentItem::isNameEdited() const
 {
-    return m_nameEditor != nullptr && m_nameEditor->isVisible();
+    return (m_nameEditor != nullptr && m_nameEditor->isVisible()) ||
+           (m_interfaceEditor != nullptr && m_interfaceEditor->isVisible());
+}
+
+const InterfaceItem* ComponentItem::interfaceNameAt(const QPointF& position) const
+{
+    for(const QList<InterfaceItem*>* items : {&m_consumedInterfaces, &m_providedInterfaces})
+    {
+        const auto found = std::ranges::find_if(*items, [&position](const InterfaceItem* item)
+                                                { return item->mapRectToParent(item->nameRect()).contains(position); });
+        if(found != items->end())
+        {
+            return *found;
+        }
+    }
+    return nullptr;
 }
 
 void ComponentItem::refreshInterfaces()
 {
+    const QList<Nebula::InterfaceInfo> consumed = m_component.consumedInterfaces();
+    const QList<Nebula::InterfaceInfo> provided = m_component.providedInterfaces();
+    // Those it shows, unless one was renamed or removed, as those of a stargate are: shown again from the start then.
+    const auto shown = [](const QList<InterfaceItem*>& items, const QList<Nebula::InterfaceInfo>& interfaces)
+    { return items.size() <= interfaces.size() && namesOf(items) == namesOf(interfaces, items.size()); };
+    const bool rebuilt = !shown(m_consumedInterfaces, consumed) || !shown(m_providedInterfaces, provided);
+    if(rebuilt)
+    {
+        prepareGeometryChange();
+        qDeleteAll(std::exchange(m_consumedInterfaces, {})); // With their links
+        qDeleteAll(std::exchange(m_providedInterfaces, {}));
+    }
+
     // The rows start in the padding under the names and leave as much under the last one.
     qreal row = Header.bottom() - Padding / 2 + InterfaceItem::RowHeight / 2;
     // items shows interfaces, of kind, down from row, each on the edge at x.
@@ -266,19 +389,19 @@ void ComponentItem::refreshInterfaces()
         }
     };
     // On the edges drawn by paint(), one pixel inside its bounds.
-    refresh(m_consumedInterfaces, m_component.consumedInterfaces(), InterfaceItem::Kind::Consumed, Header.left() + 1);
-    refresh(m_providedInterfaces, m_component.providedInterfaces(), InterfaceItem::Kind::Provided, Header.right() - 1);
+    refresh(m_consumedInterfaces, consumed, InterfaceItem::Kind::Consumed, Header.left() + 1);
+    refresh(m_providedInterfaces, provided, InterfaceItem::Kind::Provided, Header.right() - 1);
 
     // Whether it works: what it misses is drawn in the warning color, and told by its mark and its tooltip.
     const QStringList unbound = m_component.unboundMandatoryInterfaces();
-    for(InterfaceItem* consumed : std::as_const(m_consumedInterfaces))
+    for(InterfaceItem* consumedItem : std::as_const(m_consumedInterfaces))
     {
-        consumed->setMissing(unbound.contains(consumed->name()));
+        consumedItem->setMissing(unbound.contains(consumedItem->name()));
     }
     QString toolTip = m_about.isEmpty() ? m_component.componentId() : m_about;
-    if(!m_icon.isNull())
+    if(m_openable)
     {
-        toolTip += u'\n' + tr("Double-click below its name to open it");
+        toolTip += u'\n' + m_howToOpen;
     }
     if(!unbound.isEmpty())
     {
@@ -291,4 +414,15 @@ void ComponentItem::refreshInterfaces()
         m_unbound = unbound;
         update(); // Its mark
     }
+    if(rebuilt)
+    {
+        update(); // Its rows, lower or higher
+        emit interfacesRebuilt();
+    }
+}
+
+qreal ComponentItem::rowsTop() const
+{
+    const qsizetype interfaces = m_consumedInterfaces.size() + m_providedInterfaces.size();
+    return Header.bottom() - Padding / 2 + static_cast<qreal>(interfaces) * InterfaceItem::RowHeight;
 }

@@ -155,6 +155,12 @@ void InterfaceItem::removeLink(LinkItem& link)
     m_links.removeOne(&link);
 }
 
+QRectF InterfaceItem::nameRect() const
+{
+    const qreal offset = DotRadius + Spacing;
+    return {m_kind == Kind::Provided ? -offset - m_nameWidth : offset, -RowHeight / 2, m_nameWidth, RowHeight};
+}
+
 QRectF InterfaceItem::boundingRect() const
 {
     // From what shape() takes around its dot to its name, which is inside the component.
@@ -190,14 +196,17 @@ void InterfaceItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* /*o
     painter->setBrush(provided && m_available ? color : background);
     painter->drawEllipse(QPointF(0, 0), DotRadius, DotRadius);
 
-    const qreal offset = DotRadius + Spacing;
-    const QRectF nameRect(provided ? -offset - m_nameWidth : offset, -RowHeight / 2, m_nameWidth, RowHeight);
+    if(m_componentItem.isNameEdited(*this)) // Its name is the text being edited
+    {
+        return;
+    }
+    const QRectF rect = nameRect();
     // A mandatory interface is marked as a required field is, by an asterisk after its name, which eliding keeps.
     const QString mark = m_mandatory ? QStringLiteral(" *") : QString();
     const QFontMetricsF metrics(painter->font());
-    const QString name = metrics.elidedText(m_name, Qt::ElideRight, nameRect.width() - metrics.horizontalAdvance(mark));
+    const QString name = metrics.elidedText(m_name, Qt::ElideRight, rect.width() - metrics.horizontalAdvance(mark));
     painter->setPen(color);
-    painter->drawText(nameRect, (provided ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter, name + mark);
+    painter->drawText(rect, (provided ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter, name + mark);
 }
 
 void InterfaceItem::hoverEnterEvent(QGraphicsSceneHoverEvent* event)

@@ -68,8 +68,14 @@ class CORE_EXPORT Component : public QObject, public IComponent
     // The pointer retrieved from name, which it provides, must no longer be used: the component withdrew it, is about
     // to replace it, or is being destroyed.
     void interfaceUnavailable(const QString& name);
-    // It declared an interface, one it consumes was bound or unbound, or one it provides or consumes became available
-    // or unavailable.
+    // name, which it provides, is named newName from now on: what is bound to it still is. Only a stargate renames an
+    // interface, see Stargate.
+    void interfaceRenamed(const QString& name, const QString& newName);
+    // name, which it provided, is no longer one of its interfaces: what was bound to it is unbound, once it was told it
+    // unavailable. Only a stargate removes an interface, see Stargate.
+    void interfaceRemoved(const QString& name);
+    // It declared, renamed or removed an interface, one it consumes was bound or unbound, or one it provides or
+    // consumes became available or unavailable.
     void interfacesChanged();
     // An object was added to propertyObjects(), or one of them was destroyed.
     void propertyObjectsChanged();
@@ -127,9 +133,13 @@ class CORE_EXPORT Component : public QObject, public IComponent
   private:
     friend class ComponentFactory;
     friend class Plugin; // Calls releaseInterfaces()
+    // Provide and consume interfaces of a type they are told when they run only, the interfaces a galaxy exposes
+    // through its stargates, rename and remove those of a stargate, and release theirs before they go.
+    friend class Galaxy;
+    friend class Stargate;
 
-    // Only implemented by Plugin, which keeps a component from being instantiated anywhere else, and by Galaxy, the
-    // component Core builds itself.
+    // Only implemented by Plugin, which keeps a component from being instantiated anywhere else, and by Galaxy and
+    // Stargate, the components Core builds itself.
     virtual void builtByPlugin() = 0;
 
     struct ProvidedInterface
@@ -160,6 +170,19 @@ class CORE_EXPORT Component : public QObject, public IComponent
     bool consume(const QString& name, QMetaType type, InterfaceRequirement requirement,
                  std::function<void(void*)> setMember, std::function<void()> onAvailable,
                  std::function<void()> onUnavailable);
+    // Names name, which it provides, newName: what is bound to it is still, see interfaceRenamed(). Returns false,
+    // changing nothing, when it provides no name, or provides newName already.
+    bool renameProvidedInterface(const QString& name, const QString& newName);
+    // Names name, which it consumes, newName: it is still bound to what it was. Returns false, changing nothing, when
+    // it consumes no name, or consumes newName already.
+    bool renameConsumedInterface(const QString& name, const QString& newName);
+    // Withdraws name, which it provides, and forgets it: what was bound to it is no longer, see interfaceRemoved().
+    // Does nothing when it provides no name.
+    void removeProvidedInterface(const QString& name);
+    // Unbinds name, which it consumes, and forgets it. Does nothing when it consumes no name.
+    void removeConsumedInterface(const QString& name);
+    // Follows, for name, which it consumes and is bound, what its provider does with the interface it is bound to.
+    void followProvider(const QString& name);
     // Gives name, which it consumes, the pointer of what it is bound to, when there is one.
     void deliverInterface(const QString& name);
     // Takes its pointer back from name, which it consumes, when it has one.

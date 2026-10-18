@@ -8,6 +8,7 @@
         <file>icons/galaxy.svg</file>
         <file>icons/astre.svg</file>
         <file>icons/comet.svg</file>
+        <file>icons/stargate.svg</file>
         <file>fonts/SpaceGrotesk-Bold.ttf</file>
     </qresource>
 </RCC>

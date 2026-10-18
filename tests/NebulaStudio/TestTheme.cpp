@@ -147,6 +147,7 @@ void TestTheme::icon_data()
     QTest::newRow("Galaxy") << GlossaryTerm::Galaxy;
     QTest::newRow("Astre") << GlossaryTerm::Astre;
     QTest::newRow("Comet") << GlossaryTerm::Comet;
+    QTest::newRow("Stargate") << GlossaryTerm::Stargate;
 }
 
 void TestTheme::icon()

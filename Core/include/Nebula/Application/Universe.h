@@ -20,6 +20,7 @@
 #include "Nebula/Component/Component.h"
 #include "Nebula/Galaxy/Galaxy.h"
 #include "Nebula/Galaxy/GalaxyInfo.h"
+#include "Nebula/Galaxy/Stargate.h"
 #include "Nebula/Plugin/PluginManager.h"
 #include "Nebula/Settings/SettingsFile.h"
 
@@ -33,7 +34,7 @@ namespace Nebula
 // NebulaStudio writes them, see README.md, or assembled with instantiate() and Component::bindInterface().
 // A project file is a galaxy, named after its file: readGalaxy() tells what it is without loading it, and
 // missingPlugins() whether it can be loaded. instantiateGalaxy() places it in the application, as one component, a
-// Galaxy, as many times as wanted.
+// Galaxy, as many times as wanted. What its stargates expose, see addStargate(), is what the galaxy has once placed.
 // It is either edited or running, as its components are. While it runs, it is not assembled: its components are
 // neither instantiated, renamed nor removed. What changes their properties meanwhile, its settings files or its
 // components themselves, is undone once it stops: they have the values of the edition again, the ones save() writes.
@@ -84,9 +85,9 @@ class CORE_EXPORT Universe : public QObject
     // set, when the file cannot be read, nothing being changed then, and when anything could not be restored.
     bool open(const QString& filePath);
     // Its components as a project: its "version", its "description" when it has one, the "plugins" they are from,
-    // those of its galaxies included, the "components" with their properties, or the "galaxy" file of a galaxy, and
-    // their "bindings", and its "settings" files when it has some. While it runs, the properties have the values they
-    // had when it started, those of the edition.
+    // those of its galaxies included, the "components" with their properties, or the "galaxy" file of a galaxy with
+    // the values of what it exposes, or what a stargate exposes, and their "bindings", and its "settings" files when it
+    // has some. While it runs, the properties have the values they had when it started, those of the edition.
     [[nodiscard]] QJsonObject save() const;
 
     // The project file it is read from and saved to, absolute; empty until it is set, or opened. The file of a galaxy
@@ -111,7 +112,13 @@ class CORE_EXPORT Universe : public QObject
     // galaxy Clock1 in Home1 is Home1.Clock1.settings.json. What could not be restored is told by Galaxy::problems().
     // Returns nullptr, with errorString() set, while it runs, when the file cannot be read, when one of its plugins is
     // unknown or cannot be loaded, and when it would hold itself or the file of the application, directly or not.
+    // The galaxy provides and consumes what its stargates expose, and its properties are those they expose, see
+    // Galaxy::exposedProperties(): the ones of its file until they are set on it.
     Galaxy* instantiateGalaxy(const QString& filePath, const QString& name = {});
+    // Adds a stargate, which exposes nothing yet, named name, unless name is empty or the name of another instance:
+    // Stargate1, Stargate2... then. What it exposes is what the galaxy its file is has once placed: see Stargate.
+    // Returns nullptr while it runs.
+    Stargate* addStargate(const QString& name = {});
     // Names instance, one of its components, name: what component() finds it by, and a project holds it as; the
     // settings files of a galaxy are named after it again. Returns false, changing nothing, when name is empty or the
     // name of another instance, and while it runs.
@@ -202,9 +209,20 @@ class CORE_EXPORT Universe : public QObject
     // Fills scope with the components of project, its galaxies, their links and its settings files, as load() does,
     // the plugins being loaded. Returns what could not be restored.
     QStringList loadScope(const Scope& scope, const QJsonObject& project);
-    // Places in scope the galaxy json, a component of a project, see createGalaxy(). Returns what could not be
-    // restored, it missing included.
+    // Places in scope the galaxy json, a component of a project, see createGalaxy(), with the values json gives what it
+    // exposes. Returns what could not be restored, it missing included.
     QStringList loadGalaxy(const Scope& scope, const QJsonObject& json);
+    // Has stargate, one of scope, expose the interfaces json, the stargate of a project, gives it, of the types of the
+    // components of scope. Returns what could not be restored.
+    QStringList loadStargateInterfaces(const Scope& scope, Stargate& stargate, const QJsonObject& json) const;
+    // Has stargate, one of scope, expose the properties json gives it. Returns what could not be restored.
+    QStringList loadStargateProperties(const Scope& scope, Stargate& stargate, const QJsonObject& json) const;
+    // The property json, an entry of a settings file or a property a stargate exposes, tells of a component of scope;
+    // its component or its object nullptr when there is none. owner is set to what the property is of, as it is told.
+    [[nodiscard]] SettingsEntry readEntry(const Scope& scope, const QJsonObject& json, QString& owner) const;
+    // The type named typeName, QWidget* say, of an interface a component of scope provides or consumes, or registered
+    // under that name otherwise; not valid when there is none.
+    [[nodiscard]] QMetaType interfaceType(const Scope& scope, const QString& typeName) const;
     // The galaxy of filePath, named name in parent, see instantiateGalaxy(); nullptr, with error set, when it cannot
     // be placed there. Not added to parent yet.
     std::unique_ptr<Galaxy> createGalaxy(const QString& filePath, const QString& name, const Scope& parent,
@@ -229,6 +247,9 @@ class CORE_EXPORT Universe : public QObject
 
     // The properties a project holds of object, among properties: those of the edition while it runs.
     [[nodiscard]] QJsonObject savedValues(const QObject& object, const QList<QMetaProperty>& properties) const;
+    // The value a project holds of property, one a galaxy exposes: the one of the edition while it runs. nullopt when
+    // JSON cannot hold it.
+    [[nodiscard]] std::optional<QJsonValue> savedValue(const ExposedProperty& property) const;
     // Keeps the values of the edition, see EditedValues.
     void keepEditedValues();
     // Those of component and of its objects, or of the components of a galaxy.

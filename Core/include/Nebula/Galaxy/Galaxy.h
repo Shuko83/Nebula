@@ -5,13 +5,16 @@
 
 #include <QJsonObject>
 #include <QLatin1StringView>
+#include <QList>
 #include <QString>
 #include <QStringList>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "Core_export.h"
 #include "Nebula/Component/Component.h"
+#include "Nebula/Galaxy/Stargate.h"
 #include "Nebula/Settings/SettingsFile.h"
 
 namespace Nebula
@@ -24,6 +27,8 @@ class Universe;
 // the settings files of the file. In the application, or in another galaxy, it is one component among the others, as
 // many times as wanted, each instance with its own components; it holds other galaxies the same way. Its content is
 // the one of its file: it is not edited.
+// What its stargates expose is its own, see Stargate: it provides and consumes their interfaces, which are bound as
+// those of any component, and exposes their properties, set on each instance.
 // Started, it starts its components, in their order, and stops them the other way round; its application starts and
 // stops its settings files, with its own.
 class CORE_EXPORT Galaxy : public Component
@@ -34,6 +39,7 @@ class CORE_EXPORT Galaxy : public Component
     // Its componentId(): Core creates the galaxies, they are not registered in ComponentFactory.
     static constexpr QLatin1StringView Id{"Nebula.Galaxy"};
 
+    // Unbound from what is bound to its interfaces, and from what they are bound to, before its components go.
     ~Galaxy() override;
 
     [[nodiscard]] QString componentId() const override;
@@ -56,6 +62,13 @@ class CORE_EXPORT Galaxy : public Component
     [[nodiscard]] Component* component(const QString& name) const;
     // In the order of its file, named after the galaxy: see Universe::instantiateGalaxy().
     [[nodiscard]] const std::vector<std::unique_ptr<SettingsFile>>& settingsFiles() const;
+
+    // The properties its stargates expose, in their order, each under the name it exposes it as: the same properties,
+    // on the same objects, as those of its components, or of the components of the galaxies it holds when one of them
+    // exposes it in turn. Their component is the one whose property it is, and their object the one it is of.
+    [[nodiscard]] QList<ExposedProperty> exposedProperties() const;
+    // The one it exposes as name; nullopt when it exposes none.
+    [[nodiscard]] std::optional<ExposedProperty> exposedProperty(const QString& name) const;
 
   protected:
     // Starts its components in their order; when one refuses, stops those it started and refuses.

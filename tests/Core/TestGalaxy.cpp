@@ -36,6 +36,19 @@ const QByteArray Clock = R"({"version": 1, "description": "Ticks",
                    {"name": "Probe", "type": "Test.Probe", "properties": {"count": 7}}],
     "bindings": [{"consumer": "Sink", "consumed": "object", "provider": "Source", "provided": "object"}]})";
 
+// A galaxy whose stargate exposes what its Source provides, as "out", gives what it consumes, as "in", to its Sink,
+// which needs it, and exposes the count of its Probe, as "rate".
+const QByteArray Gated = R"({"version": 1,
+    "components": [{"name": "Source", "type": "Test.Source"},
+                   {"name": "Sink", "type": "Test.Sink"},
+                   {"name": "Probe", "type": "Test.Probe", "properties": {"count": 7}},
+                   {"name": "Gate", "type": "Nebula.Stargate",
+                    "provided": [{"name": "out", "type": "QObject*"}],
+                    "consumed": [{"name": "in", "type": "QObject*"}],
+                    "exposed": [{"name": "rate", "component": "Probe", "property": "count"}]}],
+    "bindings": [{"consumer": "Gate", "consumed": "out", "provider": "Source", "provided": "object"},
+                 {"consumer": "Sink", "consumed": "object", "provider": "Gate", "provided": "in"}]})";
+
 // A project that places the galaxy of the file path, relative to it, as name.
 QByteArray placing(const QString& path, const QString& name = u"Clock1"_s)
 {
@@ -75,6 +88,27 @@ QStringList namesOf(const std::vector<std::unique_ptr<Nebula::Component>>& compo
     return names;
 }
 
+// The one of interfaces named name; a default one when none is.
+Nebula::InterfaceInfo interfaceNamed(const QList<Nebula::InterfaceInfo>& interfaces, const QString& name)
+{
+    const auto found = std::ranges::find(interfaces, name, &Nebula::InterfaceInfo::name);
+    return found != interfaces.end() ? *found : Nebula::InterfaceInfo{};
+}
+
+// The value of the property galaxy exposes as name; not valid when it exposes none.
+QVariant exposedValue(const Galaxy& galaxy, const QString& name)
+{
+    const std::optional<Nebula::ExposedProperty> exposed = galaxy.exposedProperty(name);
+    return exposed ? exposed->object->property(exposed->property.toLatin1().constData()) : QVariant();
+}
+
+// Sets the property galaxy exposes as name to value; false when it exposes none, or it cannot be set.
+bool setExposedValue(const Galaxy& galaxy, const QString& name, const QVariant& value)
+{
+    const std::optional<Nebula::ExposedProperty> exposed = galaxy.exposedProperty(name);
+    return exposed && exposed->object->setProperty(exposed->property.toLatin1().constData(), value);
+}
+
 } // namespace
 
 // Galaxy, and how Universe places it: a project file as one component, its plugins, the galaxies it holds, how it is
@@ -105,6 +139,18 @@ class TestGalaxy : public QObject
     void settingsFilesRenamed();
     void remove();
     void componentsOfAndUnloadPlugin();
+
+    void stargateInterfaces();
+    void passesWhatItProvides();
+    void passesWhatItConsumes();
+    void consumedRequirement_data();
+    void consumedRequirement();
+    void bindingsSavedAndLoaded();
+    void removedWhileBound();
+    void exposedProperties();
+    void exposedValuesSavedAndLoaded();
+    void exposedValuesSavedWhileRunning();
+    void reexposed();
 };
 
 void TestGalaxy::initTestCase()
@@ -546,6 +592,307 @@ void TestGalaxy::componentsOfAndUnloadPlugin()
     QVERIFY(universe.unloadPlugin(ExamplePluginId));
     QCOMPARE(namesOf(universe.components()), QStringList{"Probe1"});
     QVERIFY(!universe.plugins().isLoaded(ExamplePluginId));
+}
+
+void TestGalaxy::stargateInterfaces()
+{
+    const QTemporaryDir directory;
+    Universe universe;
+    const Galaxy* galaxy = universe.instantiateGalaxy(write(directory, u"Gated.nbp"_s, Gated));
+    QVERIFY2(galaxy != nullptr, qPrintable(universe.errorString()));
+    QCOMPARE(galaxy->problems(), QStringList());
+
+    // What its stargate exposes, the other way round: it provides what the stargate consumes, and the other way.
+    const QList<Nebula::InterfaceInfo> provided = galaxy->providedInterfaces();
+    QCOMPARE(provided.size(), 1);
+    QCOMPARE(provided.first().name, u"out"_s);
+    QCOMPARE(provided.first().type, QMetaType::fromType<QObject*>());
+    QVERIFY(!provided.first().available); // The Source provides it while it runs
+    const QList<Nebula::InterfaceInfo> consumed = galaxy->consumedInterfaces();
+    QCOMPARE(consumed.size(), 1);
+    QCOMPARE(consumed.first().name, u"in"_s);
+    QCOMPARE(consumed.first().requirement, Nebula::InterfaceRequirement::Mandatory); // The Sink needs it
+    QCOMPARE(galaxy->unboundMandatoryInterfaces(), QStringList{"in"});
+
+    // Placed, its stargate is no longer changed: the galaxy has what its file has.
+    const auto* stargate = qobject_cast<const Nebula::Stargate*>(galaxy->component(u"Gate"_s));
+    QVERIFY(stargate != nullptr);
+    QVERIFY(!stargate->isChangeable());
+}
+
+void TestGalaxy::passesWhatItProvides()
+{
+    const QTemporaryDir directory;
+    Universe universe;
+    Galaxy* galaxy = universe.instantiateGalaxy(write(directory, u"Gated.nbp"_s, Gated));
+    QVERIFY(galaxy != nullptr);
+    auto* probe = qobject_cast<Probe*>(universe.instantiate(testComponentId(u"Probe"_s)));
+    QVERIFY(probe->consumeObject(u"got"_s));
+    QVERIFY(probe->bindInterface(u"got"_s, *galaxy, u"out"_s));
+    QVERIFY(probe->consumed(u"got"_s) == nullptr);
+
+    // The pointer of the Source, as it is, while it provides it.
+    QVERIFY(universe.start());
+    auto* source = qobject_cast<Source*>(galaxy->component(u"Source"_s));
+    QCOMPARE(probe->consumed(u"got"_s), &source->object());
+    QVERIFY(interfaceNamed(galaxy->providedInterfaces(), u"out"_s).available);
+    probe->clearEvents();
+
+    // Withdrawn: told while it still has it.
+    universe.stop();
+    QVERIFY(probe->consumed(u"got"_s) == nullptr);
+    QVERIFY2(probe->events().contains(u"unavailable got (set)"_s), qPrintable(probe->events().join(u", ")));
+    QVERIFY(!interfaceNamed(galaxy->providedInterfaces(), u"out"_s).available);
+}
+
+void TestGalaxy::passesWhatItConsumes()
+{
+    const QTemporaryDir directory;
+    QObject object; // Outlives what provides it
+    Universe universe;
+    Galaxy* galaxy = universe.instantiateGalaxy(write(directory, u"Gated.nbp"_s, Gated));
+    QVERIFY(galaxy != nullptr);
+    auto* probe = qobject_cast<Probe*>(universe.instantiate(testComponentId(u"Probe"_s)));
+    QVERIFY(probe->provideObject(u"made"_s, &object));
+    const auto* sink = qobject_cast<const Sink*>(galaxy->component(u"Sink"_s));
+
+    QVERIFY(galaxy->bindInterface(u"in"_s, *probe, u"made"_s));
+    QVERIFY(galaxy->unboundMandatoryInterfaces().isEmpty());
+    QCOMPARE(sink->object(), &object); // As it is, inside
+
+    // Withdrawn on one side, gone on the other before the provider returns.
+    QVERIFY(probe->provideObject(u"made"_s, nullptr));
+    QVERIFY(sink->object() == nullptr);
+    QVERIFY(probe->provideObject(u"made"_s, &object));
+    QCOMPARE(sink->object(), &object);
+    galaxy->unbindInterface(u"in"_s);
+    QVERIFY(sink->object() == nullptr);
+}
+
+void TestGalaxy::consumedRequirement_data()
+{
+    QTest::addColumn<QString>("consumer"); // What the stargate gives what the galaxy consumes to; nothing when empty
+    QTest::addColumn<bool>("mandatory");
+
+    QTest::newRow("needed") << "object" << true;
+    QTest::newRow("not needed") << "timer" << false;
+    QTest::newRow("given to nothing") << "" << false;
+}
+
+void TestGalaxy::consumedRequirement()
+{
+    QFETCH(QString, consumer);
+    QFETCH(bool, mandatory);
+
+    const QByteArray bindings = consumer.isEmpty() ? QByteArray()
+                                                   : R"({"consumer": "Sink", "consumed": ")" + consumer.toUtf8() +
+                                                         R"(", "provider": "Gate", "provided": "in"})";
+    const QString type = consumer == u"timer"_s ? u"QTimer*"_s : u"QObject*"_s;
+    const QTemporaryDir directory;
+    Universe universe;
+    const Galaxy* galaxy =
+        universe.instantiateGalaxy(write(directory, u"Gated.nbp"_s,
+                                         R"({"version": 1, "components": [{"name": "Sink", "type": "Test.Sink"},
+                  {"name": "Gate", "type": "Nebula.Stargate", "consumed": [{"name": "in", "type": ")" +
+                                             type.toUtf8() + R"("}]}], "bindings": [)" + bindings + "]}"));
+    QVERIFY(galaxy != nullptr);
+    QCOMPARE(galaxy->problems(), QStringList());
+    QCOMPARE(interfaceNamed(galaxy->consumedInterfaces(), u"in"_s).requirement,
+             mandatory ? Nebula::InterfaceRequirement::Mandatory : Nebula::InterfaceRequirement::Optional);
+}
+
+void TestGalaxy::bindingsSavedAndLoaded()
+{
+    const QTemporaryDir directory;
+    const QString applicationPath = directory.filePath(u"App.nbp"_s);
+    QVERIFY(!write(directory, u"Gated.nbp"_s, Gated).isEmpty());
+
+    QJsonObject saved;
+    {
+        Universe universe;
+        universe.setFilePath(applicationPath);
+        Galaxy* galaxy = universe.instantiateGalaxy(directory.filePath(u"Gated.nbp"_s));
+        QVERIFY(galaxy != nullptr);
+        Nebula::Component* source = universe.instantiate(testComponentId(u"Source"_s));
+        Nebula::Component* sink = universe.instantiate(testComponentId(u"Sink"_s));
+        QVERIFY(galaxy->bindInterface(u"in"_s, *source, u"object"_s));
+        QVERIFY(sink->bindInterface(u"object"_s, *galaxy, u"out"_s));
+        saved = universe.save();
+    }
+    // Those of the galaxy, as those of any component.
+    const QJsonArray bindings = saved.value(u"bindings").toArray();
+    QCOMPARE(bindings.size(), 2);
+    QCOMPARE(bindings.at(0).toObject(), QJsonDocument::fromJson(R"({"consumer": "Gated1", "consumed": "in",
+                                                                    "provider": "Source1", "provided": "object"})")
+                                            .object());
+    QCOMPARE(bindings.at(1).toObject(), QJsonDocument::fromJson(R"({"consumer": "Sink1", "consumed": "object",
+                                                                    "provider": "Gated1", "provided": "out"})")
+                                            .object());
+
+    Universe universe;
+    universe.setFilePath(applicationPath);
+    QCOMPARE(universe.load(saved), QStringList());
+    Nebula::Component* galaxy = universe.component(u"Gated1"_s);
+    QCOMPARE(galaxy->binding(u"in"_s).provider, universe.component(u"Source1"_s));
+    QCOMPARE(universe.component(u"Sink1"_s)->binding(u"object"_s).provider, galaxy);
+    QCOMPARE(universe.component(u"Sink1"_s)->binding(u"object"_s).providedName, u"out"_s);
+}
+
+void TestGalaxy::removedWhileBound()
+{
+    const QTemporaryDir directory;
+    QObject object; // Outlives what provides it
+    Universe universe;
+    const QString filePath = write(directory, u"Gated.nbp"_s, Gated);
+    Galaxy* galaxy = universe.instantiateGalaxy(filePath);
+    QVERIFY(galaxy != nullptr);
+    auto* probe = qobject_cast<Probe*>(universe.instantiate(testComponentId(u"Probe"_s)));
+    QVERIFY(probe->consumeObject(u"got"_s));
+    QVERIFY(probe->provideObject(u"made"_s, &object));
+    QVERIFY(probe->bindInterface(u"got"_s, *galaxy, u"out"_s));
+    QVERIFY(galaxy->bindInterface(u"in"_s, *probe, u"made"_s));
+    QVERIFY(universe.start());
+    QVERIFY(probe->consumed(u"got"_s) != nullptr);
+    universe.stop();
+
+    // What it provides goes with it, and what it consumes lets go.
+    QVERIFY(universe.remove(*galaxy));
+    QVERIFY(probe->binding(u"got"_s).provider == nullptr);
+
+    // The other way: its provider goes, what it gave inside is withdrawn.
+    galaxy = universe.instantiateGalaxy(filePath);
+    QVERIFY(galaxy != nullptr);
+    QVERIFY(galaxy->bindInterface(u"in"_s, *probe, u"made"_s));
+    const auto* sink = qobject_cast<const Sink*>(galaxy->component(u"Sink"_s));
+    QCOMPARE(sink->object(), &object);
+    QVERIFY(universe.remove(*probe));
+    QVERIFY(sink->object() == nullptr);
+    QVERIFY(galaxy->binding(u"in"_s).provider == nullptr);
+}
+
+void TestGalaxy::exposedProperties()
+{
+    const QTemporaryDir directory;
+    const QString filePath = write(directory, u"Gated.nbp"_s, Gated);
+    Universe universe;
+    const Galaxy* first = universe.instantiateGalaxy(filePath);
+    const Galaxy* second = universe.instantiateGalaxy(filePath);
+    QVERIFY(first != nullptr && second != nullptr);
+
+    // The property of its own Probe, the same one on the same object.
+    const QList<Nebula::ExposedProperty> exposed = first->exposedProperties();
+    QCOMPARE(exposed.size(), 1);
+    Nebula::Component* probe = first->component(u"Probe"_s);
+    QCOMPARE(exposed.first(),
+             (Nebula::ExposedProperty{.name = u"rate"_s, .component = probe, .object = probe, .property = u"count"_s}));
+    QVERIFY(!first->exposedProperty(u"count"_s)); // Under the name it exposes it as only
+    QCOMPARE(exposedValue(*first, u"rate"_s).toInt(), 7);
+
+    // Set on the galaxy, it is on its component, and the other way round; each instance its own.
+    QVERIFY(setExposedValue(*first, u"rate"_s, 9));
+    QCOMPARE(probe->property("count").toInt(), 9);
+    QVERIFY(probe->setProperty("count", 11));
+    QCOMPARE(exposedValue(*first, u"rate"_s).toInt(), 11);
+    QCOMPARE(exposedValue(*second, u"rate"_s).toInt(), 7);
+}
+
+void TestGalaxy::exposedValuesSavedAndLoaded()
+{
+    const QTemporaryDir directory;
+    const QString applicationPath = directory.filePath(u"App.nbp"_s);
+    QVERIFY(!write(directory, u"Gated.nbp"_s, Gated).isEmpty());
+    QJsonObject saved;
+    {
+        Universe universe;
+        universe.setFilePath(applicationPath);
+        const Galaxy* first = universe.instantiateGalaxy(directory.filePath(u"Gated.nbp"_s));
+        QVERIFY(universe.instantiateGalaxy(directory.filePath(u"Gated.nbp"_s)) != nullptr);
+        QVERIFY(setExposedValue(*first, u"rate"_s, 9));
+        saved = universe.save();
+    }
+    // Under the name each galaxy exposes them as, once.
+    const QJsonArray components = saved.value(u"components").toArray();
+    QCOMPARE(components.at(0).toObject().value(u"properties").toObject(),
+             QJsonDocument::fromJson(R"({"rate": 9})").object());
+    QCOMPARE(components.at(1).toObject().value(u"properties").toObject(),
+             QJsonDocument::fromJson(R"({"rate": 7})").object());
+
+    Universe universe;
+    universe.setFilePath(applicationPath);
+    QCOMPARE(universe.load(saved), QStringList());
+    QCOMPARE(exposedValue(*qobject_cast<const Galaxy*>(universe.component(u"Gated1"_s)), u"rate"_s).toInt(), 9);
+    QCOMPARE(exposedValue(*qobject_cast<const Galaxy*>(universe.component(u"Gated2"_s)), u"rate"_s).toInt(), 7);
+
+    // One it does not expose, or that cannot have the value, is told.
+    QJsonObject wrong = components.at(0).toObject();
+    wrong.insert(u"properties", QJsonDocument::fromJson(R"({"nope": 1, "rate": "fast"})").object());
+    QJsonObject project = saved;
+    project.insert(u"components", QJsonArray{wrong});
+    QCOMPARE(universe.load(project), (QStringList{u"The property nope of Gated1 could not be set"_s,
+                                                  u"The property rate of Gated1 could not be set"_s}));
+}
+
+void TestGalaxy::exposedValuesSavedWhileRunning()
+{
+    const QTemporaryDir directory;
+    Universe universe;
+    const Galaxy* galaxy = universe.instantiateGalaxy(write(directory, u"Gated.nbp"_s, Gated));
+    QVERIFY(galaxy != nullptr);
+    QVERIFY(setExposedValue(*galaxy, u"rate"_s, 9));
+
+    // Those of the edition, which it has again once stopped.
+    QVERIFY(universe.start());
+    QVERIFY(setExposedValue(*galaxy, u"rate"_s, 12));
+    const QJsonObject json = universe.save().value(u"components").toArray().first().toObject();
+    QCOMPARE(json.value(u"properties").toObject().value(u"rate").toInt(), 9);
+    universe.stop();
+    QCOMPARE(exposedValue(*galaxy, u"rate"_s).toInt(), 9);
+}
+
+void TestGalaxy::reexposed()
+{
+    const QTemporaryDir directory;
+    QVERIFY(!write(directory, u"Gated.nbp"_s, Gated).isEmpty());
+    // A galaxy that exposes again what the galaxy it holds exposes.
+    const QString filePath = write(directory, u"Home.nbp"_s,
+                                   R"({"version": 1, "components": [
+                  {"name": "Gated1", "type": "Nebula.Galaxy", "galaxy": "Gated.nbp"},
+                  {"name": "Door", "type": "Nebula.Stargate",
+                   "provided": [{"name": "homeOut", "type": "QObject*"}],
+                   "consumed": [{"name": "homeIn", "type": "QObject*"}],
+                   "exposed": [{"name": "homeRate", "component": "Gated1", "property": "rate"}]}],
+                  "bindings": [{"consumer": "Door", "consumed": "homeOut", "provider": "Gated1", "provided": "out"},
+                               {"consumer": "Gated1", "consumed": "in", "provider": "Door", "provided": "homeIn"}]})");
+
+    QObject object; // Outlives what provides it
+    Universe universe;
+    Galaxy* home = universe.instantiateGalaxy(filePath);
+    QVERIFY2(home != nullptr, qPrintable(universe.errorString()));
+    QCOMPARE(home->problems(), QStringList());
+    const auto* gated = qobject_cast<const Galaxy*>(home->component(u"Gated1"_s));
+    QVERIFY(gated != nullptr);
+
+    // The property of the Probe of the galaxy it holds, the same one.
+    const std::optional<Nebula::ExposedProperty> rate = home->exposedProperty(u"homeRate"_s);
+    QVERIFY(rate);
+    QCOMPARE(rate->object, gated->component(u"Probe"_s));
+    QCOMPARE(rate->property, u"count"_s);
+    QVERIFY(setExposedValue(*home, u"homeRate"_s, 3));
+    QCOMPARE(exposedValue(*gated, u"rate"_s).toInt(), 3);
+
+    // Its interfaces through both, needed as the Sink needs it.
+    QCOMPARE(interfaceNamed(home->consumedInterfaces(), u"homeIn"_s).requirement,
+             Nebula::InterfaceRequirement::Mandatory);
+    auto* probe = qobject_cast<Probe*>(universe.instantiate(testComponentId(u"Probe"_s)));
+    QVERIFY(probe->provideObject(u"made"_s, &object));
+    QVERIFY(probe->consumeObject(u"got"_s));
+    QVERIFY(home->bindInterface(u"homeIn"_s, *probe, u"made"_s));
+    QVERIFY(probe->bindInterface(u"got"_s, *home, u"homeOut"_s));
+    QCOMPARE(qobject_cast<const Sink*>(gated->component(u"Sink"_s))->object(), &object);
+    QVERIFY(universe.start());
+    QCOMPARE(probe->consumed(u"got"_s), &qobject_cast<Source*>(gated->component(u"Source"_s))->object());
+    universe.stop();
+    QVERIFY(probe->consumed(u"got"_s) == nullptr);
 }
 
 QTEST_GUILESS_MAIN(TestGalaxy)

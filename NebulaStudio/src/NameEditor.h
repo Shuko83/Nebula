@@ -17,9 +17,9 @@ class NameEditor : public QGraphicsTextItem
     // named is called with what was typed, on one line, when an edition ends without being given up.
     NameEditor(QGraphicsItem& parent, std::function<void(const QString&)> named);
 
-    // Edits name, written in color where its item paints it: in rect, in the middle of its height, from its left or,
-    // with Qt::AlignHCenter, around its center. Its item, which must be in a scene, no longer paints its name until
-    // the edition ends: it is updated then, as it is now.
+    // Edits name, written in color where its item paints it: in rect, in the middle of its height, from its left, to
+    // its right with Qt::AlignRight or, with Qt::AlignHCenter, around its center. Its item, which must be in a scene,
+    // no longer paints its name until the edition ends: it is updated then, as it is now.
     void edit(const QString& name, const QColor& color, const QRectF& rect, Qt::Alignment alignment);
 
   protected:

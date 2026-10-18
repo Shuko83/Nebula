@@ -1,15 +1,15 @@
 // Copyright (C) 2026 Fabien Di Grande
 // SPDX-License-Identifier: MPL-2.0
 
-#include "SettingsLinkItem.h"
+#include "DashedLinkItem.h"
 
 #include <QApplication>
 #include <QPainter>
 #include <QPalette>
 #include <QWidget>
+#include <utility>
 
 #include "ComponentItem.h"
-#include "Settings/SettingsItem.h"
 
 namespace
 {
@@ -18,39 +18,40 @@ constexpr qreal LineWidth = 1;
 
 } // namespace
 
-SettingsLinkItem::SettingsLinkItem(SettingsItem& settings, ComponentItem& component)
-    : m_settings(settings), m_component(&component)
+DashedLinkItem::DashedLinkItem(QGraphicsItem& from, ComponentItem& component,
+                               std::function<void(DashedLinkItem&)> removed)
+    : m_from(from), m_component(&component), m_removed(std::move(removed))
 {
     setZValue(-1); // Under the items it joins, as the links of interfaces are
     follow();
 }
 
-SettingsLinkItem::~SettingsLinkItem()
+DashedLinkItem::~DashedLinkItem()
 {
-    m_settings.removeLink(*this);
+    m_removed(*this);
 }
 
-ComponentItem* SettingsLinkItem::component() const
+ComponentItem* DashedLinkItem::component() const
 {
     return m_component;
 }
 
-void SettingsLinkItem::follow()
+void DashedLinkItem::follow()
 {
     if(m_component == nullptr) // Gone before its component: it is about to go too
     {
         return;
     }
     prepareGeometryChange();
-    m_line = QLineF(m_settings.scenePos(), m_component->scenePos());
+    m_line = QLineF(m_from.scenePos(), m_component->scenePos());
 }
 
-QRectF SettingsLinkItem::boundingRect() const
+QRectF DashedLinkItem::boundingRect() const
 {
     return QRectF(m_line.p1(), m_line.p2()).normalized().adjusted(-LineWidth, -LineWidth, LineWidth, LineWidth);
 }
 
-void SettingsLinkItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* /*option*/, QWidget* widget)
+void DashedLinkItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* /*option*/, QWidget* widget)
 {
     const QPalette palette = widget != nullptr ? widget->palette() : QApplication::palette();
     painter->setRenderHint(QPainter::Antialiasing);
