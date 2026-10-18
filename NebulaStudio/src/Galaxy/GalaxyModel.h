@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <optional>
 
-#include "Nebula/Application/GalaxyInfo.h"
+#include "Nebula/Galaxy/GalaxyInfo.h"
 
 class QFileSystemWatcher;
 class QMimeData;

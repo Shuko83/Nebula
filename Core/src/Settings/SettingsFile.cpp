@@ -21,9 +21,9 @@
 #include <utility>
 
 #include "Application/ProjectJson.h"
-#include "Nebula/Application/Galaxy.h"
 #include "Nebula/Application/Universe.h"
 #include "Nebula/Component/Component.h"
+#include "Nebula/Galaxy/Galaxy.h"
 
 namespace Nebula
 {

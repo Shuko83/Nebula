@@ -13,7 +13,7 @@
 #include <QTest>
 #include <memory>
 
-#include "GalaxyModel.h"
+#include "Galaxy/GalaxyModel.h"
 #include "Nebula/Application/Universe.h"
 #include "Theme.h"
 

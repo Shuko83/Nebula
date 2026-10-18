@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Fabien Di Grande
 // SPDX-License-Identifier: MPL-2.0
 
-#include "Nebula/Application/Galaxy.h"
+#include "Nebula/Galaxy/Galaxy.h"
 
 #include <QFileInfo>
 #include <algorithm>

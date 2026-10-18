@@ -29,7 +29,7 @@
 
 #include "ComponentItem.h"
 #include "ComponentModel.h"
-#include "GalaxyModel.h"
+#include "Galaxy/GalaxyModel.h"
 #include "InterfaceItem.h"
 #include "LinkItem.h"
 #include "Nebula/Application/Universe.h"

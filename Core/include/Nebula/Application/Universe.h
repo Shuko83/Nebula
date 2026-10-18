@@ -17,9 +17,9 @@
 #include <vector>
 
 #include "Core_export.h"
-#include "Nebula/Application/Galaxy.h"
-#include "Nebula/Application/GalaxyInfo.h"
 #include "Nebula/Component/Component.h"
+#include "Nebula/Galaxy/Galaxy.h"
+#include "Nebula/Galaxy/GalaxyInfo.h"
 #include "Nebula/Plugin/PluginManager.h"
 #include "Nebula/Settings/SettingsFile.h"
 

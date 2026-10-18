@@ -15,7 +15,7 @@
 #include <QVBoxLayout>
 #include <optional>
 
-#include "GalaxyModel.h"
+#include "Galaxy/GalaxyModel.h"
 #include "Theme.h"
 
 namespace

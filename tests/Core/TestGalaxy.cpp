@@ -12,9 +12,9 @@
 #include <QTemporaryDir>
 #include <QTest>
 
-#include "Nebula/Application/Galaxy.h"
 #include "Nebula/Application/Universe.h"
 #include "Nebula/Component/ComponentFactory.h"
+#include "Nebula/Galaxy/Galaxy.h"
 #include "Probe.h"
 #include "Sink.h"
 #include "Source.h"

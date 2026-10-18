@@ -21,6 +21,6 @@ nebula_add_test(TestComponentModel
     INCLUDE_DIRECTORIES "${_studio}/src"
     LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
 nebula_add_test(TestGalaxyModel
-    SOURCES "${_studio}/src/GalaxyModel.cpp" "${_studio}/src/Theme.cpp" ${_resources}
+    SOURCES "${_studio}/src/Galaxy/GalaxyModel.cpp" "${_studio}/src/Theme.cpp" ${_resources}
     INCLUDE_DIRECTORIES "${_studio}/src"
     LINK_LIBRARIES Nebula::Core Qt6::Widgets Qt6::Svg)

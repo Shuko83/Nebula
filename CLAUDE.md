@@ -8,9 +8,9 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 
 | Dossier | Cible | Rôle |
 | --- | --- | --- |
-| `Core/` | `Nebula::Core` (DLL) | Composants, plugins, fabrique, application. En-têtes publics dans `include/Nebula/{Application,Component,Plugin,Settings}/`, sources dans `src/` |
+| `Core/` | `Nebula::Core` (DLL) | Composants, plugins, fabrique, application, galaxies. En-têtes publics dans `include/Nebula/{Application,Component,Galaxy,Plugin,Settings}/`, sources dans `src/` (module `Galaxy` : `Galaxy`, `GalaxyInfo` ; ce qu'`Universe` en fait reste dans `Universe.cpp`) |
 | `Core/cmake/` | — | `nebula_add_plugin()` et les gabarits `plugin.h.in` / `plugin.json.in`, livrés avec `Core` dans le paquet |
-| `NebulaStudio/` | `NebulaStudio` (exe Widgets) | L'éditeur graphique ; le code est dans `NebulaStudio/src/`, sans namespace, celui des fichiers de réglages dans `NebulaStudio/src/Settings/`, le logo de Nebula, les icônes du glossaire et la police des titres dans `NebulaStudio/resources/` |
+| `NebulaStudio/` | `NebulaStudio` (exe Widgets) | L'éditeur graphique ; le code est dans `NebulaStudio/src/`, sans namespace, celui des fichiers de réglages dans `NebulaStudio/src/Settings/`, celui des galaxies (`GalaxyModel`, `GalaxyViewer`) dans `NebulaStudio/src/Galaxy/`, le logo de Nebula, les icônes du glossaire et la police des titres dans `NebulaStudio/resources/` |
 | `exemple/ExamplePlugin` | `.nbdl` dans `bin/plugins` | Composant `Greeter` (fournit `greeter` : `IGreeter`) |
 | `exemple/ExternalPlugin` | `.nbdl` dans `<build>/external-plugins` | `Ticker` (fournit `display` : `QWidget`, dont il expose les propriétés dans le groupe `Display`), `ProfileSelector` (fournit `display` : la `QComboBox` de ses `profiles`, où l'utilisateur choisit `profile`) et `Window` (consomme `content` : `QWidget`, `Mandatory`) |
 | `exemple/ExampleApp` | exe console | Scanne, charge, liste et fait tourner un `Greeter` |
@@ -111,11 +111,11 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   `propertyObjects()`, retrouvés à l'ouverture par nom puis par ordre d'ajout) et `bindings`. `description()` /
   `setDescription()` : celle du projet, remplacée par `load()`, vidée par `clear()`.
 - Galaxy : un fichier de projet, nommé d'après son fichier. `readGalaxy(fichier, erreur)` (statique) le lit sans le
-  charger, en `GalaxyInfo {name, description, plugins, filePath}` (`include/Nebula/Application/GalaxyInfo.h`, `name`
+  charger, en `GalaxyInfo {name, description, plugins, filePath}` (`include/Nebula/Galaxy/GalaxyInfo.h`, `name`
   = `completeBaseName()`, `plugins` = les ids de `plugins`) ; `missingPlugins(galaxy)` : ceux de ses plugins dont
   `plugins()` ne connaît pas l'id, chargés ou non. Vide = chargeable. Contrairement à `load()`, le `file` d'un plugin
   n'est pas regardé (issue #41 : une galaxy trouve ses plugins par id parmi ceux connus).
-- Galaxy posée (`include/Nebula/Application/Galaxy.h`, `src/Application/Galaxy.cpp`) : `instantiateGalaxy(fichier,
+- Galaxy posée (module `Galaxy` : `include/Nebula/Galaxy/Galaxy.h`, `src/Galaxy/Galaxy.cpp`) : `instantiateGalaxy(fichier,
   nom)` crée une `Galaxy`, composant que Core construit lui-même (constructeur privé, `Universe` amie, implémente
   `builtByPlugin()`, `componentId()` = `Galaxy::Id` = `Nebula.Galaxy`, absent de `ComponentFactory`). Elle possède
   `components()` (noms uniques dans la galaxy), `settingsFiles()` (+ `m_settingsFileNames`, leurs noms sans préfixe),
@@ -175,7 +175,8 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 
 `main.cpp` → `SplashScreen`, puis `MainWindow` : trois panneaux dans un splitter horizontal, celui de gauche un
 `QTabWidget` en mode document (onglets **Plugins** et **Galaxies**). `SettingsItem`,
-`SettingsLinkItem` et `SettingsDialog` sont dans `src/Settings/`, inclus par `"Settings/SettingsItem.h"`.
+`SettingsLinkItem` et `SettingsDialog` sont dans `src/Settings/`, inclus par `"Settings/SettingsItem.h"` ;
+`GalaxyModel` et `GalaxyViewer` dans `src/Galaxy/`, inclus par `"Galaxy/GalaxyModel.h"`.
 
 | Classe | Rôle |
 | --- | --- |
