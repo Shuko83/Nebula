@@ -11,9 +11,10 @@
 #include <cstdint>
 #include <optional>
 
-#include "Nebula/Application/GalaxyInfo.h"
+#include "Nebula/Galaxy/GalaxyInfo.h"
 
 class QFileSystemWatcher;
+class QMimeData;
 
 namespace Nebula
 {
@@ -22,8 +23,8 @@ class Universe;
 
 // The galaxies of a directory, its project files (*.nbp), one row per file, sorted by name whatever its case. A galaxy
 // can be loaded when its file can be read and the application knows each of its plugins: the others are dimmed, and
-// their state tells why, with a mark. It follows the directory, and its files, as they are added, removed, renamed or
-// written.
+// their state tells why, with a mark, and cannot be dragged into the edition zone as the others are. It follows the
+// directory, and its files, as they are added, removed, renamed or written.
 class GalaxyModel : public QAbstractTableModel
 {
     Q_OBJECT
@@ -38,6 +39,8 @@ class GalaxyModel : public QAbstractTableModel
 
     // The path of its file, in every column.
     static constexpr int FilePathRole = Qt::UserRole;
+    // What a galaxy that can be loaded is dragged as: the path of its file, in UTF-8.
+    static constexpr QLatin1StringView MimeType{"application/x-nebula-galaxy"};
 
     // A galaxy of the directory, as its file tells it.
     struct Galaxy
@@ -59,6 +62,10 @@ class GalaxyModel : public QAbstractTableModel
     [[nodiscard]] QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     [[nodiscard]] QVariant headerData(int section, Qt::Orientation orientation,
                                       int role = Qt::DisplayRole) const override;
+    // A galaxy that can be loaded can be dragged, to be placed in the edition zone; the others cannot.
+    [[nodiscard]] Qt::ItemFlags flags(const QModelIndex& index) const override;
+    [[nodiscard]] QStringList mimeTypes() const override;
+    [[nodiscard]] QMimeData* mimeData(const QModelIndexList& indexes) const override;
 
     // The directory listed, absolute; empty until it is given one.
     [[nodiscard]] QString directory() const;

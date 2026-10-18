@@ -7,12 +7,13 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QIcon>
+#include <QMimeData>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <memory>
 
-#include "GalaxyModel.h"
+#include "Galaxy/GalaxyModel.h"
 #include "Nebula/Application/Universe.h"
 #include "Theme.h"
 
@@ -60,6 +61,7 @@ class TestGalaxyModel : public QObject
     void loadable_data();
     void loadable();
     void decoration();
+    void drag();
     void headerData_data();
     void headerData();
     void refreshFollowsTheFiles();
@@ -183,6 +185,26 @@ void TestGalaxyModel::decoration()
     QVERIFY(!m_model->index(0, GalaxyModel::State).data(Qt::DecorationRole).isValid());
     QVERIFY(!m_model->index(1, GalaxyModel::State).data(Qt::DecorationRole).value<QIcon>().isNull());
     QVERIFY(!m_model->index(2, GalaxyModel::State).data(Qt::DecorationRole).value<QIcon>().isNull());
+}
+
+void TestGalaxyModel::drag()
+{
+    // Only a galaxy that can be loaded, to be placed in the edition zone.
+    for(int column = 0; column < GalaxyModel::ColumnCount; ++column)
+    {
+        QVERIFY(m_model->flags(m_model->index(0, column)).testFlag(Qt::ItemIsDragEnabled));
+        QVERIFY(!m_model->flags(m_model->index(1, column)).testFlag(Qt::ItemIsDragEnabled));
+        QVERIFY(!m_model->flags(m_model->index(2, column)).testFlag(Qt::ItemIsDragEnabled));
+    }
+    QVERIFY(!m_model->flags({}).testFlag(Qt::ItemIsDragEnabled));
+
+    QCOMPARE(m_model->mimeTypes(), QStringList{GalaxyModel::MimeType});
+    const std::unique_ptr<QMimeData> data(
+        m_model->mimeData({m_model->index(0, GalaxyModel::Name), m_model->index(0, GalaxyModel::State)}));
+    QVERIFY(data != nullptr);
+    QCOMPARE(QString::fromUtf8(data->data(GalaxyModel::MimeType)),
+             QDir(m_directory->path()).absoluteFilePath(u"Alpha.nbp"_s));
+    QVERIFY(m_model->mimeData({}) == nullptr);
 }
 
 void TestGalaxyModel::headerData_data()

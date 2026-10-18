@@ -128,7 +128,8 @@ class CORE_EXPORT Component : public QObject, public IComponent
     friend class ComponentFactory;
     friend class Plugin; // Calls releaseInterfaces()
 
-    // Only implemented by Plugin, which keeps a component from being instantiated anywhere else.
+    // Only implemented by Plugin, which keeps a component from being instantiated anywhere else, and by Galaxy, the
+    // component Core builds itself.
     virtual void builtByPlugin() = 0;
 
     struct ProvidedInterface

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QJsonObject>
+#include <QList>
 #include <QMainWindow>
 #include <QString>
 
@@ -27,11 +28,13 @@ class QTreeView;
 // from anywhere on the disk, and the components are searched for by a part of their name, of their description or of
 // their category (Ctrl+F). Next to the plugins, in another tab, the galaxies of a directory, scene/ until another one
 // is chosen: the project files there, each telling whether the application knows its plugins, opened from its viewer
-// when it does. Between them, the edition zone, where a component dropped from its list is instantiated,
-// above the editor of the properties of the one selected there, and the list of what keeps components from working,
-// see ProblemList. Its File menu saves what is in the edition zone to a project file, with the description of its
-// galaxy, and opens it again; its View menu zooms the edition zone in and out, at the zoom level its status bar
-// tells; its Run menu starts the application assembled there, which is not edited while it runs, and stops it.
+// when it does. Between them, the edition zone, where a component dropped from its list is instantiated, and a galaxy
+// dropped from its own is placed, above the editor of the properties of the one selected there, and the list of what
+// keeps components from working, see ProblemList. A galaxy placed there opens in its place, without being edited,
+// under a path back to the application. Its File menu saves what is in the edition zone to a project file, with the
+// description of its galaxy, and opens it again; its View menu zooms the edition zone in and out, at the zoom level its
+// status bar tells; its Run menu starts the application assembled there, which is not edited while it runs, and stops
+// it.
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -89,6 +92,17 @@ class MainWindow : public QMainWindow
     // when it cannot be loaded, as its viewer tells, and while the application runs.
     void openGalaxy(const QString& filePath);
 
+    // Shows galaxy, one placed in what the edition zone shows, in its place, without editing it.
+    void enterGalaxy(Nebula::Galaxy& galaxy);
+    // Shows in the edition zone what is depth galaxies down the path: the application at 0. Those further down are
+    // closed.
+    void showDepth(qsizetype depth);
+    // Rebuilds the path above the edition zone: a button for the application and each galaxy above the one shown;
+    // hidden while the application is.
+    void refreshPath();
+    // Tells message in the status bar, for a while.
+    void tell(const QString& message);
+
     Nebula::Universe m_application; // What is assembled in the edition zone, with the plugins it is made from
     QString m_openDirectory;        // Where openPlugin() starts browsing: the directory of the last plugin opened
     QString m_projectFile;          // Empty until the application is saved to a file, or opened from one
@@ -96,7 +110,9 @@ class MainWindow : public QMainWindow
     PluginModel* m_pluginModel = nullptr;
     QTreeView* m_pluginView = nullptr;
     EditionScene* m_scene = nullptr;      // Of m_application
-    EditionView* m_editionView = nullptr; // Shows m_scene
+    QList<EditionScene*> m_galaxyScenes;  // Opened, each of a galaxy of the one before: m_scene, then them
+    QWidget* m_path = nullptr;            // Above the edition zone, while a galaxy is shown
+    EditionView* m_editionView = nullptr; // Shows m_scene, or the last of m_galaxyScenes
     PluginViewer* m_pluginViewer = nullptr;
     ComponentModel* m_componentModel = nullptr;
     ComponentViewer* m_componentViewer = nullptr;
