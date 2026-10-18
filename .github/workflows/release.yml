@@ -19,9 +19,9 @@ on:
 
 env:
   BUILD_TYPE: Release
-  QT_VERSION: "6.8.*"
+  QT_VERSION: "6.11.*"
   # What the binaries of the zip are built with: part of its name.
-  PLATFORM: win64-msvc2022-qt6.8
+  PLATFORM: win64-msvc2022-qt6.11
   # Empty on a pull request.
   TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
 

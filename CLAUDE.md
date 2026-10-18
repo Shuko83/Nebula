@@ -34,7 +34,7 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 - Sorties : `<build>/bin[/<config>]`, plugins dans `plugins/` à côté. Extension `.nbdl`, seule scannée.
 - `add_dependencies(NebulaStudio ExamplePlugin ExternalPlugin)`, de même pour `ExampleUniverseApp` : construire l'un
   reconstruit les plugins du dépôt.
-- Pas de cible de test. CI : Windows, MSVC 2022, Qt 6.8, Release. `release.yml` fait la même compilation sur un tag
+- Pas de cible de test. CI : Windows, MSVC 2022, Qt 6.11, Release. `release.yml` fait la même compilation sur un tag
   de version (`0.2.0`) et publie la release (voir Process) ; sur une PR qui le modifie, il s'exécute sans rien publier et dépose le zip
   en artefact.
 - C++ récent requis (concepts, `std::ranges`, initialiseurs désignés, `std::type_identity_t`).
