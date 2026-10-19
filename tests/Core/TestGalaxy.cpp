@@ -88,6 +88,25 @@ QStringList namesOf(const std::vector<std::unique_ptr<Nebula::Component>>& compo
     return names;
 }
 
+// The names of interfaces, in their order.
+QStringList interfaceNames(const QList<Nebula::InterfaceInfo>& interfaces)
+{
+    QStringList names;
+    for(const Nebula::InterfaceInfo& info : interfaces)
+    {
+        names.append(info.name);
+    }
+    return names;
+}
+
+// Writes project to the file filePath in place of what it holds; false when it cannot.
+bool rewrite(const QString& filePath, const QJsonObject& project)
+{
+    QFile file(filePath);
+    const QByteArray content = QJsonDocument(project).toJson();
+    return file.open(QIODevice::WriteOnly | QIODevice::Truncate) && file.write(content) == content.size();
+}
+
 // The one of interfaces named name; a default one when none is.
 Nebula::InterfaceInfo interfaceNamed(const QList<Nebula::InterfaceInfo>& interfaces, const QString& name)
 {
@@ -112,7 +131,8 @@ bool setExposedValue(const Galaxy& galaxy, const QString& name, const QVariant& 
 } // namespace
 
 // Galaxy, and how Universe places it: a project file as one component, its plugins, the galaxies it holds, how it is
-// saved, runs, and keeps its settings files.
+// saved, runs, and keeps its settings files; how an instance is edited, saved as its file holds it, and how the others
+// are read again.
 class TestGalaxy : public QObject
 {
     Q_OBJECT
@@ -151,6 +171,18 @@ class TestGalaxy : public QObject
     void exposedValuesSavedAndLoaded();
     void exposedValuesSavedWhileRunning();
     void reexposed();
+
+    void editedInPlace();
+    void stargateChangedOncePlaced();
+    void placedInGalaxy();
+    void settingsFilesInGalaxy();
+    void saveGalaxy();
+    void galaxiesOfFile();
+    void reloadGalaxy();
+    void reloadLosesWhatIsGone();
+    void reloadRefused_data();
+    void reloadRefused();
+    void reloadLeftEmpty();
 };
 
 void TestGalaxy::initTestCase()
@@ -614,10 +646,10 @@ void TestGalaxy::stargateInterfaces()
     QCOMPARE(consumed.first().requirement, Nebula::InterfaceRequirement::Mandatory); // The Sink needs it
     QCOMPARE(galaxy->unboundMandatoryInterfaces(), QStringList{"in"});
 
-    // Placed, its stargate is no longer changed: the galaxy has what its file has.
+    // Placed, its stargate is still changed, which the galaxy has at once: see stargateChangedOncePlaced().
     const auto* stargate = qobject_cast<const Nebula::Stargate*>(galaxy->component(u"Gate"_s));
     QVERIFY(stargate != nullptr);
-    QVERIFY(!stargate->isChangeable());
+    QVERIFY(stargate->isChangeable());
 }
 
 void TestGalaxy::passesWhatItProvides()
@@ -893,6 +925,427 @@ void TestGalaxy::reexposed()
     QCOMPARE(probe->consumed(u"got"_s), &qobject_cast<Source*>(gated->component(u"Source"_s))->object());
     universe.stop();
     QVERIFY(probe->consumed(u"got"_s) == nullptr);
+}
+
+void TestGalaxy::editedInPlace()
+{
+    const QTemporaryDir directory;
+    Universe universe;
+    Galaxy* galaxy = universe.instantiateGalaxy(write(directory, u"Clock.nbp"_s, Clock));
+    QVERIFY(galaxy != nullptr);
+    const Nebula::Component* applicationProbe = universe.instantiate(testComponentId(u"Probe"_s), u"Probe"_s);
+    QVERIFY(applicationProbe != nullptr);
+    const QSignalSpy componentsChanged(&universe, &Universe::componentsChanged);
+
+    // Instantiated in it, named among its own components.
+    Nebula::Component* probe = universe.instantiate(testComponentId(u"Probe"_s), {}, galaxy);
+    QVERIFY(probe != nullptr);
+    QCOMPARE(probe->objectName(), u"Probe1"_s);
+    QCOMPARE(namesOf(galaxy->components()), (QStringList{"Source", "Sink", "Probe", "Probe1"}));
+    QCOMPARE(namesOf(universe.components()), (QStringList{"Clock1", "Probe"}));
+    QCOMPARE(universe.galaxyOf(*probe), galaxy);
+    QVERIFY(universe.galaxyOf(*applicationProbe) == nullptr);
+    QVERIFY(universe.galaxyOf(*galaxy) == nullptr);
+    QCOMPARE(&universe.components(galaxy), &galaxy->components());
+    QCOMPARE(&universe.components(nullptr), &universe.components());
+
+    // Renamed among them: the name of another component of the galaxy is taken, not one of the application.
+    QVERIFY(!universe.rename(*probe, u"Sink"_s));
+    QVERIFY(universe.rename(*probe, u"Clock1"_s));
+    QCOMPARE(galaxy->component(u"Clock1"_s), probe);
+
+    // A stargate, whose galaxy has what it exposes at once.
+    Nebula::Stargate* stargate = universe.addStargate({}, galaxy);
+    QVERIFY(stargate != nullptr);
+    QCOMPARE(stargate->objectName(), u"Stargate1"_s);
+    QVERIFY(stargate->exposeInterface(Nebula::Exposure::Provided, u"out"_s, QMetaType::fromType<QObject*>()));
+    QCOMPARE(interfaceNames(galaxy->providedInterfaces()), QStringList{"out"});
+
+    // Removed from it.
+    const QPointer<Nebula::Component> removed = probe;
+    QVERIFY(universe.remove(*probe));
+    QVERIFY(removed.isNull());
+    QCOMPARE(namesOf(galaxy->components()), (QStringList{"Source", "Sink", "Probe", "Stargate1"}));
+    // The components of the application did not change.
+    QCOMPARE(componentsChanged.count(), 0);
+
+    // Nothing in a galaxy of another application, nor while it runs.
+    Nebula::Component* kept = galaxy->component(u"Probe"_s);
+    Universe other;
+    QVERIFY(other.instantiate(testComponentId(u"Probe"_s), {}, galaxy) == nullptr);
+    QVERIFY(other.addStargate({}, galaxy) == nullptr);
+    QVERIFY(!other.rename(*kept, u"P"_s));
+    QVERIFY(!other.remove(*kept));
+    QVERIFY(other.galaxyOf(*kept) == nullptr);
+    QVERIFY(universe.start());
+    QVERIFY(universe.instantiate(testComponentId(u"Probe"_s), {}, galaxy) == nullptr);
+    QVERIFY(universe.addStargate({}, galaxy) == nullptr);
+    QVERIFY(!universe.rename(*kept, u"P"_s));
+    QVERIFY(!universe.remove(*kept));
+    universe.stop();
+    QCOMPARE(namesOf(galaxy->components()), (QStringList{"Source", "Sink", "Probe", "Stargate1"}));
+}
+
+void TestGalaxy::stargateChangedOncePlaced()
+{
+    const QTemporaryDir directory;
+    QObject object; // Outlives what provides it
+    Universe universe;
+    Galaxy* galaxy = universe.instantiateGalaxy(write(directory, u"Gated.nbp"_s, Gated));
+    QVERIFY(galaxy != nullptr);
+    auto* gate = qobject_cast<Nebula::Stargate*>(galaxy->component(u"Gate"_s));
+    auto* sink = qobject_cast<Sink*>(galaxy->component(u"Sink"_s));
+    auto* probe = qobject_cast<Probe*>(universe.instantiate(testComponentId(u"Probe"_s)));
+    QVERIFY(probe->consumeObject(u"got"_s));
+    QVERIFY(probe->provideObject(u"made"_s, &object));
+    QVERIFY(probe->bindInterface(u"got"_s, *galaxy, u"out"_s));
+
+    // Exposed: the galaxy provides and consumes it at once, what it consumes being needed by nothing yet.
+    const QMetaType objectType = QMetaType::fromType<QObject*>();
+    QVERIFY(gate->exposeInterface(Nebula::Exposure::Provided, u"more"_s, objectType));
+    QVERIFY(gate->exposeInterface(Nebula::Exposure::Consumed, u"extra"_s, objectType));
+    QCOMPARE(interfaceNames(galaxy->providedInterfaces()), (QStringList{"out", "more"}));
+    QCOMPARE(interfaceNames(galaxy->consumedInterfaces()), (QStringList{"in", "extra"}));
+    QCOMPARE(interfaceNamed(galaxy->consumedInterfaces(), u"extra"_s).requirement,
+             Nebula::InterfaceRequirement::Optional);
+    // What it is given passes at once.
+    QVERIFY(sink->bindInterface(u"object"_s, *gate, u"extra"_s));
+    QVERIFY(galaxy->bindInterface(u"extra"_s, *probe, u"made"_s));
+    QCOMPARE(sink->object(), &object);
+
+    // Renamed: what is bound to it stays bound, on both sides, and what it passes still passes.
+    QVERIFY(gate->renameInterface(Nebula::Exposure::Provided, u"out"_s, u"exit"_s));
+    QCOMPARE(interfaceNames(galaxy->providedInterfaces()), (QStringList{"exit", "more"}));
+    QCOMPARE(probe->binding(u"got"_s).provider, galaxy);
+    QCOMPARE(probe->binding(u"got"_s).providedName, u"exit"_s);
+    QVERIFY(gate->renameInterface(Nebula::Exposure::Consumed, u"extra"_s, u"entry"_s));
+    QCOMPARE(interfaceNames(galaxy->consumedInterfaces()), (QStringList{"in", "entry"}));
+    QCOMPARE(galaxy->binding(u"entry"_s).provider, probe);
+    QCOMPARE(sink->object(), &object);
+    QVERIFY(universe.start());
+    QCOMPARE(probe->consumed(u"got"_s), &qobject_cast<Source*>(galaxy->component(u"Source"_s))->object());
+    universe.stop();
+
+    // Removed: what was bound to it no longer is, once it let go of what it had.
+    gate->removeInterface(Nebula::Exposure::Consumed, u"entry"_s);
+    QVERIFY(sink->object() == nullptr);
+    QVERIFY(sink->binding(u"object"_s).provider == nullptr);
+    QCOMPARE(interfaceNames(galaxy->consumedInterfaces()), QStringList{"in"});
+    gate->removeInterface(Nebula::Exposure::Provided, u"exit"_s);
+    QVERIFY(probe->binding(u"got"_s).provider == nullptr);
+    QCOMPARE(interfaceNames(galaxy->providedInterfaces()), QStringList{"more"});
+}
+
+void TestGalaxy::placedInGalaxy()
+{
+    const QTemporaryDir directory;
+    const QString clockPath = write(directory, u"parts/Clock.nbp"_s, Clock);
+    const QString homePath = write(directory, u"Home.nbp"_s, placing(u"parts/Clock.nbp"_s));
+    Universe universe;
+    Galaxy* home = universe.instantiateGalaxy(homePath);
+    QVERIFY(home != nullptr);
+    auto* clock = qobject_cast<Galaxy*>(home->component(u"Clock1"_s));
+    QVERIFY(clock != nullptr);
+
+    // In it, as in the application: named among its components.
+    const Galaxy* placed = universe.instantiateGalaxy(clockPath, {}, home);
+    QVERIFY2(placed != nullptr, qPrintable(universe.errorString()));
+    QCOMPARE(placed->objectName(), u"Clock2"_s);
+    QCOMPARE(universe.galaxyOf(*placed), home);
+    QCOMPARE(namesOf(universe.components()), QStringList{"Home1"});
+
+    // Not where it would hold itself, directly or not.
+    QVERIFY(universe.instantiateGalaxy(homePath, {}, home) == nullptr);
+    QVERIFY2(universe.errorString().contains(u"would hold itself"_s), qPrintable(universe.errorString()));
+    QVERIFY(universe.instantiateGalaxy(homePath, {}, clock) == nullptr);
+    QVERIFY2(universe.errorString().contains(u"would hold itself"_s), qPrintable(universe.errorString()));
+    QCOMPARE(namesOf(home->components()), (QStringList{"Clock1", "Clock2"}));
+    // Nor in a galaxy of another application.
+    Universe other;
+    QVERIFY(other.instantiateGalaxy(clockPath, {}, home) == nullptr);
+    QCOMPARE(other.errorString(), u"A galaxy is only placed in the application, or in one of its galaxies"_s);
+}
+
+void TestGalaxy::settingsFilesInGalaxy()
+{
+    const QTemporaryDir directory;
+    QVERIFY(!write(directory, u"Clock.nbp"_s,
+                   R"({"version": 1, "components": [{"name": "P", "type": "Test.Probe"}],
+                       "settings": [{"file": "settings.json", "entries": [{"component": "P", "property": "count"}]}]})")
+                 .isEmpty());
+    Universe universe;
+    Galaxy* home = universe.instantiateGalaxy(write(directory, u"Home.nbp"_s, placing(u"Clock.nbp"_s)));
+    QVERIFY(home != nullptr);
+    auto* clock = qobject_cast<Galaxy*>(home->component(u"Clock1"_s));
+    QVERIFY(clock != nullptr);
+    const QSignalSpy settingsFilesChanged(&universe, &Universe::settingsFilesChanged);
+
+    // Named as the file of its galaxy names it, with the first number its other files are not named with, after the
+    // galaxies it is in.
+    Nebula::SettingsFile* file = universe.addSettingsFile(*clock);
+    QVERIFY(file != nullptr);
+    QCOMPARE(file->name(), u"settings2.json"_s);
+    QCOMPARE(file->fileName(), u"Home1.Clock1.settings2.json"_s);
+    QCOMPARE(file->galaxy(), clock);
+    QCOMPARE(clock->settingsFiles().size(), std::size_t{2});
+    QCOMPARE(universe.settingsFile(u"Home1.Clock1.settings2.json"_s), file);
+    QVERIFY(universe.settingsFiles().empty());
+    QCOMPARE(settingsFilesChanged.count(), 1);
+
+    // Renamed in its galaxy, still after the galaxies it is in.
+    QVERIFY(file->setName(u"user.json"_s));
+    QCOMPARE(file->fileName(), u"Home1.Clock1.user.json"_s);
+    QVERIFY(!file->setName(u"SETTINGS.json"_s)); // The name of the other file of the galaxy, whatever its case
+    QVERIFY(!file->setName({}));
+    QVERIFY(!file->setFileName(u"other.json"_s)); // Its name, not its file name
+    QCOMPARE(file->fileName(), u"Home1.Clock1.user.json"_s);
+    QVERIFY(universe.rename(*clock, u"Alarm"_s));
+    QCOMPARE(file->fileName(), u"Home1.Alarm.user.json"_s);
+    QCOMPARE(file->name(), u"user.json"_s);
+
+    // It holds properties of the components of its galaxy, not of those of the application.
+    Nebula::Component* probe = clock->component(u"P"_s);
+    QVERIFY(file->add({.component = probe, .object = probe, .property = u"ratio"_s}));
+    Nebula::Component* outside = universe.instantiate(testComponentId(u"Probe"_s));
+    QVERIFY(!file->add({.component = outside, .object = outside, .property = u"ratio"_s}));
+
+    // Removed from its galaxy.
+    universe.removeSettingsFile(*file);
+    QCOMPARE(clock->settingsFiles().size(), std::size_t{1});
+    QVERIFY(universe.settingsFile(u"Home1.Alarm.user.json"_s) == nullptr);
+    // Not added to a galaxy of another application.
+    Universe other;
+    QVERIFY(other.addSettingsFile(*clock) == nullptr);
+}
+
+void TestGalaxy::saveGalaxy()
+{
+    const QTemporaryDir directory;
+    QVERIFY(!write(directory, u"parts/Clock.nbp"_s, Clock).isEmpty());
+    QVERIFY(!write(directory, u"parts/Gated.nbp"_s, Gated).isEmpty());
+    const QString homePath = write(directory, u"Home.nbp"_s,
+                                   R"({"version": 1, "description": "A home", "components": [
+                                       {"name": "Clock1", "type": "Nebula.Galaxy", "galaxy": "parts/Clock.nbp"}]})");
+    Universe universe;
+    // Not what the files of its galaxies are relative to.
+    universe.setFilePath(directory.filePath(u"elsewhere/App.nbp"_s));
+    Galaxy* home = universe.instantiateGalaxy(homePath);
+    QVERIFY(home != nullptr);
+
+    // Edited: a component, a galaxy and a settings file more.
+    Nebula::Component* probe = universe.instantiate(testComponentId(u"Probe"_s), {}, home);
+    QVERIFY(probe != nullptr);
+    QVERIFY(probe->setProperty("count", 4));
+    Galaxy* gated = universe.instantiateGalaxy(directory.filePath(u"parts/Gated.nbp"_s), {}, home);
+    QVERIFY(gated != nullptr);
+    QVERIFY(setExposedValue(*gated, u"rate"_s, 3));
+    Nebula::SettingsFile* file = universe.addSettingsFile(*home);
+    QVERIFY(file != nullptr);
+    QVERIFY(file->add({.component = probe, .object = probe, .property = u"count"_s}));
+
+    // As its file is to hold it.
+    const QJsonObject saved = universe.saveGalaxy(*home);
+    QCOMPARE(saved.value(u"version").toInt(), 1);
+    QCOMPARE(saved.value(u"description").toString(), u"A home"_s);
+    const QJsonArray components = saved.value(u"components").toArray();
+    QCOMPARE(components.size(), 3);
+    // The files of its galaxies relative to its own.
+    QCOMPARE(components.at(0).toObject().value(u"galaxy").toString(), u"parts/Clock.nbp"_s);
+    QCOMPARE(components.at(1).toObject().value(u"name").toString(), u"Probe1"_s);
+    QCOMPARE(components.at(1).toObject().value(u"properties").toObject().value(u"count").toInt(), 4);
+    QCOMPARE(components.at(2).toObject().value(u"name").toString(), u"Gated1"_s);
+    QCOMPARE(components.at(2).toObject().value(u"galaxy").toString(), u"parts/Gated.nbp"_s);
+    QCOMPARE(components.at(2).toObject().value(u"properties").toObject(),
+             QJsonDocument::fromJson(R"({"rate": 3})").object());
+    // Its settings files under the names its file gives them.
+    const QJsonArray settings = saved.value(u"settings").toArray();
+    QCOMPARE(settings.size(), 1);
+    QCOMPARE(settings.first().toObject().value(u"file").toString(), u"settings.json"_s);
+    QCOMPARE(settings.first().toObject().value(u"entries").toArray(),
+             QJsonDocument::fromJson(R"([{"component": "Probe1", "property": "count"}])").array());
+
+    // What another instance has once read from it.
+    QVERIFY(rewrite(homePath, saved));
+    const Galaxy* placed = universe.instantiateGalaxy(homePath);
+    QVERIFY(placed != nullptr);
+    QCOMPARE(placed->problems(), QStringList());
+    QCOMPARE(namesOf(placed->components()), (QStringList{"Clock1", "Probe1", "Gated1"}));
+    QCOMPARE(placed->component(u"Probe1"_s)->property("count").toInt(), 4);
+    QCOMPARE(exposedValue(*qobject_cast<const Galaxy*>(placed->component(u"Gated1"_s)), u"rate"_s).toInt(), 3);
+    QCOMPARE(placed->settingsFiles().front()->fileName(), u"Home2.settings.json"_s);
+}
+
+void TestGalaxy::galaxiesOfFile()
+{
+    const QTemporaryDir directory;
+    const QString clockPath = write(directory, u"Clock.nbp"_s, Clock);
+    const QString homePath = write(directory, u"Home.nbp"_s, placing(u"Clock.nbp"_s));
+    Universe universe;
+    Galaxy* clock = universe.instantiateGalaxy(clockPath);
+    Galaxy* home = universe.instantiateGalaxy(homePath);
+    QVERIFY(clock != nullptr && home != nullptr);
+
+    // Wherever they are, in the order of the application.
+    auto* inner = qobject_cast<Galaxy*>(home->component(u"Clock1"_s));
+    QCOMPARE(universe.galaxies(clockPath), (QList<Galaxy*>{clock, inner}));
+    QCOMPARE(universe.galaxies(homePath), QList<Galaxy*>{home});
+    QCOMPARE(universe.galaxies(directory.filePath(u"./Home.nbp"_s)), QList<Galaxy*>{home});
+    QVERIFY(universe.galaxies(directory.filePath(u"Missing.nbp"_s)).isEmpty());
+}
+
+void TestGalaxy::reloadGalaxy()
+{
+    const QTemporaryDir directory;
+    const QString filePath = write(directory, u"Gated.nbp"_s, Gated);
+    QObject object; // Outlives what provides it
+    Universe universe;
+    Galaxy* edited = universe.instantiateGalaxy(filePath);
+    Galaxy* other = universe.instantiateGalaxy(filePath);
+    QVERIFY(edited != nullptr && other != nullptr);
+    // The other: a value of its own, and bound both ways.
+    QVERIFY(setExposedValue(*other, u"rate"_s, 3));
+    auto* probe = qobject_cast<Probe*>(universe.instantiate(testComponentId(u"Probe"_s)));
+    QVERIFY(probe->consumeObject(u"got"_s));
+    QVERIFY(probe->provideObject(u"made"_s, &object));
+    QVERIFY(probe->bindInterface(u"got"_s, *other, u"out"_s));
+    QVERIFY(other->bindInterface(u"in"_s, *probe, u"made"_s));
+
+    // The one edited: a component and a settings file more, and other values, saved to its file.
+    Nebula::Component* extra = universe.instantiate(testComponentId(u"Probe"_s), u"Extra"_s, edited);
+    QVERIFY(extra != nullptr);
+    Nebula::SettingsFile* file = universe.addSettingsFile(*edited);
+    QVERIFY(file->add({.component = extra, .object = extra, .property = u"count"_s}));
+    QVERIFY(edited->component(u"Source"_s)->setProperty("label", u"tock"_s));
+    QVERIFY(setExposedValue(*edited, u"rate"_s, 9));
+    QVERIFY(rewrite(filePath, universe.saveGalaxy(*edited)));
+
+    // Read again: what its file holds now, in the same instance.
+    const QPointer<Nebula::Component> formerSource = other->component(u"Source"_s);
+    const QSignalSpy aboutToBeReloaded(other, &Galaxy::aboutToBeReloaded);
+    const QSignalSpy reloaded(other, &Galaxy::reloaded);
+    const QSignalSpy settingsFilesChanged(&universe, &Universe::settingsFilesChanged);
+    QCOMPARE(universe.reloadGalaxy(*other), QStringList());
+    QCOMPARE(aboutToBeReloaded.count(), 1);
+    QCOMPARE(reloaded.count(), 1);
+    QCOMPARE(settingsFilesChanged.count(), 1);
+    QVERIFY(formerSource.isNull());
+    QCOMPARE(universe.component(u"Gated2"_s), other);
+    QCOMPARE(namesOf(other->components()), (QStringList{"Source", "Sink", "Probe", "Gate", "Extra"}));
+    QCOMPARE(other->component(u"Source"_s)->property("label").toString(), u"tock"_s);
+    QCOMPARE(other->project(), readJson(filePath));
+    QCOMPARE(other->problems(), QStringList());
+    QCOMPARE(other->settingsFiles().front()->fileName(), u"Gated2.settings.json"_s);
+    // With its own value, and bound as it was: it passes what it is given again.
+    QCOMPARE(exposedValue(*other, u"rate"_s).toInt(), 3);
+    QCOMPARE(probe->binding(u"got"_s).provider, other);
+    QCOMPARE(other->binding(u"in"_s).provider, probe);
+    QCOMPARE(qobject_cast<const Sink*>(other->component(u"Sink"_s))->object(), &object);
+
+    // The one edited, read again, is as it was; a new instance has the values of the file.
+    QCOMPARE(universe.reloadGalaxy(*edited), QStringList());
+    QCOMPARE(namesOf(edited->components()), (QStringList{"Source", "Sink", "Probe", "Gate", "Extra"}));
+    QCOMPARE(exposedValue(*edited, u"rate"_s).toInt(), 9);
+    const Galaxy* placed = universe.instantiateGalaxy(filePath);
+    QVERIFY(placed != nullptr);
+    QCOMPARE(exposedValue(*placed, u"rate"_s).toInt(), 9);
+}
+
+void TestGalaxy::reloadLosesWhatIsGone()
+{
+    const QTemporaryDir directory;
+    const QString filePath = write(directory, u"Gated.nbp"_s, Gated);
+    Universe universe;
+    Galaxy* galaxy = universe.instantiateGalaxy(filePath);
+    QVERIFY(galaxy != nullptr);
+    auto* probe = qobject_cast<Probe*>(universe.instantiate(testComponentId(u"Probe"_s)));
+    QVERIFY(probe->consumeObject(u"got"_s));
+    QVERIFY(probe->bindInterface(u"got"_s, *galaxy, u"out"_s));
+    QVERIFY(setExposedValue(*galaxy, u"rate"_s, 3));
+
+    // Its file no longer exposes what it was bound to, nor its value.
+    QVERIFY(!write(directory, u"Gated.nbp"_s, R"({"version": 1, "components": [{"name": "Gate",
+        "type": "Nebula.Stargate", "consumed": [{"name": "in", "type": "QObject*"}]}]})")
+                 .isEmpty());
+    QCOMPARE(universe.reloadGalaxy(*galaxy),
+             (QStringList{u"got of Probe1 is no longer bound to out of Gated1"_s,
+                          u"Gated1 no longer exposes rate: the value it had is lost"_s}));
+    QVERIFY(probe->binding(u"got"_s).provider == nullptr);
+    QCOMPARE(interfaceNames(galaxy->providedInterfaces()), QStringList());
+    QCOMPARE(interfaceNames(galaxy->consumedInterfaces()), QStringList{"in"});
+}
+
+void TestGalaxy::reloadRefused_data()
+{
+    QTest::addColumn<QString>("content"); // What its file holds now; it is removed when empty
+    QTest::addColumn<bool>("running");
+    QTest::addColumn<bool>("ofAnother");  // Whether another application is asked
+    QTest::addColumn<QString>("problem"); // How it starts
+
+    QTest::newRow("file removed") << "" << false << false << "Gated1 is not read again: ";
+    QTest::newRow("not a project") << "{ version" << false << false << "Gated1 is not read again: ";
+    QTest::newRow("unknown plugin") << R"({"version": 1, "plugins": [{"id": "Other.Plugin", "file": "o.nbdl"}]})"
+                                    << false << false << "Gated1 is not read again: ";
+    QTest::newRow("while running") << "" << true << false << "Gated1 is not read again while the application runs";
+    QTest::newRow("of another application")
+        << "" << false << true << "Gated1 is not read again: it is not a galaxy of the application";
+}
+
+void TestGalaxy::reloadRefused()
+{
+    QFETCH(QString, content);
+    QFETCH(bool, running);
+    QFETCH(bool, ofAnother);
+    QFETCH(QString, problem);
+
+    const QTemporaryDir directory;
+    const QString filePath = write(directory, u"Gated.nbp"_s, Gated);
+    Universe universe;
+    Galaxy* galaxy = universe.instantiateGalaxy(filePath);
+    QVERIFY(galaxy != nullptr);
+    if(!running && !ofAnother)
+    {
+        QVERIFY(content.isEmpty() ? QFile::remove(filePath)
+                                  : !write(directory, u"Gated.nbp"_s, content.toUtf8()).isEmpty());
+    }
+    if(running)
+    {
+        QVERIFY(universe.start());
+    }
+    const QPointer<Nebula::Component> source = galaxy->component(u"Source"_s);
+    const QSignalSpy aboutToBeReloaded(galaxy, &Galaxy::aboutToBeReloaded);
+
+    Universe other;
+    const QStringList problems = ofAnother ? other.reloadGalaxy(*galaxy) : universe.reloadGalaxy(*galaxy);
+    QCOMPARE(problems.size(), 1);
+    QVERIFY2(problems.first().startsWith(problem), qPrintable(problems.first()));
+    // Nothing changed.
+    QCOMPARE(aboutToBeReloaded.count(), 0);
+    QVERIFY(!source.isNull());
+    QCOMPARE(namesOf(galaxy->components()), (QStringList{"Source", "Sink", "Probe", "Gate"}));
+    universe.stop();
+}
+
+void TestGalaxy::reloadLeftEmpty()
+{
+    const QTemporaryDir directory;
+    const QString filePath = write(directory, u"Gated.nbp"_s, Gated);
+    Universe universe;
+    Galaxy* galaxy = universe.instantiateGalaxy(filePath);
+    QVERIFY(galaxy != nullptr);
+
+    // Its file holds itself now: only found once it is read.
+    QVERIFY(!write(directory, u"Gated.nbp"_s, placing(u"Gated.nbp"_s, u"Me"_s)).isEmpty());
+    const QSignalSpy reloaded(galaxy, &Galaxy::reloaded);
+    const QStringList problems = universe.reloadGalaxy(*galaxy);
+    QCOMPARE(problems.size(), 2);
+    QVERIFY2(problems.first().startsWith(u"Gated1 is left empty: "_s) &&
+                 problems.first().contains(u"would hold itself"_s),
+             qPrintable(problems.first()));
+    QCOMPARE(problems.last(), u"Gated1 no longer exposes rate: the value it had is lost"_s);
+    QCOMPARE(reloaded.count(), 1);
+    QVERIFY(galaxy->components().empty());
+    QCOMPARE(galaxy->problems().size(), 1);
+    QCOMPARE(universe.component(u"Gated1"_s), galaxy);
 }
 
 QTEST_GUILESS_MAIN(TestGalaxy)

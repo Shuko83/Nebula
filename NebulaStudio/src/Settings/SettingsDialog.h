@@ -20,22 +20,25 @@ class ComponentFactory;
 class Universe;
 } // namespace Nebula
 
-// Edits a settings file of the application: the name of its file, its directory, and the properties it holds, checked
-// among those of the components of the application, then of their objects, that a settings file can hold. A property
-// another file holds is listed with the name of that file, and cannot be checked. What was edited is given to the
-// file once the dialog is accepted.
+// Edits a settings file of the application, or of one of its galaxies: the name of its file, the one the file of its
+// galaxy gives it in a galaxy, its directory, and the properties it holds, checked among those of the components of the
+// application, or of its galaxy, then of their objects, that a settings file can hold. A property another file holds
+// is listed with the name of that file, and cannot be checked. What was edited is given to the file once the dialog is
+// accepted.
 class SettingsDialog : public QDialog
 {
     Q_OBJECT
 
   public:
-    // file, one of those of application, outlives the dialog.
+    // file, one of those of application or of its galaxies, outlives the dialog.
     SettingsDialog(Nebula::SettingsFile& file, const Nebula::Universe& application,
                    const Nebula::ComponentFactory& factory, QWidget* parent = nullptr);
 
   private:
-    // Lists the properties of the components of application.
+    // Lists the properties of the components of application, or of the galaxy of the file.
     void fill(const Nebula::Universe& application, const Nebula::ComponentFactory& factory);
+    // The file name the file would have with the name typed, after the galaxies it is in.
+    [[nodiscard]] QString fileName() const;
     // Shows where the file is, as its name and its directory are edited; it is not accepted without a name, nor with
     // the one of another file of the application.
     void refreshPath();

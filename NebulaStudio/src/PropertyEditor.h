@@ -30,8 +30,8 @@ class Universe;
 // it can edit: they can be written and their type has an editor. It follows the changes the component and its objects
 // notify, and the objects it adds or loses.
 // The name of a property a settings file of the application holds is in italics: its value is the default one. The
-// one of a property a stargate of the application exposes has the icon of the Stargate: the galaxy of the project
-// exposes it.
+// one of a property a stargate where the component is exposes has the icon of the Stargate: the galaxy of the project,
+// or the galaxy the component is in, exposes it.
 // While the application runs, it only shows the values: they are edited once it is stopped, which gives them back the
 // values of the edition.
 class PropertyEditor : public QWidget
@@ -39,15 +39,12 @@ class PropertyEditor : public QWidget
     Q_OBJECT
 
   public:
-    // The components are those of application.
+    // The components are those of application, or of its galaxies.
     PropertyEditor(const Nebula::Universe& application, const Nebula::ComponentFactory& factory,
                    QWidget* parent = nullptr);
 
     // Shows the editable properties of component; none when it is nullptr.
     void setComponent(Nebula::Component* component);
-    // Whether the values are only shown, as they are while the application runs: those of the components of a
-    // galaxy, the ones of its file, are. They are edited until told otherwise.
-    void setReadOnly(bool readOnly);
 
   protected:
     // Gives the titles of the groups the background of the palette when it changes, as the color scheme does.
@@ -74,14 +71,15 @@ class PropertyEditor : public QWidget
     void refreshPlaceholder();
     // Writes the value edited in item to its property.
     void write(const QTableWidgetItem* item);
-    // The stargate of the application that exposes the property of row, and what it exposes it as; nullptr when none
+    // The stargates where m_component is, the application or the galaxy it is in; none without it.
+    [[nodiscard]] QList<const Nebula::Stargate*> stargates() const;
+    // The stargate where m_component is that exposes the property of row, and what it exposes it as; nullptr when none
     // does.
     [[nodiscard]] std::pair<const Nebula::Stargate*, QString> exposedBy(const Row& row) const;
 
     const Nebula::Universe& m_application;
     const Nebula::ComponentFactory& m_factory;
     QPointer<Nebula::Component> m_component;
-    bool m_readOnly = false;
     QList<Row> m_rows; // One per row of m_table
 
     QStackedWidget* m_stack = nullptr;

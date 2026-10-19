@@ -102,16 +102,54 @@ EditionScene::EditionScene(Nebula::Universe& application, const Nebula::Componen
 }
 
 EditionScene::EditionScene(Nebula::Universe& application, const Nebula::ComponentFactory& factory,
-                           const Nebula::Galaxy& galaxy, QObject* parent)
+                           Nebula::Galaxy& galaxy, QObject* parent)
     : QGraphicsScene(SceneRect, parent), m_application(application), m_factory(factory), m_galaxy(&galaxy)
 {
+    connect(&m_application, &Nebula::Universe::runningChanged, this, [this] { setEditable(isEditable()); });
+    // Its items go before what they show, and come again with what its file holds now.
+    connect(&galaxy, &Nebula::Galaxy::aboutToBeReloaded, this,
+            [this]
+            {
+                m_selected.clear();
+                for(const QGraphicsItem* item : selectedItems())
+                {
+                    if(const auto* component = qobject_cast<const ComponentItem*>(item->toGraphicsObject()))
+                    {
+                        m_selected.append(component->component().objectName());
+                    }
+                }
+                removeItems();
+            });
+    connect(&galaxy, &Nebula::Galaxy::reloaded, this, &EditionScene::showGalaxyAgain);
     show(galaxy.components(), galaxy.settingsFiles(), galaxy.project());
-    setEditable(false);
+    setEditable(isEditable());
+    m_saved = save();
 }
 
-const Nebula::Galaxy* EditionScene::galaxy() const
+Nebula::Galaxy* EditionScene::galaxy() const
 {
     return m_galaxy;
+}
+
+bool EditionScene::isModified() const
+{
+    return m_galaxy != nullptr && save() != m_saved;
+}
+
+void EditionScene::showGalaxyAgain()
+{
+    show(m_galaxy->components(), m_galaxy->settingsFiles(), m_galaxy->project());
+    setEditable(isEditable());
+    for(QGraphicsItem* item : items())
+    {
+        auto* component = qobject_cast<ComponentItem*>(item->toGraphicsObject());
+        if(component != nullptr && m_selected.contains(component->component().objectName()))
+        {
+            component->setSelected(true);
+        }
+    }
+    m_selected.clear();
+    m_saved = save();
 }
 
 Nebula::Component* EditionScene::selectedComponent() const
@@ -167,7 +205,7 @@ QJsonObject EditionScene::save() const
         }
     }
 
-    QJsonObject project = m_application.save();
+    QJsonObject project = m_galaxy != nullptr ? m_application.saveGalaxy(*m_galaxy) : m_application.save();
     QJsonArray components = project.value(u"components").toArray();
     for(QJsonValueRef component : components)
     {
@@ -184,9 +222,10 @@ QJsonObject EditionScene::save() const
     }
     project.insert(u"components", components);
 
-    // In the order of the files of the application, as it wrote them.
+    // In the order of the files of what it shows, as the application wrote them.
     QJsonArray settings = project.value(u"settings").toArray();
-    const std::vector<std::unique_ptr<Nebula::SettingsFile>>& files = m_application.settingsFiles();
+    const std::vector<std::unique_ptr<Nebula::SettingsFile>>& files =
+        m_galaxy != nullptr ? m_galaxy->settingsFiles() : m_application.settingsFiles();
     for(qsizetype index = 0; index < settings.size(); ++index)
     {
         QJsonObject json = settings.at(index).toObject();
@@ -297,7 +336,7 @@ void EditionScene::dropEvent(QGraphicsSceneDragDropEvent* event)
     if(data->hasFormat(GalaxyModel::MimeType))
     {
         const QString filePath = QString::fromUtf8(data->data(GalaxyModel::MimeType));
-        Nebula::Galaxy* galaxy = m_application.instantiateGalaxy(filePath);
+        Nebula::Galaxy* galaxy = m_application.instantiateGalaxy(filePath, {}, m_galaxy);
         if(galaxy == nullptr)
         {
             emit refused(
@@ -316,7 +355,7 @@ void EditionScene::dropEvent(QGraphicsSceneDragDropEvent* event)
     }
     else
     {
-        component = m_application.instantiate(QString::fromUtf8(data->data(ComponentModel::MimeType)));
+        component = m_application.instantiate(QString::fromUtf8(data->data(ComponentModel::MimeType)), {}, m_galaxy);
     }
     if(component == nullptr)
     {
@@ -552,12 +591,15 @@ void EditionScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     else if(chosen == addSettingsFile)
     {
         // What it holds chosen at once.
-        editSettings(*showSettings(m_application.addSettingsFile(), event->scenePos()), event->widget());
+        Nebula::SettingsFile& file =
+            m_galaxy != nullptr ? *m_application.addSettingsFile(*m_galaxy) : m_application.addSettingsFile();
+        editSettings(*showSettings(file, event->scenePos()), event->widget());
     }
     else if(chosen == addStargate)
     {
         // What it exposes chosen at once.
-        auto* added = qobject_cast<StargateItem*>(showComponent(*m_application.addStargate(), event->scenePos()));
+        auto* added =
+            qobject_cast<StargateItem*>(showComponent(*m_application.addStargate({}, m_galaxy), event->scenePos()));
         clearSelection();
         added->setSelected(true);
         editStargate(*added, event->widget());
@@ -625,7 +667,7 @@ void EditionScene::keyPressEvent(QKeyEvent* event)
 
 bool EditionScene::isEditable() const
 {
-    return m_galaxy == nullptr && !m_application.isRunning();
+    return !m_application.isRunning();
 }
 
 void EditionScene::setEditable(bool editable)
@@ -649,8 +691,7 @@ void EditionScene::setEditable(bool editable)
 
 void EditionScene::refuseEdition()
 {
-    emit refused(m_galaxy != nullptr ? tr("A galaxy is shown as its file holds it: it is not edited here")
-                                     : tr("The application is not edited while it runs: stop it first"));
+    emit refused(tr("The application is not edited while it runs: stop it first"));
 }
 
 InterfaceItem* EditionScene::interfaceAt(const QPointF& position) const
@@ -912,7 +953,7 @@ void EditionScene::expose(const InterfaceItem& interfaceItem)
     // Next to it, on the side of the interface, which the dot of the stargate faces.
     const QPointF position =
         interfaceItem.parentItem()->pos() + QPointF(provided ? ExposedDistance : -ExposedDistance, interfaceItem.y());
-    Nebula::Stargate* stargate = m_application.addStargate();
+    Nebula::Stargate* stargate = m_application.addStargate({}, m_galaxy);
     if(info == interfaces.end() || stargate == nullptr)
     {
         return;
@@ -981,7 +1022,8 @@ void EditionScene::drawBackground(QPainter* painter, const QRectF& rect)
         painter->drawText(
             HintRect, Qt::AlignLeft | Qt::AlignVCenter,
             m_galaxy != nullptr
-                ? tr("This galaxy holds nothing")
+                ? tr("Drag a component from the list of components and drop it here to add it to the galaxy\n"
+                     "Right-click to add a zone, which groups components, a settings file or a stargate")
                 : tr("Drag a component from the list of components and drop it here to instantiate it\n"
                      "Right-click to add a zone, which groups components, a settings file or a stargate"));
     }

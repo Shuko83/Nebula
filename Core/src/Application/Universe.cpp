@@ -111,6 +111,56 @@ bool hasSettingsFiles(const Galaxy& galaxy)
     return !files.isEmpty();
 }
 
+// Appends to path the galaxies of components down to the one that holds instance, directly; false, leaving path as it
+// was, when none does.
+bool findPath(const std::vector<std::unique_ptr<Component>>& components, const Component& instance,
+              QList<Galaxy*>& path)
+{
+    if(std::ranges::any_of(components, [&instance](const std::unique_ptr<Component>& component)
+                           { return component.get() == &instance; }))
+    {
+        return true;
+    }
+    for(const std::unique_ptr<Component>& component : components)
+    {
+        if(auto* galaxy = qobject_cast<Galaxy*>(component.get()))
+        {
+            path.append(galaxy);
+            if(findPath(galaxy->components(), instance, path))
+            {
+                return true;
+            }
+            path.removeLast();
+        }
+    }
+    return false;
+}
+
+// Adds the galaxies of components of the file filePath, canonical, and those of the galaxies they hold, to found.
+void collectGalaxies(const std::vector<std::unique_ptr<Component>>& components, const QString& filePath,
+                     QList<Galaxy*>& found)
+{
+    for(const std::unique_ptr<Component>& component : components)
+    {
+        if(auto* galaxy = qobject_cast<Galaxy*>(component.get()))
+        {
+            if(galaxy->filePath() == filePath)
+            {
+                found.append(galaxy);
+            }
+            collectGalaxies(galaxy->components(), filePath, found);
+        }
+    }
+}
+
+// fileName with number before its suffix: settings2.json for settings.json.
+QString numbered(const QString& fileName, int number)
+{
+    const QFileInfo info(fileName);
+    const QString suffix = info.suffix();
+    return info.completeBaseName() + QString::number(number) + (suffix.isEmpty() ? QString() : u'.' + suffix);
+}
+
 // Whether component is one of the plugin pluginId or, a galaxy, holds one, directly or not.
 bool isOf(const Component& component, const QString& pluginId)
 {
@@ -473,32 +523,35 @@ QStringList Universe::loadGalaxy(const Scope& scope, const QJsonObject& json)
         problems.append(QStringLiteral("In %1: %2").arg(galaxy->objectName(), problem));
     }
     // The values of this instance, in place of those of its file.
-    const QList<ExposedProperty> exposed = galaxy->exposedProperties();
-    const QJsonObject properties = json.value(u"properties").toObject();
-    for(auto property = properties.begin(); property != properties.end(); ++property)
-    {
-        const auto found = std::ranges::find(exposed, property.key(), &ExposedProperty::name);
-        if(found == exposed.end() || found->object == nullptr ||
-           !metaProperty(*found->object, found->property).write(found->object, property.value().toVariant()))
-        {
-            problems.append(
-                QStringLiteral("The property %1 of %2 could not be set").arg(property.key(), galaxy->objectName()));
-        }
-    }
+    setExposedValues(*galaxy, json.value(u"properties").toObject(), problems);
     const QString placedName = galaxy->objectName();
     adopt(scope, std::move(galaxy), placedName, placedName);
     return problems;
 }
 
-std::unique_ptr<Galaxy> Universe::createGalaxy(const QString& filePath, const QString& name, const Scope& parent,
-                                               QString& error)
+void Universe::setExposedValues(const Galaxy& galaxy, const QJsonObject& values, QStringList& problems)
+{
+    const QList<ExposedProperty> exposed = galaxy.exposedProperties();
+    for(auto value = values.begin(); value != values.end(); ++value)
+    {
+        const auto found = std::ranges::find(exposed, value.key(), &ExposedProperty::name);
+        if(found == exposed.end() || found->object == nullptr ||
+           !metaProperty(*found->object, found->property).write(found->object, value.value().toVariant()))
+        {
+            problems.append(
+                QStringLiteral("The property %1 of %2 could not be set").arg(value.key(), galaxy.objectName()));
+        }
+    }
+}
+
+std::optional<QJsonObject> Universe::readGalaxyProject(const QString& filePath, const Scope& parent, QString& error)
 {
     const QString nativePath = QDir::toNativeSeparators(filePath);
-    const std::optional<QJsonObject> project = read(filePath, error);
+    std::optional<QJsonObject> project = read(filePath, error);
     if(!project)
     {
         error = QStringLiteral("%1 cannot be read: %2").arg(nativePath, error);
-        return nullptr;
+        return std::nullopt;
     }
     // Its own file, as the files of the galaxies it is placed in are: a link to it is the same file.
     const QString canonicalPath = QFileInfo(filePath).canonicalFilePath();
@@ -509,7 +562,7 @@ std::unique_ptr<Galaxy> Universe::createGalaxy(const QString& filePath, const QS
         {
             *parent.cycle = error; // The galaxies it is in are refused as well
         }
-        return nullptr;
+        return std::nullopt;
     }
     const GalaxyInfo info = galaxyInfo(canonicalPath, *project);
     const QStringList missing = missingPlugins(info);
@@ -517,7 +570,7 @@ std::unique_ptr<Galaxy> Universe::createGalaxy(const QString& filePath, const QS
     {
         error = QStringLiteral("%1 needs plugins the application does not know: %2")
                     .arg(nativePath, missing.join(QStringLiteral(", ")));
-        return nullptr;
+        return std::nullopt;
     }
     for(const QString& pluginId : info.plugins)
     {
@@ -525,47 +578,69 @@ std::unique_ptr<Galaxy> Universe::createGalaxy(const QString& filePath, const QS
         {
             error = QStringLiteral("%1 needs the plugin %2, which cannot be loaded: %3")
                         .arg(nativePath, pluginId, m_plugins.errorString());
-            return nullptr;
+            return std::nullopt;
         }
     }
+    return project;
+}
 
+std::unique_ptr<Galaxy> Universe::createGalaxy(const QString& filePath, const QString& name, const Scope& parent,
+                                               QString& error)
+{
+    const std::optional<QJsonObject> project = readGalaxyProject(filePath, parent, error);
+    if(!project)
+    {
+        return nullptr;
+    }
     // Not made with std::make_unique: its constructor is only for the application.
     std::unique_ptr<Galaxy> galaxy(new Galaxy);
+    // Its own file, as the files of the galaxies it is placed in are: a link to it is the same file.
+    galaxy->m_filePath = QFileInfo(filePath).canonicalFilePath();
     // Its name before its content: the names of its settings files start with it.
-    galaxy->setObjectName(freeName(parent, name, info.name));
-    galaxy->m_filePath = canonicalPath;
-    galaxy->m_description = info.description;
-    galaxy->m_project = *project;
+    galaxy->setObjectName(freeName(parent, name, galaxy->galaxyName()));
+    if(!fillGalaxy(*galaxy, *project, parent, error))
+    {
+        return nullptr;
+    }
+    return galaxy;
+}
+
+bool Universe::fillGalaxy(Galaxy& galaxy, const QJsonObject& project, const Scope& parent, QString& error)
+{
+    galaxy.m_description = project.value(u"description").toString();
+    galaxy.m_project = project;
     QString cycle; // Why it would hold itself, which a galaxy it holds tells
-    const Scope scope{.galaxy = galaxy.get(),
-                      .directory = QFileInfo(canonicalPath).absoluteDir(),
-                      .files = parent.files + QStringList{canonicalPath},
-                      .prefix = parent.prefix + galaxy->objectName() + u'.',
+    const Scope scope{.galaxy = &galaxy,
+                      .directory = QFileInfo(galaxy.m_filePath).absoluteDir(),
+                      .files = parent.files + QStringList{galaxy.m_filePath},
+                      .prefix = parent.prefix + galaxy.objectName() + u'.',
                       .cycle = &cycle};
-    galaxy->m_problems = loadScope(scope, *project);
+    galaxy.m_problems = loadScope(scope, project);
     if(!cycle.isEmpty())
     {
+        galaxy.empty(); // What was placed before the galaxy that holds it
+        galaxy.m_problems = {cycle};
         error = cycle;
         if(parent.cycle != nullptr)
         {
             *parent.cycle = cycle;
         }
-        return nullptr;
+        return false;
     }
     // Once it is filled: adding it tells that its files are among those of the application, see adopt().
-    for(const std::unique_ptr<SettingsFile>& file : galaxy->m_settingsFiles)
+    for(const std::unique_ptr<SettingsFile>& file : galaxy.m_settingsFiles)
     {
         connect(file.get(), &SettingsFile::changed, this, &Universe::settingsFilesChanged);
     }
     // Once they are bound, which tells what it needs: what they expose is its own from now on.
-    for(const std::unique_ptr<Component>& component : galaxy->m_components)
+    for(const std::unique_ptr<Component>& component : galaxy.m_components)
     {
         if(auto* stargate = qobject_cast<Stargate*>(component.get()))
         {
             stargate->attach();
         }
     }
-    return galaxy;
+    return true;
 }
 
 bool Universe::open(const QString& filePath)
@@ -583,10 +658,135 @@ bool Universe::open(const QString& filePath)
 
 QJsonObject Universe::save() const
 {
+    // The files of its galaxies relative to its own, whole without one.
+    return saveProject(m_components, m_settingsFiles, projectDirectory(), m_description);
+}
+
+QJsonObject Universe::saveGalaxy(const Galaxy& galaxy) const
+{
+    // The files of its galaxies relative to its own, as it reads them.
+    return saveProject(galaxy.m_components, galaxy.m_settingsFiles, QFileInfo(galaxy.filePath()).absolutePath(),
+                       galaxy.description());
+}
+
+QStringList Universe::reloadGalaxy(Galaxy& galaxy)
+{
+    const QString name = galaxy.objectName();
+    if(m_running)
+    {
+        return {QStringLiteral("%1 is not read again while the application runs").arg(name)};
+    }
+    const std::optional<QList<Galaxy*>> path = pathTo(galaxy);
+    if(!path)
+    {
+        return {QStringLiteral("%1 is not read again: it is not a galaxy of the application").arg(name)};
+    }
+    const Scope parent = scope(*path);
+    QString error;
+    const std::optional<QJsonObject> project = readGalaxyProject(galaxy.filePath(), parent, error);
+    if(!project)
+    {
+        return {QStringLiteral("%1 is not read again: %2").arg(name, error)};
+    }
+
+    emit galaxy.aboutToBeReloaded();
+    // What it keeps: what is bound to its interfaces, either way, and the values of what it exposes.
+    struct Binding
+    {
+        QPointer<Component> consumer;
+        QString consumed;
+        QPointer<Component> provider;
+        QString provided;
+    };
+    QList<Binding> bindings;
+    const QList<InterfaceInfo> consumedInterfaces = galaxy.consumedInterfaces();
+    for(const InterfaceInfo& consumed : consumedInterfaces)
+    {
+        const InterfaceBinding bound = galaxy.binding(consumed.name);
+        if(bound.provider != nullptr)
+        {
+            bindings.append({.consumer = &galaxy,
+                             .consumed = consumed.name,
+                             .provider = bound.provider,
+                             .provided = bound.providedName});
+        }
+    }
+    for(const std::unique_ptr<Component>& component : scopeComponents(parent))
+    {
+        const QList<InterfaceInfo> consumed = component->consumedInterfaces();
+        for(const InterfaceInfo& info : consumed)
+        {
+            const InterfaceBinding bound = component->binding(info.name);
+            if(bound.provider == &galaxy)
+            {
+                bindings.append({.consumer = component.get(),
+                                 .consumed = info.name,
+                                 .provider = &galaxy,
+                                 .provided = bound.providedName});
+            }
+        }
+    }
+    QJsonObject values;
+    const QList<ExposedProperty> exposed = galaxy.exposedProperties();
+    for(const ExposedProperty& property : exposed)
+    {
+        if(const std::optional<QJsonValue> value = savedValue(property))
+        {
+            values.insert(property.name, *value);
+        }
+    }
+    const bool hadSettingsFiles = hasSettingsFiles(galaxy);
+
+    galaxy.empty();
+    QStringList problems;
+    if(fillGalaxy(galaxy, *project, parent, error))
+    {
+        for(const QString& problem : galaxy.problems())
+        {
+            problems.append(QStringLiteral("In %1: %2").arg(name, problem));
+        }
+    }
+    else
+    {
+        problems.append(QStringLiteral("%1 is left empty: %2").arg(name, error));
+    }
+    for(const Binding& bound : std::as_const(bindings))
+    {
+        if(bound.consumer == nullptr || bound.provider == nullptr ||
+           !bound.consumer->bindInterface(bound.consumed, *bound.provider, bound.provided))
+        {
+            problems.append(
+                QStringLiteral("%1 of %2 is no longer bound to %3 of %4")
+                    .arg(bound.consumed, bound.consumer != nullptr ? bound.consumer->objectName() : QString(),
+                         bound.provided, bound.provider != nullptr ? bound.provider->objectName() : QString()));
+        }
+    }
+    // Those of this instance, in place of those of its file, but for what it no longer exposes.
+    for(const QString& property : values.keys())
+    {
+        if(!galaxy.exposedProperty(property))
+        {
+            values.remove(property);
+            problems.append(QStringLiteral("%1 no longer exposes %2: the value it had is lost").arg(name, property));
+        }
+    }
+    setExposedValues(galaxy, values, problems);
+    emit galaxy.reloaded();
+    if(hadSettingsFiles || hasSettingsFiles(galaxy))
+    {
+        emit settingsFilesChanged(); // Its files are others
+    }
+    return problems;
+}
+
+QJsonObject Universe::saveProject(const std::vector<std::unique_ptr<Component>>& components,
+                                  const std::vector<std::unique_ptr<SettingsFile>>& files, const QString& directory,
+                                  const QString& description) const
+{
     std::map<QString, QString> pluginFiles; // By plugin id: each of them once
-    QJsonArray components;
+    QJsonArray componentsJson;
     QJsonArray bindings;
-    for(const std::unique_ptr<Component>& instance : m_components)
+    for(const std::unique_ptr<Component>& instance : components)
     {
         addPluginFiles(*instance, pluginFiles);
         QJsonObject json;
@@ -597,9 +797,8 @@ QJsonObject Universe::save() const
             // Its file, and the values of what it exposes: its content is the one of its file. Relative to the
             // directory of the project, for both to be moved together; whole without a project file, or on another
             // drive.
-            json.insert(u"galaxy", m_filePath.isEmpty()
-                                       ? galaxy->filePath()
-                                       : QDir(projectDirectory()).relativeFilePath(galaxy->filePath()));
+            json.insert(u"galaxy", directory.isEmpty() ? galaxy->filePath()
+                                                       : QDir(directory).relativeFilePath(galaxy->filePath()));
             QJsonObject properties;
             const QList<ExposedProperty> exposed = galaxy->exposedProperties();
             for(const ExposedProperty& property : exposed)
@@ -667,7 +866,7 @@ QJsonObject Universe::save() const
                 json.insert(u"objects", objects);
             }
         }
-        components.append(json);
+        componentsJson.append(json);
 
         const QList<InterfaceInfo> consumedInterfaces = instance->consumedInterfaces();
         for(const InterfaceInfo& consumed : consumedInterfaces)
@@ -698,10 +897,10 @@ QJsonObject Universe::save() const
     }
 
     QJsonArray settings;
-    for(const std::unique_ptr<SettingsFile>& file : m_settingsFiles)
+    for(const std::unique_ptr<SettingsFile>& file : files)
     {
         QJsonObject json;
-        json.insert(u"file", file->fileName());
+        json.insert(u"file", file->name()); // Without the galaxies it is in: each instance names its own after it
         json.insert(u"directory", file->directory());
         QJsonArray entries;
         for(const SettingsEntry& entry : file->entries())
@@ -714,12 +913,12 @@ QJsonObject Universe::save() const
 
     QJsonObject project;
     project.insert(u"version", ProjectVersion);
-    if(!m_description.isEmpty()) // As settings: the projects without one are written as they were
+    if(!description.isEmpty()) // As settings: the projects without one are written as they were
     {
-        project.insert(u"description", m_description);
+        project.insert(u"description", description);
     }
     project.insert(u"plugins", plugins);
-    project.insert(u"components", components);
+    project.insert(u"components", componentsJson);
     project.insert(u"bindings", bindings);
     if(!settings.isEmpty()) // Only for those who use them: the others are written as they were
     {
@@ -748,72 +947,101 @@ void Universe::setFilePath(const QString& filePath)
     m_filePath = filePath.isEmpty() ? QString() : QFileInfo(filePath).absoluteFilePath();
 }
 
-Component* Universe::instantiate(const QString& componentId, const QString& name)
+Component* Universe::instantiate(const QString& componentId, const QString& name, Galaxy* galaxy)
 {
     const std::optional<ComponentInfo> info = ComponentFactory::instance().component(componentId);
-    if(m_running || !info)
+    const std::optional<Scope> scope = galaxyScope(galaxy);
+    if(m_running || !info || !scope)
     {
         return nullptr;
     }
-    return adopt(applicationScope(), ComponentFactory::instance().create(componentId), name, info->name);
+    return adopt(*scope, ComponentFactory::instance().create(componentId), name, info->name);
 }
 
-Galaxy* Universe::instantiateGalaxy(const QString& filePath, const QString& name)
+Galaxy* Universe::instantiateGalaxy(const QString& filePath, const QString& name, Galaxy* galaxy)
 {
     if(m_running)
     {
         m_errorString = QStringLiteral("A galaxy cannot be placed while the application runs");
         return nullptr;
     }
-    const Scope scope = applicationScope();
-    std::unique_ptr<Galaxy> galaxy = createGalaxy(filePath, name, scope, m_errorString);
-    if(galaxy == nullptr)
+    // Not holding the file of galaxy is enough for each instance of that file to hold it once it is saved: the galaxies
+    // another instance is in hold that file too.
+    const std::optional<Scope> scope = galaxyScope(galaxy);
+    if(!scope)
+    {
+        m_errorString = QStringLiteral("A galaxy is only placed in the application, or in one of its galaxies");
+        return nullptr;
+    }
+    std::unique_ptr<Galaxy> placed = createGalaxy(filePath, name, *scope, m_errorString);
+    if(placed == nullptr)
     {
         return nullptr;
     }
     m_errorString.clear();
-    const QString placedName = galaxy->objectName();
-    return static_cast<Galaxy*>(adopt(scope, std::move(galaxy), placedName, placedName));
+    const QString placedName = placed->objectName();
+    auto* adopted = static_cast<Galaxy*>(adopt(*scope, std::move(placed), placedName, placedName));
+    if(galaxy != nullptr && hasSettingsFiles(*adopted))
+    {
+        emit settingsFilesChanged(); // As adopt() tells it in the application: its files are among its own
+    }
+    return adopted;
 }
 
-Stargate* Universe::addStargate(const QString& name)
+Stargate* Universe::addStargate(const QString& name, Galaxy* galaxy)
 {
-    if(m_running)
+    const std::optional<Scope> scope = galaxyScope(galaxy);
+    if(m_running || !scope)
     {
         return nullptr;
     }
     // Not made with std::make_unique: its constructor is only for the application.
-    return static_cast<Stargate*>(
-        adopt(applicationScope(), std::unique_ptr<Component>(new Stargate(*this, nullptr)), name, StargateName));
+    auto* stargate = static_cast<Stargate*>(
+        adopt(*scope, std::unique_ptr<Component>(new Stargate(*this, galaxy)), name, StargateName));
+    stargate->attach(); // Its galaxy has what it exposes from now on; nothing in the application
+    return stargate;
 }
 
 bool Universe::rename(Component& instance, const QString& name)
 {
-    const Component* named = component(name);
-    if(m_running || name.isEmpty() || (named != nullptr && named != &instance))
+    const std::optional<QList<Galaxy*>> path = pathTo(instance);
+    if(m_running || name.isEmpty() || !path)
+    {
+        return false;
+    }
+    const Scope where = scope(*path);
+    const Component* named = scopeComponent(where, name);
+    if(named != nullptr && named != &instance)
     {
         return false;
     }
     instance.setObjectName(name);
     if(auto* galaxy = qobject_cast<Galaxy*>(&instance))
     {
-        nameSettingsFiles(*galaxy, name + u'.'); // Its files are named after it
+        nameSettingsFiles(*galaxy, where.prefix + name + u'.'); // Its files are named after it
     }
     return true;
 }
 
 bool Universe::remove(Component& instance)
 {
-    const auto found = std::ranges::find_if(m_components, [&instance](const std::unique_ptr<Component>& owned)
-                                            { return owned.get() == &instance; });
-    if(m_running || found == m_components.end())
+    const std::optional<QList<Galaxy*>> path = pathTo(instance);
+    if(m_running || !path)
     {
         return false;
     }
+    std::vector<std::unique_ptr<Component>>& components =
+        path->isEmpty() ? m_components : path->constLast()->m_components;
+    // There, as pathTo() found it.
+    const auto found = std::ranges::find_if(components, [&instance](const std::unique_ptr<Component>& owned)
+                                            { return owned.get() == &instance; });
     // Out of components() before it is destroyed: what its links falling tell can look at the others.
     const std::unique_ptr<Component> removed = std::move(*found);
-    m_components.erase(found);
-    emit componentsChanged();
+    components.erase(found);
+    if(path->isEmpty())
+    {
+        emit componentsChanged();
+    }
     const auto* galaxy = qobject_cast<const Galaxy*>(removed.get());
     if(galaxy != nullptr && hasSettingsFiles(*galaxy))
     {
@@ -825,6 +1053,29 @@ bool Universe::remove(Component& instance)
 const std::vector<std::unique_ptr<Component>>& Universe::components() const
 {
     return m_components;
+}
+
+const std::vector<std::unique_ptr<Component>>& Universe::components(const Galaxy* galaxy) const
+{
+    return galaxy != nullptr ? galaxy->components() : m_components;
+}
+
+Galaxy* Universe::galaxyOf(const Component& instance) const
+{
+    const std::optional<QList<Galaxy*>> path = pathTo(instance);
+    return path && !path->isEmpty() ? path->constLast() : nullptr;
+}
+
+QList<Galaxy*> Universe::galaxies(const QString& filePath) const
+{
+    // As the galaxies know their file: a link to it is the same file.
+    const QString canonicalPath = QFileInfo(filePath).canonicalFilePath();
+    QList<Galaxy*> found;
+    if(!canonicalPath.isEmpty())
+    {
+        collectGalaxies(m_components, canonicalPath, found);
+    }
+    return found;
 }
 
 Component* Universe::component(const QString& name) const
@@ -874,11 +1125,27 @@ SettingsFile& Universe::addSettingsFile()
     return file;
 }
 
+SettingsFile* Universe::addSettingsFile(Galaxy& galaxy)
+{
+    const std::optional<Scope> scope = galaxyScope(&galaxy);
+    if(!scope)
+    {
+        return nullptr;
+    }
+    QStringList problems; // None: it is given a name no file has
+    SettingsFile& file = addSettingsFile(*scope, {}, problems);
+    connect(&file, &SettingsFile::changed, this, &Universe::settingsFilesChanged);
+    emit settingsFilesChanged();
+    return &file;
+}
+
 void Universe::removeSettingsFile(SettingsFile& file)
 {
-    const auto found = std::ranges::find_if(m_settingsFiles, [&file](const std::unique_ptr<SettingsFile>& owned)
+    std::vector<std::unique_ptr<SettingsFile>>& files =
+        file.m_galaxy != nullptr ? file.m_galaxy->m_settingsFiles : m_settingsFiles;
+    const auto found = std::ranges::find_if(files, [&file](const std::unique_ptr<SettingsFile>& owned)
                                             { return owned.get() == &file; });
-    if(found == m_settingsFiles.end())
+    if(found == files.end())
     {
         return;
     }
@@ -886,7 +1153,7 @@ void Universe::removeSettingsFile(SettingsFile& file)
     {
         file.stop();
     }
-    m_settingsFiles.erase(found);
+    files.erase(found);
     emit settingsFilesChanged();
 }
 
@@ -1095,6 +1362,40 @@ Universe::Scope Universe::applicationScope() const
     return scope;
 }
 
+std::optional<QList<Galaxy*>> Universe::pathTo(const Component& instance) const
+{
+    QList<Galaxy*> path;
+    return findPath(m_components, instance, path) ? std::optional(path) : std::nullopt;
+}
+
+Universe::Scope Universe::scope(const QList<Galaxy*>& path) const
+{
+    Scope inner = applicationScope();
+    for(Galaxy* galaxy : path)
+    {
+        inner.galaxy = galaxy;
+        inner.directory = QFileInfo(galaxy->filePath()).absoluteDir();
+        inner.files.append(galaxy->filePath());
+        inner.prefix += galaxy->objectName() + u'.';
+    }
+    return inner;
+}
+
+std::optional<Universe::Scope> Universe::galaxyScope(Galaxy* galaxy) const
+{
+    if(galaxy == nullptr)
+    {
+        return applicationScope();
+    }
+    std::optional<QList<Galaxy*>> path = pathTo(*galaxy);
+    if(!path)
+    {
+        return std::nullopt;
+    }
+    path->append(galaxy);
+    return scope(*path);
+}
+
 std::vector<std::unique_ptr<Component>>& Universe::scopeComponents(const Scope& scope)
 {
     return scope.galaxy != nullptr ? scope.galaxy->m_components : m_components;
@@ -1155,20 +1456,30 @@ SettingsFile& Universe::addSettingsFile(const Scope& scope, const QString& fileN
         }
         return file;
     }
-    // After its galaxy: each instance of it has the same files.
+    // After its galaxy: each instance of it has the same files. With a number when another file of the galaxy has that
+    // name, or another file of the application the one it would have.
     const QString base = fileName.isEmpty() ? QStringLiteral("settings.json") : fileName;
-    QString named = scope.prefix + base;
-    if(settingsFile(named) != nullptr)
+    const auto isTaken = [this, &scope](const QString& name)
     {
-        const QString taken = named;
-        named = newSettingsFileName();
-        problems.append(QStringLiteral("The settings file %1 is named %2: another one has its name").arg(taken, named));
+        return settingsFile(scope.prefix + name) != nullptr ||
+               std::ranges::any_of(scope.galaxy->m_settingsFiles, [&name](const std::unique_ptr<SettingsFile>& file)
+                                   { return file->name().compare(name, Qt::CaseInsensitive) == 0; });
+    };
+    QString name = base;
+    for(int number = 2; isTaken(name); ++number)
+    {
+        name = numbered(base, number);
+    }
+    if(!fileName.isEmpty() && name != fileName)
+    {
+        problems.append(QStringLiteral("The settings file %1 is named %2: another one has its name")
+                            .arg(scope.prefix + fileName, scope.prefix + name));
     }
     // Not made with std::make_unique: its constructor is only for the application.
-    SettingsFile& file = *scope.galaxy->m_settingsFiles.emplace_back(new SettingsFile(*this, named, scope.galaxy));
-    scope.galaxy->m_settingsFileNames.append(base);
+    SettingsFile& file =
+        *scope.galaxy->m_settingsFiles.emplace_back(new SettingsFile(*this, scope.prefix + name, scope.galaxy, name));
     connect(&file, &SettingsFile::failed, this, &Universe::settingsFileFailed);
-    return file; // Followed once its galaxy is filled, see createGalaxy()
+    return file; // Followed once its galaxy is filled, see fillGalaxy(), or by who adds it
 }
 
 QList<SettingsFile*> Universe::allSettingsFiles() const
@@ -1190,11 +1501,9 @@ QList<SettingsFile*> Universe::allSettingsFiles() const
 
 void Universe::nameSettingsFiles(Galaxy& galaxy, const QString& prefix)
 {
-    for(qsizetype index = 0; index < galaxy.m_settingsFileNames.size(); ++index)
+    for(const std::unique_ptr<SettingsFile>& file : galaxy.m_settingsFiles)
     {
-        // Keeps its name when the new one is taken.
-        galaxy.m_settingsFiles.at(static_cast<std::size_t>(index))
-            ->setFileName(prefix + galaxy.m_settingsFileNames.at(index));
+        file->rename(prefix + file->name(), file->name()); // Keeps its file name when the new one is taken
     }
     for(const std::unique_ptr<Component>& component : galaxy.m_components)
     {

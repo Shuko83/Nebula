@@ -64,6 +64,7 @@ class TestSettingsFile : public QObject
     void filePath();
     void setFileName_data();
     void setFileName();
+    void setName();
     void setDirectory();
     void canHold_data();
     void canHold();
@@ -169,7 +170,23 @@ void TestSettingsFile::setFileName()
     const QSignalSpy changedSpy(m_file, &SettingsFile::changed);
     QCOMPARE(m_file->setFileName(fileName), set);
     QCOMPARE(m_file->fileName(), set ? fileName : QStringLiteral("settings.json"));
+    QCOMPARE(m_file->name(), m_file->fileName()); // The same in the application
     QCOMPARE(changedSpy.count(), changed ? 1 : 0);
+}
+
+void TestSettingsFile::setName()
+{
+    // In the application, its name is its file name: see TestGalaxy for one of a galaxy.
+    QVERIFY(m_file->galaxy() == nullptr);
+    QCOMPARE(m_file->name(), QStringLiteral("settings.json"));
+    const QSignalSpy changed(m_file, &SettingsFile::changed);
+    QVERIFY(m_file->setName(QStringLiteral("user.json")));
+    QCOMPARE(m_file->fileName(), QStringLiteral("user.json"));
+    QCOMPARE(changed.count(), 1);
+    QVERIFY(!m_file->setName({}));
+    QCOMPARE(m_universe->addSettingsFile().fileName(), QStringLiteral("settings.json"));
+    QVERIFY(!m_file->setName(QStringLiteral("SETTINGS.json")));
+    QCOMPARE(m_file->name(), QStringLiteral("user.json"));
 }
 
 void TestSettingsFile::setDirectory()

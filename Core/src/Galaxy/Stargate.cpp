@@ -91,10 +91,18 @@ bool Stargate::exposeInterface(Exposure exposure, const QString& name, QMetaType
             }
         };
         consume(name, type, InterfaceRequirement::Mandatory, take, pass, withdraw);
+        if(m_attached)
+        {
+            m_galaxy->provide(name, type, nullptr); // Once it is given it
+        }
     }
     else
     {
         provide(name, type, nullptr); // What its galaxy is given, once it is placed, see attach()
+        if(m_attached)
+        {
+            consumeForGalaxy(m_passages.constLast(), InterfaceRequirement::Optional); // Bound to nothing yet
+        }
     }
     emit changed();
     return true;
@@ -120,10 +128,18 @@ bool Stargate::renameInterface(Exposure exposure, const QString& name, const QSt
     if(exposure == Exposure::Provided)
     {
         renameConsumedInterface(name, newName);
+        if(m_attached)
+        {
+            m_galaxy->renameProvidedInterface(name, newName); // What is bound to it follows
+        }
     }
     else
     {
         renameProvidedInterface(name, newName);
+        if(m_attached)
+        {
+            m_galaxy->renameConsumedInterface(name, newName); // Still bound to what it was
+        }
     }
     emit changed();
     return true;
@@ -135,13 +151,21 @@ void Stargate::removeInterface(Exposure exposure, const QString& name)
     {
         return;
     }
-    // While it is still a passage: what it passes is withdrawn first.
+    // While it is still a passage: what it passes is withdrawn first, on both sides.
     if(exposure == Exposure::Provided)
     {
         removeConsumedInterface(name);
+        if(m_attached)
+        {
+            m_galaxy->removeProvidedInterface(name);
+        }
     }
     else
     {
+        if(m_attached)
+        {
+            m_galaxy->removeConsumedInterface(name);
+        }
         removeProvidedInterface(name);
     }
     m_passages.removeIf([exposure, &name](const Passage& passage)
@@ -240,7 +264,7 @@ void Stargate::removeProperty(const QString& name)
 
 bool Stargate::isChangeable() const
 {
-    return state() != ComponentState::Running && !m_attached;
+    return state() != ComponentState::Running;
 }
 
 void Stargate::builtByPlugin() {}
@@ -310,34 +334,37 @@ void Stargate::attach()
                                                   bound.provider == this && bound.providedName == exposed.info.name;
                                        });
         };
-        const InterfaceRequirement requirement = std::ranges::any_of(m_galaxy->components(), needs)
-                                                     ? InterfaceRequirement::Mandatory
-                                                     : InterfaceRequirement::Optional;
-        // What its galaxy is given, it provides to components of its galaxy.
-        const int id = exposed.id;
-        const auto take = [this, id](void* pointer)
-        {
-            if(Passage* taken = passage(id))
-            {
-                taken->pointer = pointer;
-            }
-        };
-        const auto pass = [this, id]
-        {
-            if(const Passage* passed = passage(id))
-            {
-                provide(passed->info.name, passed->info.type, passed->pointer);
-            }
-        };
-        const auto withdraw = [this, id]
-        {
-            if(const Passage* withdrawn = passage(id))
-            {
-                provide(withdrawn->info.name, withdrawn->info.type, nullptr);
-            }
-        };
-        m_galaxy->consume(exposed.info.name, exposed.info.type, requirement, take, pass, withdraw);
+        consumeForGalaxy(exposed, std::ranges::any_of(m_galaxy->components(), needs) ? InterfaceRequirement::Mandatory
+                                                                                     : InterfaceRequirement::Optional);
     }
+}
+
+void Stargate::consumeForGalaxy(const Passage& exposed, InterfaceRequirement requirement)
+{
+    // What its galaxy is given, it provides to components of its galaxy.
+    const int id = exposed.id;
+    const auto take = [this, id](void* pointer)
+    {
+        if(Passage* taken = passage(id))
+        {
+            taken->pointer = pointer;
+        }
+    };
+    const auto pass = [this, id]
+    {
+        if(const Passage* passed = passage(id))
+        {
+            provide(passed->info.name, passed->info.type, passed->pointer);
+        }
+    };
+    const auto withdraw = [this, id]
+    {
+        if(const Passage* withdrawn = passage(id))
+        {
+            provide(withdrawn->info.name, withdrawn->info.type, nullptr);
+        }
+    };
+    m_galaxy->consume(exposed.info.name, exposed.info.type, requirement, take, pass, withdraw);
 }
 
 void Stargate::detach()

@@ -26,7 +26,8 @@ class Universe;
 // components of a project file, which it owns, bound as the file binds them and with the values it gives them, and of
 // the settings files of the file. In the application, or in another galaxy, it is one component among the others, as
 // many times as wanted, each instance with its own components; it holds other galaxies the same way. Its content is
-// the one of its file: it is not edited.
+// the one of its file, which an instance is edited for: see Universe::saveGalaxy(), and Universe::reloadGalaxy(), which
+// gives the others what it was saved with.
 // What its stargates expose is its own, see Stargate: it provides and consumes their interfaces, which are bound as
 // those of any component, and exposes their properties, set on each instance.
 // Started, it starts its components, in their order, and stops them the other way round; its application starts and
@@ -50,8 +51,8 @@ class CORE_EXPORT Galaxy : public Component
     [[nodiscard]] QString galaxyName() const;
     // The one of its file; empty when it has none.
     [[nodiscard]] QString description() const;
-    // The project its file holds, as it was read when the galaxy was placed: what NebulaStudio adds to it tells where
-    // its components are shown.
+    // The project its file holds, as it was read when the galaxy was placed, or read again: what NebulaStudio adds to
+    // it tells where its components are shown.
     [[nodiscard]] const QJsonObject& project() const;
     // What could not be restored of its file, and of the galaxies it holds, a sentence each: none when everything was.
     [[nodiscard]] const QStringList& problems() const;
@@ -70,6 +71,13 @@ class CORE_EXPORT Galaxy : public Component
     // The one it exposes as name; nullopt when it exposes none.
     [[nodiscard]] std::optional<ExposedProperty> exposedProperty(const QString& name) const;
 
+  signals:
+    // Its file is about to be read again, see Universe::reloadGalaxy(): its components, its settings files and what
+    // its stargates expose are destroyed once this returns, and nothing may refer to them any longer.
+    void aboutToBeReloaded();
+    // Its file was read again: its components, its settings files and its project are those it holds now.
+    void reloaded();
+
   protected:
     // Starts its components in their order; when one refuses, stops those it started and refuses.
     bool onStart() override;
@@ -81,6 +89,9 @@ class CORE_EXPORT Galaxy : public Component
     Galaxy();
     // Core builds it, not a plugin.
     void builtByPlugin() override;
+    // Destroys its components and its settings files, once its own interfaces are gone: what was bound to them is
+    // unbound, after it let go of what they passed.
+    void empty();
 
     QString m_filePath;
     QString m_description;
@@ -88,7 +99,6 @@ class CORE_EXPORT Galaxy : public Component
     QStringList m_problems;
     std::vector<std::unique_ptr<Component>> m_components;
     std::vector<std::unique_ptr<SettingsFile>> m_settingsFiles; // Destroyed first: their entries are of m_components
-    QStringList m_settingsFileNames; // As its file names them, without the name of the galaxy: one per settings file
 };
 
 } // namespace Nebula

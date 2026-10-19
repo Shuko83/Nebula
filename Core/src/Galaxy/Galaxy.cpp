@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <algorithm>
 #include <ranges>
+#include <utility>
 
 namespace Nebula
 {
@@ -133,5 +134,31 @@ void Galaxy::onStop()
 }
 
 void Galaxy::builtByPlugin() {}
+
+void Galaxy::empty()
+{
+    // Its stargates no longer give it anything, as when it is destroyed.
+    for(const std::unique_ptr<Component>& component : m_components)
+    {
+        if(auto* stargate = qobject_cast<Stargate*>(component.get()))
+        {
+            stargate->detach();
+        }
+    }
+    // From copies of the lists: each removal tells what was bound to it, which can change them.
+    const QList<InterfaceInfo> provided = providedInterfaces();
+    for(const InterfaceInfo& info : provided)
+    {
+        removeProvidedInterface(info.name);
+    }
+    const QList<InterfaceInfo> consumed = consumedInterfaces();
+    for(const InterfaceInfo& info : consumed)
+    {
+        removeConsumedInterface(info.name);
+    }
+    m_settingsFiles.clear(); // Before the components their entries are of
+    // Out of components() before they are destroyed, as Universe::clear() does.
+    const std::vector<std::unique_ptr<Component>> removed = std::exchange(m_components, {});
+}
 
 } // namespace Nebula

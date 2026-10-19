@@ -47,8 +47,8 @@ class SettingsFile;
 // name it exposes it as at once. None of this is done while the application runs, see Universe: its components can
 // still be selected, but nothing is dropped, moved, linked, renamed, recolored, added or removed until it is stopped.
 // A galaxy dragged from a GalaxyModel is placed in the application the same way, see Universe::instantiateGalaxy();
-// double-clicking it below its name asks for it to be opened, see galaxyOpened(), in another scene that shows it
-// without editing it.
+// double-clicking it below its name asks for it to be opened, see galaxyOpened(), in another scene that shows it, and
+// where it is edited as the application is.
 // The links it shows are those of the bindings of the components, drawn again whenever they change from here.
 class EditionScene : public QGraphicsScene
 {
@@ -56,14 +56,19 @@ class EditionScene : public QGraphicsScene
 
   public:
     EditionScene(Nebula::Universe& application, const Nebula::ComponentFactory& factory, QObject* parent = nullptr);
-    // Shows galaxy, one of the galaxies of application or of those they hold, as its file holds it, where its file
-    // shows them: it is not edited, nothing is dropped, linked, moved, renamed or removed in it. Its galaxies open as
-    // those of the application do. galaxy outlives the scene.
-    EditionScene(Nebula::Universe& application, const Nebula::ComponentFactory& factory, const Nebula::Galaxy& galaxy,
+    // Shows galaxy, one of the galaxies of application or of those they hold, where its file shows them, and edits it
+    // as the scene of the application edits the application: what is dropped, added, linked, renamed or removed here
+    // is in galaxy, which save() writes as its file is to hold it. Its galaxies open as those of the application do.
+    // Shown again when galaxy is read again from its file, see Nebula::Universe::reloadGalaxy(). galaxy outlives the
+    // scene.
+    EditionScene(Nebula::Universe& application, const Nebula::ComponentFactory& factory, Nebula::Galaxy& galaxy,
                  QObject* parent = nullptr);
 
     // The galaxy it shows; nullptr when it shows the application.
-    [[nodiscard]] const Nebula::Galaxy* galaxy() const;
+    [[nodiscard]] Nebula::Galaxy* galaxy() const;
+    // Whether what save() returns changed since the galaxy was shown, or read again from its file; false for the
+    // application, whose changes are followed by who saves it.
+    [[nodiscard]] bool isModified() const;
     // The component selected, when a single one is; nullptr otherwise. See selectionChanged().
     [[nodiscard]] Nebula::Component* selectedComponent() const;
     // Selects component alone, one of the application, and returns what shows it; nullptr, selecting nothing, when it
@@ -72,6 +77,7 @@ class EditionScene : public QGraphicsScene
 
     // The application as a project file holds it, see README.md: what Universe::save() writes, with where its
     // components and its settings files are in the edition zone, the color its components were given, and its zones.
+    // The galaxy, as its file is to hold it, when it shows one: see Universe::saveGalaxy().
     [[nodiscard]] QJsonObject save() const;
     // Replaces the application with the one project holds, as save() wrote it, see Universe::load(), and shows
     // it as it was. Returns what could not be restored, a sentence each: none when everything was.
@@ -109,12 +115,14 @@ class EditionScene : public QGraphicsScene
     void drawBackground(QPainter* painter, const QRectF& rect) override;
 
   private:
-    // Whether what it shows is edited: the application, while it does not run.
+    // Whether what it shows is edited: while the application does not run.
     [[nodiscard]] bool isEditable() const;
     // Lets the mouse move its items, or keeps it from doing so, see isEditable().
     void setEditable(bool editable);
-    // Tells through refused() why what was asked is not done: the application runs, or a galaxy is shown.
+    // Tells through refused() why what was asked is not done: the application runs.
     void refuseEdition();
+    // Shows the galaxy again, once it was read again from its file, with the same components selected.
+    void showGalaxyAgain();
     // Shows components, with their links, files and the zones of project, which tells where they are.
     void show(const std::vector<std::unique_ptr<Nebula::Component>>& components,
               const std::vector<std::unique_ptr<Nebula::SettingsFile>>& files, const QJsonObject& project);
@@ -166,7 +174,9 @@ class EditionScene : public QGraphicsScene
 
     Nebula::Universe& m_application;
     const Nebula::ComponentFactory& m_factory;
-    const Nebula::Galaxy* m_galaxy = nullptr;   // The one shown, not edited; nullptr when it is the application
+    Nebula::Galaxy* m_galaxy = nullptr;         // The one shown; nullptr when it is the application
+    QJsonObject m_saved;                        // What save() returned once m_galaxy was shown: see isModified()
+    QStringList m_selected;                     // The components selected while m_galaxy is read again, by name
     InterfaceItem* m_linkSource = nullptr;      // Where the link being drawn starts; nullptr when none is
     QGraphicsPathItem* m_pendingLink = nullptr; // The link being drawn
     std::size_t m_zoneCount = 0;                // The zones added so far: each takes the next color
