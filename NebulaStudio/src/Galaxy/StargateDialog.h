@@ -28,10 +28,10 @@ class Universe;
 
 // Chooses what a stargate of the application exposes, as the dialog of a settings file chooses what it holds: under
 // each component of the application, its interfaces, then its properties, those a project holds, or those a galaxy
-// among them exposes, which it exposes again. Next to what is checked, the name it is exposed as, which is edited by
-// double-clicking it: the one of the interface or of the property until another one is typed. Two interfaces consumed,
-// of the same type, checked under the same name, are given what the galaxy consumes through the same interface of the
-// stargate. What another stargate exposes is listed with its name, and cannot be checked; what the stargate exposes
+// among them exposes, which it exposes again. Next to what is checked, the name it is exposed as: the one of the
+// interface or of the property until another one is typed. Double-clicking a row checks it and edits that name. Two
+// interfaces consumed, of the same type, checked under the same name, are given what the galaxy consumes through the
+// same interface of the stargate. What another stargate exposes is listed with its name, and cannot be checked; what the stargate exposes
 // that is bound to none of the components listed is listed last, to keep or not. What was chosen is given to the
 // stargate, which is bound accordingly, once the dialog is accepted.
 class StargateDialog : public QDialog

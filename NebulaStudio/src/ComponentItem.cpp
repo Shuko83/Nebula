@@ -326,6 +326,9 @@ void ComponentItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
     }
     else if(m_openable)
     {
+        // No longer held by the double-click: what opens, a dialog or another scene, takes its release away, and the
+        // scene would keep it held, with neither context menu nor Delete.
+        ungrabMouse();
         emit openRequested();
     }
     else

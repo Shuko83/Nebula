@@ -61,9 +61,9 @@ StargateDialog::StargateDialog(Nebula::Stargate& stargate, const Nebula::Univers
 
     auto* hint = new QLabel(
         tr("What the galaxy of this project has through %1 once it is placed in another one: the interfaces and the "
-           "properties checked, each under the name next to it, which double-clicking edits. What the galaxy provides, "
-           "one of its components provides; what it consumes, it gives to those of its components that consume it, "
-           "the same pointer to each of those checked under the same name.")
+           "properties checked, each under the name next to it. Double-clicking one checks it and edits that name. "
+           "What the galaxy provides, one of its components provides; what it consumes, it gives to those of its "
+           "components that consume it, the same pointer to each of those checked under the same name.")
             .arg(stargate.objectName()));
     hint->setWordWrap(true);
 
@@ -73,15 +73,18 @@ StargateDialog::StargateDialog(Nebula::Stargate& stargate, const Nebula::Univers
     m_tree->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_tree->setEditTriggers(QAbstractItemView::NoEditTriggers); // Its name only, below
     fill(factory);
+    connect(m_tree, &QTreeWidget::itemChanged, this, &StargateDialog::edited);
+    // Exposed at once when it is not yet, under its name, which is edited then.
     connect(m_tree, &QTreeWidget::itemDoubleClicked, this,
             [this](QTreeWidgetItem* row, int /*column*/)
             {
-                if(m_choices.contains(row) && row->checkState(ExposesColumn) == Qt::Checked)
+                if(!m_choices.contains(row))
                 {
-                    m_tree->editItem(row, NameColumn);
+                    return;
                 }
+                row->setCheckState(ExposesColumn, Qt::Checked); // Named by edited() when it was not
+                m_tree->editItem(row, NameColumn);
             });
-    connect(m_tree, &QTreeWidget::itemChanged, this, &StargateDialog::edited);
 
     auto* problemIcon = new QLabel;
     problemIcon->setPixmap(
@@ -346,7 +349,7 @@ void StargateDialog::addChoice(QTreeWidgetItem* parent, const QString& text, con
         row->setFlags(Qt::NoItemFlags); // A single stargate exposes it
         return;
     }
-    row->setFlags(Qt::ItemIsEnabled | Qt::ItemIsUserCheckable | Qt::ItemIsEditable);
+    row->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable | Qt::ItemIsEditable);
     row->setCheckState(ExposesColumn, exposedAs.isEmpty() ? Qt::Unchecked : Qt::Checked);
     m_choices.insert(row, choice);
 }
