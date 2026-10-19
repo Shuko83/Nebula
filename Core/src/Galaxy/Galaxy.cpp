@@ -12,7 +12,18 @@ namespace Nebula
 
 Galaxy::Galaxy() = default;
 
-Galaxy::~Galaxy() = default;
+Galaxy::~Galaxy()
+{
+    // Its stargates no longer give it anything: what they are bound to is about to go with them.
+    for(const std::unique_ptr<Component>& component : m_components)
+    {
+        if(auto* stargate = qobject_cast<Stargate*>(component.get()))
+        {
+            stargate->detach();
+        }
+    }
+    releaseInterfaces(); // While its components, which what it consumes is passed to, are still there
+}
 
 QString Galaxy::componentId() const
 {
@@ -58,6 +69,41 @@ Component* Galaxy::component(const QString& name) const
 const std::vector<std::unique_ptr<SettingsFile>>& Galaxy::settingsFiles() const
 {
     return m_settingsFiles;
+}
+
+QList<ExposedProperty> Galaxy::exposedProperties() const
+{
+    QList<ExposedProperty> exposed;
+    for(const std::unique_ptr<Component>& component : m_components)
+    {
+        const auto* stargate = qobject_cast<const Stargate*>(component.get());
+        if(stargate == nullptr)
+        {
+            continue;
+        }
+        for(const ExposedProperty& property : stargate->properties())
+        {
+            // Where it is: through the galaxy that exposes it in turn.
+            const auto* inner = qobject_cast<const Galaxy*>(property.component);
+            const std::optional<ExposedProperty> target =
+                inner != nullptr ? inner->exposedProperty(property.property) : std::optional(property);
+            if(target)
+            {
+                exposed.append(ExposedProperty{.name = property.name,
+                                               .component = target->component,
+                                               .object = target->object,
+                                               .property = target->property});
+            }
+        }
+    }
+    return exposed;
+}
+
+std::optional<ExposedProperty> Galaxy::exposedProperty(const QString& name) const
+{
+    const QList<ExposedProperty> exposed = exposedProperties();
+    const auto found = std::ranges::find(exposed, name, &ExposedProperty::name);
+    return found != exposed.end() ? std::optional(*found) : std::nullopt;
 }
 
 bool Galaxy::onStart()

@@ -8,6 +8,7 @@
 #include <QPointer>
 #include <QString>
 #include <QWidget>
+#include <utility>
 
 class QLabel;
 class QStackedWidget;
@@ -18,14 +19,19 @@ namespace Nebula
 {
 class Component;
 class ComponentFactory;
+class Stargate;
 class Universe;
 } // namespace Nebula
 
 // Edits the properties of a component instantiated in the application, then those of the objects it added with
 // Component::addPropertiesForQObject(): with its own when they were added without a name, under the name they were
-// added with otherwise, one group per name. It only shows the properties it can edit: they can be written and their
-// type has an editor. It follows the changes the component and its objects notify, and the objects it adds or loses.
-// The name of a property a settings file of the application holds is in italics: its value is the default one.
+// added with otherwise, one group per name. Those of a galaxy are the ones its stargates expose, under the names they
+// expose them as: the same properties, on the same objects, as those of its components. It only shows the properties
+// it can edit: they can be written and their type has an editor. It follows the changes the component and its objects
+// notify, and the objects it adds or loses.
+// The name of a property a settings file of the application holds is in italics: its value is the default one. The
+// one of a property a stargate of the application exposes has the icon of the Stargate: the galaxy of the project
+// exposes it.
 // While the application runs, it only shows the values: they are edited once it is stopped, which gives them back the
 // values of the edition.
 class PropertyEditor : public QWidget
@@ -58,6 +64,8 @@ class PropertyEditor : public QWidget
         QPointer<QObject> object;
         QMetaProperty property;
         QString title;
+        QString name;                          // What the property is shown as: its own name when empty
+        QPointer<Nebula::Component> component; // Of the property: m_component, or one of a galaxy
     };
 
     // Shows the properties m_component and its objects have now.
@@ -66,6 +74,9 @@ class PropertyEditor : public QWidget
     void refreshPlaceholder();
     // Writes the value edited in item to its property.
     void write(const QTableWidgetItem* item);
+    // The stargate of the application that exposes the property of row, and what it exposes it as; nullptr when none
+    // does.
+    [[nodiscard]] std::pair<const Nebula::Stargate*, QString> exposedBy(const Row& row) const;
 
     const Nebula::Universe& m_application;
     const Nebula::ComponentFactory& m_factory;

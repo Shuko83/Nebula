@@ -70,6 +70,9 @@ class InterfaceItem : public QGraphicsItem
     void addLink(LinkItem& link);
     void removeLink(LinkItem& link);
 
+    // Where its name is painted, inside its component.
+    [[nodiscard]] QRectF nameRect() const;
+
     [[nodiscard]] QRectF boundingRect() const override;
     // Its dot only, which its tooltip is about and links are drawn from.
     [[nodiscard]] QPainterPath shape() const override;

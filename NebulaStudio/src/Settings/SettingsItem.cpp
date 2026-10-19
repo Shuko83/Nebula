@@ -15,9 +15,9 @@
 #include <algorithm>
 
 #include "ComponentItem.h"
+#include "DashedLinkItem.h"
 #include "Nebula/Component/Component.h"
 #include "Nebula/Settings/SettingsFile.h"
-#include "Settings/SettingsLinkItem.h"
 #include "Theme.h"
 
 namespace
@@ -75,11 +75,6 @@ SettingsItem::~SettingsItem()
 Nebula::SettingsFile& SettingsItem::file() const
 {
     return m_file;
-}
-
-void SettingsItem::removeLink(SettingsLinkItem& link)
-{
-    m_links.removeOne(&link);
 }
 
 QRectF SettingsItem::boundingRect() const
@@ -155,7 +150,8 @@ void SettingsItem::refreshLinks()
         // As it moves, as it does too.
         connect(component, &QGraphicsObject::xChanged, this, &SettingsItem::followLinks, Qt::UniqueConnection);
         connect(component, &QGraphicsObject::yChanged, this, &SettingsItem::followLinks, Qt::UniqueConnection);
-        auto* link = new SettingsLinkItem(*this, *component);
+        auto* link =
+            new DashedLinkItem(*this, *component, [this](DashedLinkItem& removed) { m_links.removeOne(&removed); });
         m_links.append(link);
         scene()->addItem(link);
     }
@@ -163,7 +159,7 @@ void SettingsItem::refreshLinks()
 
 void SettingsItem::followLinks()
 {
-    for(SettingsLinkItem* link : std::as_const(m_links))
+    for(DashedLinkItem* link : std::as_const(m_links))
     {
         link->follow();
     }

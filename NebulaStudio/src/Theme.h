@@ -54,6 +54,7 @@ enum class GlossaryTerm : std::uint8_t
     Galaxy,   // A zone
     Astre,    // A component, and its instances
     Comet,    // A settings file
+    Stargate, // What a galaxy exposes through
 };
 
 // The icon of term, drawn in resources/icons/ in the colors of the zones of the theme, which read over the fields of

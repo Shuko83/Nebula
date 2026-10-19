@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright (C) 2026 Fabien Di Grande -->
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+
+<!-- Stargate, where a galaxy meets what it is placed in: a ring around its open gate, chevrons along it. In the colors
+     of the zones of the theme, which keep 3 to 1 with the fields of its dark scheme and of its light one. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <circle cx="12" cy="12" r="4.25" fill="#3B82F6"/>
+  <circle cx="12" cy="12" r="8" fill="none" stroke="#6366F1" stroke-width="2.5"/>
+  <g fill="#EC4899">
+    <path d="M 12 6.25 L 10.25 2.75 L 13.75 2.75 Z"/>
+    <path d="M 12 6.25 L 10.25 2.75 L 13.75 2.75 Z" transform="rotate(72 12 12)"/>
+    <path d="M 12 6.25 L 10.25 2.75 L 13.75 2.75 Z" transform="rotate(144 12 12)"/>
+    <path d="M 12 6.25 L 10.25 2.75 L 13.75 2.75 Z" transform="rotate(216 12 12)"/>
+    <path d="M 12 6.25 L 10.25 2.75 L 13.75 2.75 Z" transform="rotate(288 12 12)"/>
+  </g>
+</svg>

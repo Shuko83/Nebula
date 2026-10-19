@@ -60,8 +60,16 @@ void NameEditor::place()
 {
     // Its text is inside the margin of its document.
     const QSizeF size = document()->size();
-    const qreal left = m_alignment.testFlag(Qt::AlignHCenter) ? m_rect.center().x() - size.width() / 2
-                                                              : m_rect.left() - document()->documentMargin();
+    const qreal margin = document()->documentMargin();
+    qreal left = m_rect.left() - margin;
+    if(m_alignment.testFlag(Qt::AlignHCenter))
+    {
+        left = m_rect.center().x() - size.width() / 2;
+    }
+    else if(m_alignment.testFlag(Qt::AlignRight))
+    {
+        left = m_rect.right() + margin - size.width();
+    }
     setPos(left, m_rect.center().y() - size.height() / 2);
 }
 

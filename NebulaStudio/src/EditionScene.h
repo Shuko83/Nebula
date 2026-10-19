@@ -12,10 +12,12 @@
 #include <memory>
 #include <vector>
 
+#include "InterfaceItem.h"
+
 class ComponentItem;
-class InterfaceItem;
 class QGraphicsPathItem;
 class SettingsItem;
+class StargateItem;
 class ZoneItem;
 
 namespace Nebula
@@ -23,6 +25,7 @@ namespace Nebula
 class Component;
 class ComponentFactory;
 class Galaxy;
+class Stargate;
 class Universe;
 class SettingsFile;
 } // namespace Nebula
@@ -38,11 +41,15 @@ class SettingsFile;
 // removes the selected ones.
 // The menu adds a settings file of the application as well, see SettingsItem, whose properties are chosen at once, and
 // again when it is double-clicked or from its own menu, which writes its default values or removes it.
-// None of this is done while the application runs, see Universe: its components can still be selected, but
-// nothing is dropped, moved, linked, renamed, recolored, added or removed until it is stopped.
+// The menu adds a stargate too, see StargateItem, which exposes what the galaxy the project is has once placed: what
+// it exposes is chosen at once, and again when it is double-clicked or from its own menu, see StargateDialog.
+// Expose..., in the menu of the dot of an interface, adds one that exposes that interface, bound to it, and edits the
+// name it exposes it as at once. None of this is done while the application runs, see Universe: its components can
+// still be selected, but nothing is dropped, moved, linked, renamed, recolored, added or removed until it is stopped.
 // A galaxy dragged from a GalaxyModel is placed in the application the same way, see Universe::instantiateGalaxy();
 // double-clicking it below its name asks for it to be opened, see galaxyOpened(), in another scene that shows it
 // without editing it.
+// The links it shows are those of the bindings of the components, drawn again whenever they change from here.
 class EditionScene : public QGraphicsScene
 {
     Q_OBJECT
@@ -92,7 +99,7 @@ class EditionScene : public QGraphicsScene
     void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
-    // Double-clicking a settings file edits it.
+    // Double-clicking a settings file edits it; a stargate edits what it exposes by itself, see StargateItem.
     void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
     void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
     // Delete removes the selected components and settings files, unless a name is edited: the key is for what is
@@ -144,6 +151,18 @@ class EditionScene : public QGraphicsScene
     void writeDefaults(const SettingsItem& item);
     // Removes item, with its links, and its file from the application.
     void remove(SettingsItem& item);
+    // Draws a link for each binding of the components shown, and none other: those already drawn stay.
+    void refreshLinks();
+    // Edits what the stargate of item exposes in a dialog of parent, see StargateDialog, which is left open once this
+    // returns; tells why it is not when the scene is not editable.
+    void editStargate(const StargateItem& item, QWidget* parent);
+    // Adds a stargate that exposes interfaceItem, an interface of a component, bound to it, next to it, and edits the
+    // name it exposes it as.
+    void expose(const InterfaceItem& interfaceItem);
+    // Names name, an interface of stargate of kind, as its item shows it, newName, as typed in place of its name;
+    // tells why through refused() when it cannot be.
+    void renameExposed(Nebula::Stargate& stargate, InterfaceItem::Kind kind, const QString& name,
+                       const QString& newName);
 
     Nebula::Universe& m_application;
     const Nebula::ComponentFactory& m_factory;

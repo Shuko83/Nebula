@@ -10,6 +10,7 @@
 #include <QGraphicsSceneContextMenuEvent>
 #include <QGraphicsSceneDragDropEvent>
 #include <QGraphicsSceneMouseEvent>
+#include <QGraphicsView>
 #include <QHash>
 #include <QJsonArray>
 #include <QKeyEvent>
@@ -30,6 +31,8 @@
 #include "ComponentItem.h"
 #include "ComponentModel.h"
 #include "Galaxy/GalaxyModel.h"
+#include "Galaxy/StargateDialog.h"
+#include "Galaxy/StargateItem.h"
 #include "InterfaceItem.h"
 #include "LinkItem.h"
 #include "Nebula/Application/Universe.h"
@@ -49,6 +52,8 @@ constexpr QRectF SceneRect(0, 0, 4000, 3000);
 constexpr QRectF HintRect(GridStep, GridStep, 600, 2 * GridStep);
 // A zone as it is added: room for a few components, until it is resized.
 constexpr QSizeF ZoneSize(16 * GridStep, 10 * GridStep);
+// How far from a component the stargate that exposes one of its interfaces is added, on the side of that interface.
+constexpr qreal ExposedDistance = 14 * GridStep;
 // The colors the zones are added with, in turn, which tells them apart until theirs is chosen: those of a nebula,
 // violet, blue, pink, cyan, magenta and indigo, which their titles contrast with, in black or white, as WCAG AA asks.
 constexpr std::array<QRgb, 6> ZoneColors = {0x7C3AED, 0x3B82F6, 0xEC4899, 0x06B6D4, 0xC026D3, 0x6366F1};
@@ -217,28 +222,22 @@ void EditionScene::show(const std::vector<std::unique_ptr<Nebula::Component>>& c
         const QJsonObject json = value.toObject();
         saved.insert(json.value(u"name").toString(), json);
     }
-    QHash<const Nebula::Component*, ComponentItem*> shown;
+    QList<StargateItem*> stargates;
     for(const std::unique_ptr<Nebula::Component>& component : components)
     {
         const QJsonObject json = saved.value(component->objectName());
         ComponentItem* item = showComponent(*component, readPosition(json));
         item->setColor(QColor::fromString(json.value(u"color").toString())); // Not valid when it has none
-        shown.insert(component.get(), item);
-    }
-    // The links of what is bound, once every component is shown.
-    for(const std::unique_ptr<Nebula::Component>& component : components)
-    {
-        for(InterfaceItem* consumed : shown.value(component.get())->consumedInterfaces())
+        if(auto* stargate = qobject_cast<StargateItem*>(item))
         {
-            const Nebula::InterfaceBinding bound = component->binding(consumed->name());
-            const ComponentItem* provider = shown.value(bound.provider);
-            InterfaceItem* provided =
-                provider != nullptr ? interfaceNamed(provider->providedInterfaces(), bound.providedName) : nullptr;
-            if(provided != nullptr)
-            {
-                addItem(new LinkItem(*provided, *consumed));
-            }
+            stargates.append(stargate);
         }
+    }
+    // The links of what is bound, once every component is shown, and of what the stargates expose.
+    refreshLinks();
+    for(StargateItem* stargate : std::as_const(stargates))
+    {
+        stargate->refreshLinks();
     }
     // Once the components they are joined to are shown: one per file of the project, in its order.
     const QJsonArray settings = project.value(u"settings").toArray();
@@ -433,11 +432,30 @@ void EditionScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     const QAction* removeSettingsFile = nullptr;
     const QAction* add = nullptr;
     const QAction* addSettingsFile = nullptr;
+    const QAction* addStargate = nullptr;
     const QAction* openGalaxy = nullptr;
+    const QAction* editStargateAction = nullptr;
+    QAction* exposeInterface = nullptr;
     auto* galaxy = component != nullptr ? qobject_cast<Nebula::Galaxy*>(&component->component()) : nullptr;
+    auto* stargate = qobject_cast<StargateItem*>(component);
+    // The interface whose dot is under the cursor, of a component that is not a stargate: it exposes its own.
+    const InterfaceItem* exposed =
+        component != nullptr && stargate == nullptr ? interfaceAt(event->scenePos()) : nullptr;
+    if(exposed != nullptr)
+    {
+        exposeInterface = menu.addAction(icon(GlossaryTerm::Stargate), tr("Expose..."));
+        exposeInterface->setToolTip(
+            tr("Adds a stargate that exposes %1, for the galaxy of the project to have it").arg(exposed->name()));
+        menu.addSeparator();
+    }
     if(galaxy != nullptr)
     {
         openGalaxy = menu.addAction(icon(GlossaryTerm::Galaxy), tr("Open galaxy"));
+        menu.addSeparator();
+    }
+    if(stargate != nullptr)
+    {
+        editStargateAction = menu.addAction(icon(GlossaryTerm::Stargate), tr("Edit stargate..."));
         menu.addSeparator();
     }
     if(component != nullptr)
@@ -461,6 +479,7 @@ void EditionScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
         // Not on a component: right-clicking it is about it, and about the zone it is in.
         add = menu.addAction(icon(GlossaryTerm::Galaxy), tr("Add zone"));
         addSettingsFile = menu.addAction(icon(GlossaryTerm::Comet), tr("Add settings file"));
+        addStargate = menu.addAction(icon(GlossaryTerm::Stargate), tr("Add stargate"));
     }
     const QAction* renameZone = nullptr;
     const QAction* recolorZone = nullptr;
@@ -479,9 +498,17 @@ void EditionScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     {
         return;
     }
-    if(chosen == openGalaxy)
+    if(chosen == exposeInterface)
+    {
+        expose(*exposed);
+    }
+    else if(chosen == openGalaxy)
     {
         emit galaxyOpened(*galaxy);
+    }
+    else if(chosen == editStargateAction)
+    {
+        editStargate(*stargate, event->widget());
     }
     else if(chosen == renameComponent)
     {
@@ -526,6 +553,14 @@ void EditionScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     {
         // What it holds chosen at once.
         editSettings(*showSettings(m_application.addSettingsFile(), event->scenePos()), event->widget());
+    }
+    else if(chosen == addStargate)
+    {
+        // What it exposes chosen at once.
+        auto* added = qobject_cast<StargateItem*>(showComponent(*m_application.addStargate(), event->scenePos()));
+        clearSelection();
+        added->setSelected(true);
+        editStargate(*added, event->widget());
     }
     else if(chosen == renameZone)
     {
@@ -650,19 +685,37 @@ void EditionScene::dimLinkTargets(const InterfaceItem* source)
 
 ComponentItem* EditionScene::showComponent(Nebula::Component& component, const QPointF& position)
 {
-    auto* galaxy = qobject_cast<Nebula::Galaxy*>(&component);
-    const std::optional<Nebula::ComponentInfo> info = m_factory.component(component.componentId());
-    auto* item = new ComponentItem(component, galaxy != nullptr ? galaxy->galaxyName() : info ? info->name : QString());
-    if(galaxy != nullptr)
+    ComponentItem* item = nullptr;
+    if(auto* stargate = qobject_cast<Nebula::Stargate*>(&component))
     {
+        auto* stargateItem = new StargateItem(*stargate);
+        // Edited in a dialog of the view it was double-clicked in.
+        connect(stargateItem, &ComponentItem::openRequested, this,
+                [this, stargateItem] { editStargate(*stargateItem, views().value(0)); });
+        connect(stargateItem, &ComponentItem::interfaceNameEdited, this,
+                [this, stargate](InterfaceItem::Kind kind, const QString& name, const QString& newName)
+                { renameExposed(*stargate, kind, name, newName); });
+        item = stargateItem;
+    }
+    else if(auto* galaxy = qobject_cast<Nebula::Galaxy*>(&component))
+    {
+        item = new ComponentItem(component, galaxy->galaxyName());
         QString about = QDir::toNativeSeparators(galaxy->filePath());
         if(!galaxy->description().isEmpty())
         {
             about += u'\n' + galaxy->description();
         }
-        item->setOpenable(icon(GlossaryTerm::Galaxy), about);
+        item->setIcon(icon(GlossaryTerm::Galaxy));
+        item->setOpenable(about, tr("Double-click below its name to open it"));
         connect(item, &ComponentItem::openRequested, this, [this, galaxy] { emit galaxyOpened(*galaxy); });
     }
+    else
+    {
+        const std::optional<Nebula::ComponentInfo> info = m_factory.component(component.componentId());
+        item = new ComponentItem(component, info ? info->name : QString());
+    }
+    // Its links again, once its interfaces were shown again.
+    connect(item, &ComponentItem::interfacesRebuilt, this, &EditionScene::refreshLinks);
     item->setPos(position);
     addItem(item);
     update(HintRect); // Hidden once anything is in the edition zone
@@ -718,16 +771,11 @@ void EditionScene::link(InterfaceItem& source, InterfaceItem& target)
     const bool sourceProvided = source.kind() == InterfaceItem::Kind::Provided;
     InterfaceItem& provided = sourceProvided ? source : target;
     InterfaceItem& consumed = sourceProvided ? target : source;
-    if(!consumed.component().bindInterface(consumed.name(), provided.component(), provided.name()))
+    // What a component consumes is bound to one interface: the new one, which the links show.
+    if(consumed.component().bindInterface(consumed.name(), provided.component(), provided.name()))
     {
-        return;
+        refreshLinks();
     }
-    // What a component consumes is bound to one interface: the new one.
-    while(!consumed.links().isEmpty())
-    {
-        delete consumed.links().constFirst();
-    }
-    addItem(new LinkItem(provided, consumed));
 }
 
 ZoneItem* EditionScene::zoneAt(const QPointF& position) const
@@ -798,6 +846,116 @@ void EditionScene::remove(SettingsItem& item)
     update(HintRect); // Shown again once nothing is left
 }
 
+void EditionScene::refreshLinks()
+{
+    QHash<const Nebula::Component*, const ComponentItem*> shown;
+    for(const QGraphicsItem* item : items())
+    {
+        if(const auto* componentItem = qobject_cast<const ComponentItem*>(item->toGraphicsObject()))
+        {
+            shown.insert(&componentItem->component(), componentItem);
+        }
+    }
+    for(const ComponentItem* item : std::as_const(shown))
+    {
+        for(InterfaceItem* consumed : item->consumedInterfaces())
+        {
+            const Nebula::InterfaceBinding bound = item->component().binding(consumed->name());
+            const ComponentItem* provider = shown.value(bound.provider);
+            InterfaceItem* provided =
+                provider != nullptr ? interfaceNamed(provider->providedInterfaces(), bound.providedName) : nullptr;
+            // The one of its binding stays; the others go, and so does the copy of its list.
+            bool linked = false;
+            const QList<LinkItem*> links = consumed->links();
+            for(LinkItem* link : links)
+            {
+                if(&link->provided() == provided && !linked)
+                {
+                    linked = true;
+                }
+                else
+                {
+                    delete link;
+                }
+            }
+            if(provided != nullptr && !linked)
+            {
+                addItem(new LinkItem(*provided, *consumed));
+            }
+        }
+    }
+}
+
+void EditionScene::editStargate(const StargateItem& item, QWidget* parent)
+{
+    if(!isEditable())
+    {
+        refuseEdition();
+        return;
+    }
+    // Not run here, as the dialog of a settings file: the event that opens it ends first.
+    auto* dialog = new StargateDialog(item.stargate(), m_application, m_factory, parent);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &QDialog::accepted, this, &EditionScene::refreshLinks); // What it bound and unbound
+    dialog->open();
+}
+
+void EditionScene::expose(const InterfaceItem& interfaceItem)
+{
+    Nebula::Component& component = interfaceItem.component();
+    const QString interfaceName = interfaceItem.name();
+    const bool provided = interfaceItem.kind() == InterfaceItem::Kind::Provided;
+    const Nebula::Exposure exposure = provided ? Nebula::Exposure::Provided : Nebula::Exposure::Consumed;
+    const QList<Nebula::InterfaceInfo> interfaces =
+        provided ? component.providedInterfaces() : component.consumedInterfaces();
+    const auto info = std::ranges::find(interfaces, interfaceName, &Nebula::InterfaceInfo::name);
+    // Next to it, on the side of the interface, which the dot of the stargate faces.
+    const QPointF position =
+        interfaceItem.parentItem()->pos() + QPointF(provided ? ExposedDistance : -ExposedDistance, interfaceItem.y());
+    Nebula::Stargate* stargate = m_application.addStargate();
+    if(info == interfaces.end() || stargate == nullptr)
+    {
+        return;
+    }
+    // Under its name, unless another stargate exposes one so: with the first number free then.
+    QString name = interfaceName;
+    for(int number = 2; !stargate->exposeInterface(exposure, name, info->type); ++number)
+    {
+        name = interfaceName + QString::number(number);
+    }
+    if(provided)
+    {
+        stargate->bindInterface(name, component, interfaceName);
+    }
+    else
+    {
+        component.bindInterface(interfaceName, *stargate, name);
+    }
+    auto* item = qobject_cast<StargateItem*>(showComponent(*stargate, position));
+    refreshLinks();
+    clearSelection();
+    item->setSelected(true);
+    // The name it exposes it as typed at once: the dot of the stargate is on the other edge.
+    const QList<InterfaceItem*>& shown = provided ? item->consumedInterfaces() : item->providedInterfaces();
+    if(const InterfaceItem* named = interfaceNamed(shown, name))
+    {
+        item->editInterfaceName(*named);
+    }
+}
+
+void EditionScene::renameExposed(Nebula::Stargate& stargate, InterfaceItem::Kind kind, const QString& name,
+                                 const QString& newName)
+{
+    // What the stargate consumes, on its left edge, the galaxy provides, and the other way round.
+    const Nebula::Exposure exposure =
+        kind == InterfaceItem::Kind::Consumed ? Nebula::Exposure::Provided : Nebula::Exposure::Consumed;
+    // No name is one given up rather than refused.
+    if(!newName.isEmpty() && !stargate.renameInterface(exposure, name, newName))
+    {
+        emit refused(tr("%1 is not renamed: another interface is exposed as %2 the same way").arg(name, newName));
+    }
+}
+
 void EditionScene::drawBackground(QPainter* painter, const QRectF& rect)
 {
     QGraphicsScene::drawBackground(painter, rect);
@@ -820,11 +978,12 @@ void EditionScene::drawBackground(QPainter* painter, const QRectF& rect)
     if(items().isEmpty())
     {
         painter->setPen(palette().color(QPalette::PlaceholderText));
-        painter->drawText(HintRect, Qt::AlignLeft | Qt::AlignVCenter,
-                          m_galaxy != nullptr
-                              ? tr("This galaxy holds nothing")
-                              : tr("Drag a component from the list of components and drop it here to instantiate it\n"
-                                   "Right-click to add a zone, which groups components, or a settings file"));
+        painter->drawText(
+            HintRect, Qt::AlignLeft | Qt::AlignVCenter,
+            m_galaxy != nullptr
+                ? tr("This galaxy holds nothing")
+                : tr("Drag a component from the list of components and drop it here to instantiate it\n"
+                     "Right-click to add a zone, which groups components, a settings file or a stargate"));
     }
     painter->restore();
 }

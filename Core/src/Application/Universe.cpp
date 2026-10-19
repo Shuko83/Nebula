@@ -38,6 +38,22 @@ constexpr int ProjectVersion = 1;
 const QString PluginDirOption = QStringLiteral("plugin-dir");
 const QString PluginRootOption = QStringLiteral("plugin-root");
 
+// What the stargates are named after, with a number: Stargate1.
+const QString StargateName = QStringLiteral("Stargate");
+
+// The key under which a stargate of a project lists the interfaces it exposes as exposure tells.
+QString exposureKey(Exposure exposure)
+{
+    return exposure == Exposure::Provided ? QStringLiteral("provided") : QStringLiteral("consumed");
+}
+
+// The property name of object; not valid when it has none of that name.
+QMetaProperty metaProperty(const QObject& object, const QString& name)
+{
+    const QMetaObject* metaObject = object.metaObject();
+    return metaObject->property(metaObject->indexOfProperty(name.toLatin1().constData()));
+}
+
 // entry as a project holds it: the name of its component, the key of its object when it is not the component, see
 // ProjectJson::ObjectKey, its "index" only when it is not the first object of its name, and its property.
 QJsonObject entryJson(const SettingsEntry& entry)
@@ -245,6 +261,7 @@ QStringList Universe::load(const QJsonObject& project)
 QStringList Universe::loadScope(const Scope& scope, const QJsonObject& project)
 {
     QStringList problems;
+    QList<std::pair<Stargate*, QJsonObject>> stargates; // What each of them exposes, once every component is there
     const QJsonArray components = project.value(u"components").toArray();
     for(const QJsonValue& value : components)
     {
@@ -254,6 +271,14 @@ QStringList Universe::loadScope(const Scope& scope, const QJsonObject& project)
         if(componentId == Galaxy::Id)
         {
             problems.append(loadGalaxy(scope, json));
+            continue;
+        }
+        if(componentId == Stargate::Id)
+        {
+            // Not made with std::make_unique: its constructor is only for the application.
+            Component* stargate =
+                adopt(scope, std::unique_ptr<Component>(new Stargate(*this, scope.galaxy)), name, StargateName);
+            stargates.append({static_cast<Stargate*>(stargate), json});
             continue;
         }
         const std::optional<ComponentInfo> info = ComponentFactory::instance().component(componentId);
@@ -300,6 +325,11 @@ QStringList Universe::loadScope(const Scope& scope, const QJsonObject& project)
             }
         }
     }
+    // Of the types of the components, which can come after them; before the bindings, which bind to them.
+    for(const auto& [stargate, json] : std::as_const(stargates))
+    {
+        problems.append(loadStargateInterfaces(scope, *stargate, json));
+    }
 
     const QJsonArray bindings = project.value(u"bindings").toArray();
     for(const QJsonValue& value : bindings)
@@ -318,6 +348,10 @@ QStringList Universe::loadScope(const Scope& scope, const QJsonObject& project)
                                 .arg(consumedName, consumerName, providedName, providerName));
         }
     }
+    for(const auto& [stargate, json] : std::as_const(stargates))
+    {
+        problems.append(loadStargateProperties(scope, *stargate, json));
+    }
 
     const QJsonArray settings = project.value(u"settings").toArray();
     for(const QJsonValue& value : settings)
@@ -328,26 +362,98 @@ QStringList Universe::loadScope(const Scope& scope, const QJsonObject& project)
         const QJsonArray entries = json.value(u"entries").toArray();
         for(const QJsonValue& entryValue : entries)
         {
-            const QJsonObject entry = entryValue.toObject();
-            const QString property = entry.value(u"property").toString();
-            QString owner = entry.value(u"component").toString(); // What the property is of, as it is told
-            Component* instance = scopeComponent(scope, owner);
-            QObject* object = instance;
-            if(entry.contains(u"object"))
+            QString owner;
+            const SettingsEntry entry = readEntry(scope, entryValue.toObject(), owner);
+            if(entry.object == nullptr || !file.add(entry))
             {
-                const ProjectJson::ObjectKey key{.name = entry.value(u"object").toString(),
-                                                 .index = entry.value(u"index").toInteger()};
-                object = instance != nullptr ? ProjectJson::object(*instance, key) : nullptr;
-                owner = QStringLiteral("the object %1 of %2").arg(key.name, owner);
-            }
-            if(object == nullptr || !file.add({.component = instance, .object = object, .property = property}))
-            {
-                problems.append(
-                    QStringLiteral("The property %1 of %2 is not held by %3").arg(property, owner, file.fileName()));
+                problems.append(QStringLiteral("The property %1 of %2 is not held by %3")
+                                    .arg(entry.property, owner, file.fileName()));
             }
         }
     }
     return problems;
+}
+
+QStringList Universe::loadStargateInterfaces(const Scope& scope, Stargate& stargate, const QJsonObject& json) const
+{
+    QStringList problems;
+    for(const Exposure exposure : {Exposure::Provided, Exposure::Consumed})
+    {
+        const QJsonArray interfaces = json.value(exposureKey(exposure)).toArray();
+        for(const QJsonValue& value : interfaces)
+        {
+            const QJsonObject interfaceJson = value.toObject();
+            const QString name = interfaceJson.value(u"name").toString();
+            const QString typeName = interfaceJson.value(u"type").toString();
+            const QMetaType type = interfaceType(scope, typeName);
+            if(!type.isValid())
+            {
+                problems.append(QStringLiteral("The interface %1 of %2 is not exposed: no component has its type %3")
+                                    .arg(name, stargate.objectName(), typeName));
+            }
+            else if(!stargate.exposeInterface(exposure, name, type))
+            {
+                problems.append(
+                    QStringLiteral("The interface %1 of %2 is not exposed: another one is exposed under its name")
+                        .arg(name, stargate.objectName()));
+            }
+        }
+    }
+    return problems;
+}
+
+QStringList Universe::loadStargateProperties(const Scope& scope, Stargate& stargate, const QJsonObject& json) const
+{
+    QStringList problems;
+    const QJsonArray properties = json.value(u"exposed").toArray();
+    for(const QJsonValue& value : properties)
+    {
+        const QJsonObject propertyJson = value.toObject();
+        QString owner;
+        const SettingsEntry entry = readEntry(scope, propertyJson, owner);
+        const QString name = propertyJson.value(u"name").toString();
+        if(entry.object == nullptr ||
+           !stargate.exposeProperty(
+               {.name = name, .component = entry.component, .object = entry.object, .property = entry.property}))
+        {
+            problems.append(QStringLiteral("The property %1 of %2 is not exposed by %3 as %4")
+                                .arg(entry.property, owner, stargate.objectName(), name));
+        }
+    }
+    return problems;
+}
+
+SettingsEntry Universe::readEntry(const Scope& scope, const QJsonObject& json, QString& owner) const
+{
+    owner = json.value(u"component").toString(); // What the property is of, as it is told
+    Component* instance = scopeComponent(scope, owner);
+    QObject* object = instance;
+    if(json.contains(u"object"))
+    {
+        const ProjectJson::ObjectKey key{.name = json.value(u"object").toString(),
+                                         .index = json.value(u"index").toInteger()};
+        object = instance != nullptr ? ProjectJson::object(*instance, key) : nullptr;
+        owner = QStringLiteral("the object %1 of %2").arg(key.name, owner);
+    }
+    return {.component = instance, .object = object, .property = json.value(u"property").toString()};
+}
+
+QMetaType Universe::interfaceType(const Scope& scope, const QString& typeName) const
+{
+    // Those of the components first: the type of an interface of a plugin is not registered by its name until it is.
+    const std::vector<std::unique_ptr<Component>>& components =
+        scope.galaxy != nullptr ? scope.galaxy->components() : m_components;
+    for(const std::unique_ptr<Component>& component : components)
+    {
+        const QList<InterfaceInfo> interfaces = component->providedInterfaces() + component->consumedInterfaces();
+        const auto found = std::ranges::find_if(interfaces, [&typeName](const InterfaceInfo& info)
+                                                { return QLatin1StringView(info.type.name()) == typeName; });
+        if(found != interfaces.end())
+        {
+            return found->type;
+        }
+    }
+    return QMetaType::fromName(typeName.toLatin1());
 }
 
 QStringList Universe::loadGalaxy(const Scope& scope, const QJsonObject& json)
@@ -365,6 +471,19 @@ QStringList Universe::loadGalaxy(const Scope& scope, const QJsonObject& json)
     for(const QString& problem : galaxy->problems())
     {
         problems.append(QStringLiteral("In %1: %2").arg(galaxy->objectName(), problem));
+    }
+    // The values of this instance, in place of those of its file.
+    const QList<ExposedProperty> exposed = galaxy->exposedProperties();
+    const QJsonObject properties = json.value(u"properties").toObject();
+    for(auto property = properties.begin(); property != properties.end(); ++property)
+    {
+        const auto found = std::ranges::find(exposed, property.key(), &ExposedProperty::name);
+        if(found == exposed.end() || found->object == nullptr ||
+           !metaProperty(*found->object, found->property).write(found->object, property.value().toVariant()))
+        {
+            problems.append(
+                QStringLiteral("The property %1 of %2 could not be set").arg(property.key(), galaxy->objectName()));
+        }
     }
     const QString placedName = galaxy->objectName();
     adopt(scope, std::move(galaxy), placedName, placedName);
@@ -438,6 +557,14 @@ std::unique_ptr<Galaxy> Universe::createGalaxy(const QString& filePath, const QS
     {
         connect(file.get(), &SettingsFile::changed, this, &Universe::settingsFilesChanged);
     }
+    // Once they are bound, which tells what it needs: what they expose is its own from now on.
+    for(const std::unique_ptr<Component>& component : galaxy->m_components)
+    {
+        if(auto* stargate = qobject_cast<Stargate*>(component.get()))
+        {
+            stargate->attach();
+        }
+    }
     return galaxy;
 }
 
@@ -467,28 +594,78 @@ QJsonObject Universe::save() const
         json.insert(u"type", instance->componentId());
         if(const auto* galaxy = qobject_cast<const Galaxy*>(instance.get()))
         {
-            // Its file only: its content is the one of its file. Relative to the directory of the project, for both to
-            // be moved together; whole without a project file, or on another drive.
+            // Its file, and the values of what it exposes: its content is the one of its file. Relative to the
+            // directory of the project, for both to be moved together; whole without a project file, or on another
+            // drive.
             json.insert(u"galaxy", m_filePath.isEmpty()
                                        ? galaxy->filePath()
                                        : QDir(projectDirectory()).relativeFilePath(galaxy->filePath()));
-            components.append(json);
-            continue; // Neither properties, objects nor interfaces of its own
+            QJsonObject properties;
+            const QList<ExposedProperty> exposed = galaxy->exposedProperties();
+            for(const ExposedProperty& property : exposed)
+            {
+                if(const std::optional<QJsonValue> value = savedValue(property))
+                {
+                    properties.insert(property.name, *value);
+                }
+            }
+            if(!properties.isEmpty()) // Only for those that expose some: the others are written as they were
+            {
+                json.insert(u"properties", properties);
+            }
         }
-        const std::optional<ComponentInfo> info = ComponentFactory::instance().component(instance->componentId());
-        json.insert(u"properties", savedValues(*instance, info ? info->properties : QList<QMetaProperty>()));
-        QJsonArray objects;
-        const QList<PropertyObject> propertyObjects = instance->propertyObjects();
-        for(const PropertyObject& added : propertyObjects)
+        else if(const auto* stargate = qobject_cast<const Stargate*>(instance.get()))
         {
-            QJsonObject object;
-            object.insert(u"name", added.name);
-            object.insert(u"properties", savedValues(*added.object, added.properties()));
-            objects.append(object);
+            // What it exposes, without properties of its own.
+            const QList<ExposedInterface> interfaces = stargate->interfaces();
+            for(const Exposure exposure : {Exposure::Provided, Exposure::Consumed})
+            {
+                QJsonArray exposed;
+                for(const ExposedInterface& interfaceInfo : interfaces)
+                {
+                    if(interfaceInfo.exposure == exposure)
+                    {
+                        QJsonObject interfaceJson;
+                        interfaceJson.insert(u"name", interfaceInfo.name);
+                        interfaceJson.insert(u"type", QString::fromLatin1(interfaceInfo.type.name()));
+                        exposed.append(interfaceJson);
+                    }
+                }
+                if(!exposed.isEmpty())
+                {
+                    json.insert(exposureKey(exposure), exposed);
+                }
+            }
+            QJsonArray properties;
+            for(const ExposedProperty& property : stargate->properties())
+            {
+                QJsonObject propertyJson = entryJson(
+                    {.component = property.component, .object = property.object, .property = property.property});
+                propertyJson.insert(u"name", property.name);
+                properties.append(propertyJson);
+            }
+            if(!properties.isEmpty())
+            {
+                json.insert(u"exposed", properties);
+            }
         }
-        if(!objects.isEmpty())
+        else
         {
-            json.insert(u"objects", objects);
+            const std::optional<ComponentInfo> info = ComponentFactory::instance().component(instance->componentId());
+            json.insert(u"properties", savedValues(*instance, info ? info->properties : QList<QMetaProperty>()));
+            QJsonArray objects;
+            const QList<PropertyObject> propertyObjects = instance->propertyObjects();
+            for(const PropertyObject& added : propertyObjects)
+            {
+                QJsonObject object;
+                object.insert(u"name", added.name);
+                object.insert(u"properties", savedValues(*added.object, added.properties()));
+                objects.append(object);
+            }
+            if(!objects.isEmpty())
+            {
+                json.insert(u"objects", objects);
+            }
         }
         components.append(json);
 
@@ -597,6 +774,17 @@ Galaxy* Universe::instantiateGalaxy(const QString& filePath, const QString& name
     m_errorString.clear();
     const QString placedName = galaxy->objectName();
     return static_cast<Galaxy*>(adopt(scope, std::move(galaxy), placedName, placedName));
+}
+
+Stargate* Universe::addStargate(const QString& name)
+{
+    if(m_running)
+    {
+        return nullptr;
+    }
+    // Not made with std::make_unique: its constructor is only for the application.
+    return static_cast<Stargate*>(
+        adopt(applicationScope(), std::unique_ptr<Component>(new Stargate(*this, nullptr)), name, StargateName));
 }
 
 bool Universe::rename(Component& instance, const QString& name)
@@ -810,6 +998,17 @@ QJsonObject Universe::savedValues(const QObject& object, const QList<QMetaProper
     return edited != m_editedValues.end() ? edited->values : writableProperties(object, properties);
 }
 
+std::optional<QJsonValue> Universe::savedValue(const ExposedProperty& property) const
+{
+    if(property.object == nullptr)
+    {
+        return std::nullopt;
+    }
+    const QJsonObject values = savedValues(*property.object, {metaProperty(*property.object, property.property)});
+    const QJsonValue value = values.value(property.property);
+    return value.isUndefined() ? std::nullopt : std::optional(value);
+}
+
 void Universe::keepEditedValues()
 {
     m_editedValues.clear();
@@ -829,6 +1028,10 @@ void Universe::keepEditedValues(Component& component)
             keepEditedValues(*inner);
         }
         return;
+    }
+    if(qobject_cast<const Stargate*>(&component) != nullptr)
+    {
+        return; // No property of its own
     }
     const auto keep = [this](QObject& object, const QList<QMetaProperty>& properties)
     {

@@ -138,6 +138,8 @@ QIcon icon(GlossaryTerm term)
         return QIcon(QStringLiteral(":/icons/astre.svg"));
     case GlossaryTerm::Comet:
         return QIcon(QStringLiteral(":/icons/comet.svg"));
+    case GlossaryTerm::Stargate:
+        return QIcon(QStringLiteral(":/icons/stargate.svg"));
     }
     return {};
 }

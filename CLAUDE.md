@@ -8,7 +8,7 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 
 | Dossier | Cible | Rôle |
 | --- | --- | --- |
-| `Core/` | `Nebula::Core` (DLL) | Composants, plugins, fabrique, application, galaxies. En-têtes publics dans `include/Nebula/{Application,Component,Galaxy,Plugin,Settings}/`, sources dans `src/` (module `Galaxy` : `Galaxy`, `GalaxyInfo` ; ce qu'`Universe` en fait reste dans `Universe.cpp`) |
+| `Core/` | `Nebula::Core` (DLL) | Composants, plugins, fabrique, application, galaxies. En-têtes publics dans `include/Nebula/{Application,Component,Galaxy,Plugin,Settings}/`, sources dans `src/` (module `Galaxy` : `Galaxy`, `GalaxyInfo`, `Stargate` ; ce qu'`Universe` en fait reste dans `Universe.cpp`) |
 | `Core/cmake/` | — | `nebula_add_plugin()` et les gabarits `plugin.h.in` / `plugin.json.in`, livrés avec `Core` dans le paquet |
 | `NebulaStudio/` | `NebulaStudio` (exe Widgets) | L'éditeur graphique ; le code est dans `NebulaStudio/src/`, sans namespace, celui des fichiers de réglages dans `NebulaStudio/src/Settings/`, celui des galaxies (`GalaxyModel`, `GalaxyViewer`) dans `NebulaStudio/src/Galaxy/`, le logo de Nebula, les icônes du glossaire et la police des titres dans `NebulaStudio/resources/` |
 | `exemple/ExamplePlugin` | `.nbdl` dans `bin/plugins` | Composant `Greeter` (fournit `greeter` : `IGreeter`) |
@@ -17,8 +17,8 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `exemple/ExampleUniverseApp` | exe console + Widgets | Le `main` type : options de `Universe::addCommandLineOptions()`, `applyCommandLine()`, `open()` du projet passé en argument, puis `start()` |
 | `CMakeUtils/` | sous-module git | `cmu_add_target` / `cmu_add_executable` / `cmu_add_shared_library` |
 | `docs/release-notes/` | — | Notes de chaque version, `<x.y.z>.md` : le texte de sa release GitHub |
-| `docs/glossary.md` | — | Glossaire Nebula (Nebula, Univers, Galaxy, Astre, Comet), en anglais puis en français, référencé par le README : le vocabulaire à employer pour nommer code, documentation et interface ; Nebula et Univers (la classe `Universe`) sont déjà employés, et Galaxy pour un fichier de projet (`GalaxyInfo`, onglet **Galaxies**) |
-| `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Core/` (une par classe, et `TestGalaxy` pour les galaxies posées) et `NebulaStudio/` (Colors, Theme, PluginModel, ComponentModel, GalaxyModel, sources recompilées), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`. `PluginManager` se teste sur `ExamplePlugin` et `ExternalPlugin`. Rien n'est installé |
+| `docs/glossary.md` | — | Glossaire Nebula (Nebula, Univers, Galaxy, Astre, Comet, Stargate), en anglais puis en français, référencé par le README : le vocabulaire à employer pour nommer code, documentation et interface ; Nebula et Univers (la classe `Universe`) sont déjà employés, Galaxy pour un fichier de projet (`GalaxyInfo`, onglet **Galaxies**), et Stargate pour ce qu'une galaxy expose (`Stargate`) |
+| `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Core/` (une par classe, `TestGalaxy` pour les galaxies posées, leurs interfaces et leurs propriétés exposées, `TestStargate` pour la Stargate dans l'application qui l'édite) et `NebulaStudio/` (Colors, Theme, PluginModel, ComponentModel, GalaxyModel, sources recompilées), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`. `PluginManager` se teste sur `ExamplePlugin` et `ExternalPlugin`. Rien n'est installé |
 | `docs/testing.md` | — | Lancer, déboguer et écrire les tests, en français |
 | `CFmake/` | non suivi, dépôt à part | Ne fait pas partie du build : ne pas y toucher |
 
@@ -89,6 +89,11 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   - `unboundMandatoryInterfaces()` : les consommées `Mandatory` liées à rien. Vide = composant opérationnel ; c'est ce
     que NebulaStudio signale (liée suffit, même si le fournisseur n'a pas encore de pointeur, comme `Greeter` en
     édition).
+  - Privés, pour `Galaxy` et `Stargate` (amies) : `provide()` / `consume()` d'un type connu à l'exécution seulement,
+    `renameProvidedInterface()` / `renameConsumedInterface()` / `removeProvidedInterface()` /
+    `removeConsumedInterface()`, et `releaseInterfaces()`. Signaux `interfaceRenamed(nom, nouveau)` (une fournie : ses
+    consommateurs suivent son nom, `followProvider()`) et `interfaceRemoved(nom)` (une fournie : ses consommateurs
+    sont déliés). Un lien connaît le nom fourni au moment où le fournisseur parle, pas à sa création.
 - Objets à propriétés (`PropertyObject.*`) : `addPropertiesForQObject(objet[, nom])` (protégé, appelé par le composant
   à sa construction) ajoute un `PropertyObject {object, name}` à `propertyObjects()` ; il en sort seul à sa
   destruction. Signal `propertyObjectsChanged`. `PropertyObject::properties()` : les propriétés déclarées, sans
@@ -129,10 +134,34 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   `m_galaxy` (son `add()` accepte les composants de cette galaxy), nommés `<instance>.[<instance>.]<nom>`,
   renommés par `rename()` (`nameSettingsFiles()`), suivis par `settingsFilesChanged` une fois la galaxy remplie ;
   `allSettingsFiles()` (récursif) sert à `settingsFile()`, `start()` et `returnToEdition()`, pas à `settingsFiles()` ni
-  à `save()`. `keepEditedValues()` descend dans les galaxies. `save()` écrit une galaxy `{name, type, galaxy}`, chemin
-  relatif à `projectDirectory()` (dossier canonique de `filePath()`), absolu sans fichier, et ajoute aux `plugins`
-  ceux de ses composants (`addPluginFiles()`). `filePath()` / `setFilePath()` : le fichier du projet, fixé par `open()`
-  et par NebulaStudio.
+  à `save()`. `keepEditedValues()` descend dans les galaxies. `save()` écrit une galaxy `{name, type, galaxy,
+  properties}`, chemin relatif à `projectDirectory()` (dossier canonique de `filePath()`), absolu sans fichier,
+  `properties` (seulement si elle en expose) les valeurs de ses propriétés exposées par nom exposé (`savedValue()` :
+  celles de l'édition pendant l'exécution), que `loadGalaxy()` lui redonne, et ajoute aux `plugins` ceux de ses
+  composants (`addPluginFiles()`). Ses liens s'écrivent comme ceux de tout composant. `~Galaxy()` détache ses stargates
+  puis appelle `releaseInterfaces()`, avant la destruction de ses composants. `filePath()` / `setFilePath()` : le
+  fichier du projet, fixé par `open()` et par NebulaStudio.
+- Stargate (module `Galaxy` : `include/Nebula/Galaxy/Stargate.h`, `src/Galaxy/Stargate.cpp`) : composant que Core
+  construit lui-même (`Stargate::Id` = `Nebula.Stargate`, constructeur privé `(Universe&, Galaxy*)`, `Universe` et
+  `Galaxy` amies), créé par `Universe::addStargate(nom)` (`Stargate1`…, `nullptr` pendant l'exécution) ou lu d'un
+  projet. Ce que sa galaxy a une fois posée : des interfaces `ExposedInterface {name, type, exposure}`, `Exposure` vu
+  de la galaxy (`Provided` : la stargate la consomme, `Mandatory`, d'un composant ; `Consumed` : elle la fournit à des
+  composants), suivies par `Passage {info, id, pointer}` (les callbacks connaissent l'`id`, le nom change), et des
+  propriétés `ExposedProperty {name, component, object, property}` (pour une galaxy intérieure : `object` = elle,
+  `property` = son nom exposé), qui partent à la destruction de leur objet (`forget()`). `exposeInterface()` /
+  `renameInterface()` / `removeInterface()`, `exposeProperty()` (ce qu'un projet enregistre, `ProjectJson::
+  savedProperties()`, ou ce qu'une galaxy expose ; pas deux fois dans la galaxy) / `renameProperty()` /
+  `removeProperty()` ; un nom est unique dans la galaxy par sens (`galaxyComponents()`, toutes ses stargates) ; refus
+  si `!isChangeable()` (en cours, ou attachée). Signal `changed`. `createGalaxy()` appelle `attach()` sur chaque
+  stargate une fois la galaxy liée : la galaxy `provide()` les fournies (avec le pointeur déjà reçu) et `consume()` les
+  consommées, `Mandatory` si un composant qui s'y lie l'est ; le pointeur et sa disponibilité passent dans les deux
+  sens, de façon synchrone. `Galaxy::exposedProperties()` / `exposedProperty(nom)` les résolvent à travers les
+  galaxies intérieures (recalculé à chaque appel). Chargement : `loadScope()` crée les stargates à leur place, expose
+  leurs interfaces après tous les composants (`loadStargateInterfaces()`, type cherché par nom parmi les interfaces des
+  composants, `interfaceType()`, puis `QMetaType::fromName()`), avant les liens, et leurs propriétés après
+  (`loadStargateProperties()`, `readEntry()` partagé avec les fichiers de réglages). `save()` écrit `provided`,
+  `consumed` (`{name, type}`) et `exposed` (entrée de réglages + `name`), chacun s'il n'est pas vide. Dans l'application
+  elle-même, une stargate ne fait que passer ce que ses composants lui donnent.
 - Les chemins des plugins sont relatifs à `pluginRoot` (dossier de l'exécutable par défaut, `setPluginRoot()`) ; un
   chemin absolu dans un fichier reste lu tel quel. Seuls les plugins des composants présents sont écrits. À
   l'ouverture, un plugin est d'abord cherché par son id parmi ceux connus, son fichier n'est qu'un recours.
@@ -174,9 +203,9 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 ## NebulaStudio
 
 `main.cpp` → `SplashScreen`, puis `MainWindow` : trois panneaux dans un splitter horizontal, celui de gauche un
-`QTabWidget` en mode document (onglets **Plugins** et **Galaxies**). `SettingsItem`,
-`SettingsLinkItem` et `SettingsDialog` sont dans `src/Settings/`, inclus par `"Settings/SettingsItem.h"` ;
-`GalaxyModel` et `GalaxyViewer` dans `src/Galaxy/`, inclus par `"Galaxy/GalaxyModel.h"`.
+`QTabWidget` en mode document (onglets **Plugins** et **Galaxies**). `SettingsItem` et `SettingsDialog` sont dans
+`src/Settings/`, inclus par `"Settings/SettingsItem.h"` ; `GalaxyModel`, `GalaxyViewer`, `StargateItem` et
+`StargateDialog` dans `src/Galaxy/`, inclus par `"Galaxy/GalaxyModel.h"`.
 
 | Classe | Rôle |
 | --- | --- |
@@ -187,28 +216,32 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `PluginModel` / `PluginViewer` | Liste des plugins (Name, Version, State ; `IdRole`) et fiche avec boutons **Load** et **Unload** (signaux `loadRequested`, `unloadRequested`) ; `setUnloadAllowed(false)` désactive **Unload** pendant l'exécution |
 | `GalaxyModel` / `GalaxyViewer` | Liste des galaxies d'un dossier (`setDirectory()`, `*.nbp` triés par nom sans casse ; Name avec l'icône Galaxy et la description en infobulle, State : Loadable, Missing plugins ou Unreadable, avec l'icône d'avertissement du style et ce qui manque en infobulle ; `FilePathRole`), une `Galaxy {filePath, info, error, missingPlugins}` par ligne, `isLoadable()` ; une non chargeable est en `mutedText` (`ForegroundRole`). `refresh()` relit tout : retire, insère à sa place, met à jour (`dataChanged`), comme `PluginModel`. Une galaxy chargeable se glisse (`ItemIsDragEnabled`, `MimeType` `application/x-nebula-galaxy`, le chemin en UTF-8), les autres non. Un `QFileSystemWatcher` suit le dossier une fois qu'il existe et chacun de ses fichiers (voir Pièges). La fiche (inspecteur) : nom, description, fichier, plugins, état, puis, si elle n'est pas chargeable, une erreur en `warning` (remis sur `PaletteChange`) avec l'icône d'avertissement : les plugins manquants et comment les faire connaître, ou pourquoi le fichier est illisible ; bouton **Open** (`openRequested`), désactivé par `setOpenAllowed(false)` pendant l'exécution. Elle suit `dataChanged`, `rowsInserted` et `rowsRemoved` du modèle |
 | `ComponentModel` / `ComponentViewer` | Liste des composants (Name, Category, Plugin ; la description en infobulle), glissables au format `application/x-nebula-component` (id en UTF-8), et fiche avec toutes les propriétés ; `refresh()` insère les composants enregistrés depuis et retire ceux d'un plugin déchargé. La vue la montre à travers un `QSortFilterProxyModel` créé par `MainWindow` : barre de recherche (Ctrl+F), sans casse, sur la colonne et le rôle de la liste déroulante à côté (`SearchFields` dans `MainWindow.cpp`) : Name en `DisplayRole` (nom), Name en `ToolTipRole` (description), Category en `DisplayRole` (catégorie). Un rôle d'index de la vue se lit donc à travers le proxy (`data()`), pas de `row()` à passer au modèle |
-| `EditionScene` | `QGraphicsScene` 4000×3000, grille de 20 : dépôt = `Universe::instantiate()`, tracé des liens entre points d'interface (`Component::bindInterface()`), menu contextuel des zones, des fichiers de réglages (**Add settings file** ouvre aussitôt sa fenêtre ; sur l'un d'eux : éditer, **Write default values**, supprimer) et du composant sous le curseur (renommer, couleur, supprimer), double-clic sur un fichier de réglages = `SettingsDialog` (ouvert par `open()`, pas `exec()`), touche Suppr = suppression des composants et fichiers sélectionnés sauf pendant l'édition d'un nom (`remove()` détruit l'item, donc ses liens, avant `Universe::remove()` / `removeSettingsFile()`), `selectedComponent()`, `select(composant)` (le sélectionne seul, renvoie son item) ; `remove(liste)` public pour le déchargement d'un plugin ; `save()` / `load()` / `reset()` pour les projets ; signaux `refused(why)` quand un nom est refusé ou un fichier non écrit, `told(what)` quand il l'est, affichés par `MainWindow` dans la barre d'état. Verrouillée pendant l'exécution (`isEditable()`, suit `runningChanged`) : `setEditable()` passe à chaque item (`ComponentItem::setEditable()`, `ItemIsMovable` d'un `SettingsItem`, `ZoneItem::setEditable()`), pas de dépôt ni de tracé de lien, double-clic sur un fichier de réglages ignoré, menu contextuel et Suppr remplacés par `refuseEdition()` ; la sélection reste. Galaxies : dépôt d'un `GalaxyModel::MimeType` = `Universe::instantiateGalaxy()` (refus et problèmes dans la barre d'état, `galaxyPlaced` pour rafraîchir les modèles), item `setOpenable()` avec l'icône Galaxy, **Open galaxy** dans son menu ; son `openRequested` et ce menu émettent `galaxyOpened(Galaxy&)`. Second constructeur `EditionScene(application, factory, galaxy)` : montre une galaxy (`galaxy()`) par `show()`, commun avec `load()`, aux positions de `Galaxy::project()`, jamais éditable (`isEditable()` faux, `refuseEdition()` le dit), et ses galaxies s'ouvrent de même |
+| `EditionScene` | `QGraphicsScene` 4000×3000, grille de 20 : dépôt = `Universe::instantiate()`, tracé des liens entre points d'interface (`Component::bindInterface()`), menu contextuel des zones, des fichiers de réglages (**Add settings file** ouvre aussitôt sa fenêtre ; sur l'un d'eux : éditer, **Write default values**, supprimer) et du composant sous le curseur (renommer, couleur, supprimer), double-clic sur un fichier de réglages = `SettingsDialog` (ouvert par `open()`, pas `exec()`), touche Suppr = suppression des composants et fichiers sélectionnés sauf pendant l'édition d'un nom (`remove()` détruit l'item, donc ses liens, avant `Universe::remove()` / `removeSettingsFile()`), `selectedComponent()`, `select(composant)` (le sélectionne seul, renvoie son item) ; `remove(liste)` public pour le déchargement d'un plugin ; `save()` / `load()` / `reset()` pour les projets ; signaux `refused(why)` quand un nom est refusé ou un fichier non écrit, `told(what)` quand il l'est, affichés par `MainWindow` dans la barre d'état. Verrouillée pendant l'exécution (`isEditable()`, suit `runningChanged`) : `setEditable()` passe à chaque item (`ComponentItem::setEditable()`, `ItemIsMovable` d'un `SettingsItem`, `ZoneItem::setEditable()`), pas de dépôt ni de tracé de lien, double-clic sur un fichier de réglages ignoré, menu contextuel et Suppr remplacés par `refuseEdition()` ; la sélection reste. Galaxies : dépôt d'un `GalaxyModel::MimeType` = `Universe::instantiateGalaxy()` (refus et problèmes dans la barre d'état, `galaxyPlaced` pour rafraîchir les modèles), item `setIcon()` Galaxy et `setOpenable()`, **Open galaxy** dans son menu ; son `openRequested` et ce menu émettent `galaxyOpened(Galaxy&)`. Stargates : **Add stargate** (zone vide, `Universe::addStargate()`, `StargateDialog` aussitôt), **Expose...** sur le point d'interface d'un composant qui n'est pas une stargate (`expose()` : nouvelle stargate à `ExposedDistance` du côté de l'interface, nom de l'interface ou suivi d'un numéro, liée, puis `editInterfaceName()` aussitôt), **Edit stargate...** dans son menu et son `openRequested` (`editStargate()`, refusé hors édition), `interfaceNameEdited` → `renameExposed()` (`Stargate::renameInterface()`, refus dans la barre d'état). Les liens ne sont plus tracés à la main : `refreshLinks()` fait correspondre les `LinkItem` aux `binding()` des composants montrés (garde ceux qui y sont, détruit les autres, ajoute ce qui manque), appelé par `show()`, `link()`, `expose()`, le `accepted` d'une `StargateDialog` et `ComponentItem::interfacesRebuilt` ; `show()` refait aussi les pointillés des `StargateItem` une fois tous les composants montrés. Second constructeur `EditionScene(application, factory, galaxy)` : montre une galaxy (`galaxy()`) par `show()`, commun avec `load()`, aux positions de `Galaxy::project()`, jamais éditable (`isEditable()` faux, `refuseEdition()` le dit), et ses galaxies s'ouvrent de même |
 | `EditionView` | `QGraphicsView` de la scène, avec un zoom (`zoom()`, `setZoom()` borné entre 0,25 et 4, `zoomIn()` / `zoomOut()` par pas de 1,25, `resetZoom()`, signal `zoomChanged`) : touches + et - autour du centre, si la scène ne les a pas prises (un nom en cours d'édition les reçoit d'abord), Ctrl+molette autour du point sous le curseur (défilement recalculé à la main, pas d'ancre `AnchorUnderMouse`). Le zoom n'est pas écrit dans le projet |
-| `ComponentItem` | `QGraphicsObject` sélectionnable, déplaçable tant qu'il est éditable (`setEditable()`) ; reconstruit ses `InterfaceItem` sur `interfacesChanged` ; marque d'état dans le coin, redessinée sur `stateChanged` (rien = `Editing`, triangle = `Running`) ; dans le coin opposé, « ! » dans un disque `warning` tant que `unboundMandatoryInterfaces()` n'est pas vide (`m_unbound`, relu par `refreshInterfaces()`, avec l'infobulle et `InterfaceItem::setMissing()`) ; couleur optionnelle (`color()` invalide = couleurs du style), opacité comprise, peinte derrière ses noms seulement ; `editName()` édite le nom sur place (double-clic sur les noms, s'il est éditable) et émet `nameEdited`, que la scène applique par `Universe::rename()` ; `setOpenable(icône, à propos)` pour une galaxy : icône devant le nom de sa galaxy, infobulle (fichier, description) à la place de l'id, double-clic sous la ligne du nom (partout s'il n'est pas éditable) = `openRequested()` |
-| `NameEditor` | `QGraphicsTextItem` enfant d'un item, pour éditer son nom sur place (titre d'une zone, nom d'un composant) : Entrée ou un clic ailleurs valide, Échap abandonne. `Colors.h` : `over()`, une couleur translucide vue sur un fond, `luminance()` et `contrast()` au sens des WCAG, et `textColorOver()`, noir ou blanc, celui qui contraste le plus avec le fond (4,58 au moins) |
-| `InterfaceItem` | Point sur le bord (consommée à gauche, fournie à droite), astérisque après le nom d'une consommée `Mandatory`, point et nom en `warning` quand elle n'est liée à rien (`setMissing()`), `typeName(QMetaType)` statique (sans l'`*`), `Type = UserType + 1`, `canLinkTo()`, infobulle, estompage ; connaît ses `LinkItem` |
-| `LinkItem` | Courbe entre deux points, Z = -1, se supprime avec le premier `InterfaceItem` détruit ; `curve()` statique sert aussi au lien en cours de tracé |
+| `ComponentItem` | `QGraphicsObject` sélectionnable, déplaçable tant qu'il est éditable (`setEditable()`) ; sur `interfacesChanged`, met à jour ses `InterfaceItem`, ou les refait tous, sans leurs liens, quand une interface montrée a été renommée ou retirée (celles d'une stargate), et émet alors `interfacesRebuilt` ; `setRows()` : lignes nom / emplacement sous les interfaces (propriétés d'une stargate) ; `setInterfacesRenamable()` + `editInterfaceName()` : nom d'une interface édité sur place par double-clic, `NameEditor` enfant du `ComponentItem` (pas de l'`InterfaceItem`, que le renommage détruit), signal `interfaceNameEdited(kind, nom, nouveau)`, `isNameEdited(interface)` pour que l'`InterfaceItem` ne peigne pas son nom pendant ce temps ; marque d'état dans le coin, redessinée sur `stateChanged` (rien = `Editing`, triangle = `Running`) ; dans le coin opposé, « ! » dans un disque `warning` tant que `unboundMandatoryInterfaces()` n'est pas vide (`m_unbound`, relu par `refreshInterfaces()`, avec l'infobulle et `InterfaceItem::setMissing()`) ; couleur optionnelle (`color()` invalide = couleurs du style), opacité comprise, peinte derrière ses noms seulement ; `editName()` édite le nom sur place (double-clic sur les noms, s'il est éditable) et émet `nameEdited`, que la scène applique par `Universe::rename()` ; `setIcon()` : icône devant le nom de son composant ; `setOpenable(à propos, comment l'ouvrir)` pour une galaxy ou une stargate : infobulle (à propos à la place de l'id, puis comment l'ouvrir), double-clic sous la ligne du nom (partout s'il n'est pas éditable), hors d'un nom d'interface renommable, = `openRequested()`, après `ungrabMouse()` : ce qui s'ouvre (fenêtre, autre scène) prend le relâchement, et la scène garderait l'item saisi, sans menu contextuel ni Suppr |
+| `StargateItem` (`Galaxy/`) | `ComponentItem` d'une `Nebula::Stargate` : icône Stargate devant « Stargate », interfaces renommables, une ligne par propriété exposée (nom exposé, `Composant.[objet.]propriété`, refaites sur `Stargate::changed` et le renommage de leurs composants), infobulle de ce qu'a la galaxy (fournit, consomme, expose), `DashedLinkItem` vers les composants de ces propriétés (`refreshLinks()`, public pour `EditionScene::show()`), suivis par `xChanged` / `yChanged` ; double-clic = `openRequested` |
+| `StargateDialog` (`Galaxy/`) | Arbre composant (sauf stargates) → interfaces consommées, fournies, puis propriétés (celles que `SettingsFile::canHold()` accepte, groupes d'objets comme `SettingsDialog`, ou les propriétés exposées d'une galaxy), colonnes Type, Exposed as (un double-clic sur une ligne la coche puis édite ce nom, `editItem()`), Exposed by (une autre stargate : ligne désactivée) ; dernier groupe « Bound to none of these components » : ce que la stargate expose sans ligne (`Kind::Kept`). Cocher donne un nom par défaut (`defaultName()`, unique sauf deux consommées de même type, qui partagent : `canShare()`), `check()` refuse un nom vide ou en double (OK grisé, raison en `warning`, remise sur `PaletteChange`). `apply()` au `accepted` : propriétés retirées puis ajoutées, consommateurs déliés, interfaces retirées puis exposées dans l'ordre de l'arbre, puis liées |
+| `NameEditor` | `QGraphicsTextItem` enfant d'un item, pour éditer son nom sur place (titre d'une zone, nom d'un composant ou d'une interface d'une stargate, aligné à gauche, au centre ou à droite) : Entrée ou un clic ailleurs valide, Échap abandonne. `Colors.h` : `over()`, une couleur translucide vue sur un fond, `luminance()` et `contrast()` au sens des WCAG, et `textColorOver()`, noir ou blanc, celui qui contraste le plus avec le fond (4,58 au moins) |
+| `InterfaceItem` | Point sur le bord (consommée à gauche, fournie à droite), astérisque après le nom d'une consommée `Mandatory`, point et nom en `warning` quand elle n'est liée à rien (`setMissing()`), `typeName(QMetaType)` statique (sans l'`*`), `Type = UserType + 1`, `canLinkTo()`, infobulle, estompage, `nameRect()` ; connaît ses `LinkItem` |
+| `LinkItem` | Courbe entre deux points, Z = -1, se supprime avec le premier `InterfaceItem` détruit ; `provided()` ; `curve()` statique sert aussi au lien en cours de tracé |
 | `ZoneItem` | Zone colorée titrée, `Type = UserType + 2`, Z = -aire ; déplacement par le titre avec son contenu (composants et fichiers de réglages par leur centre, zones entières), redimensionnement par les bords, édition du titre sur place ; sa `shape()` ne couvre que titre et bords ; `setEditable(false)` lui retire boutons et survol |
-| `SettingsItem` / `SettingsLinkItem` | `QGraphicsObject` d'un `SettingsFile` : feuille au coin plié, nom du fichier, infobulle (chemin, propriétés tenues) ; refait ses `SettingsLinkItem` (traits pointillés de centre à centre, Z = -1, dans la scène et non enfants, détruits avec lui) sur `SettingsFile::changed` et à son ajout à la scène, et les suit par `xChanged` / `yChanged` des deux items |
+| `SettingsItem` / `DashedLinkItem` | `QGraphicsObject` d'un `SettingsFile` : feuille au coin plié, nom du fichier, infobulle (chemin, propriétés tenues) ; refait ses `DashedLinkItem` (`src/`, traits pointillés de centre à centre, Z = -1, dans la scène et non enfants, détruits avec lui, qui préviennent leur item par un callback quand un autre les détruit, comme `QGraphicsScene::clear()`) sur `SettingsFile::changed` et à son ajout à la scène, et les suit par `xChanged` / `yChanged` des deux items ; `StargateItem` fait de même |
 | `SettingsDialog` | Nom, dossier (chemin résultant affiché, ou pourquoi le nom est refusé : vide, ou celui d'un autre fichier, OK alors grisé) et arbre composant → groupe d'objet → propriétés que `SettingsFile::canHold()` accepte, à cocher ; celles d'un autre fichier sont désactivées avec son nom ; les groupes d'objets ne sont ouverts que s'ils ont une propriété tenue ; appliqué au `accepted` |
-| `PropertyEditor` | `QTableWidget` des propriétés inscriptibles de type bool, int, uint, double, QString, QDate, QTime, QDateTime : celles du composant, puis celles de ses `propertyObjects()` (sans `objectName`), sans nom à la suite, avec nom sous une ligne de titre par nom ; nom en italique pour une propriété tenue par un fichier de réglages ; suit les signaux NOTIFY, `propertyObjectsChanged`, `settingsFilesChanged` et `runningChanged` : en lecture seule pendant l'exécution (`NoEditTriggers`), et par `setReadOnly(true)` dans une galaxy ouverte ; une galaxy sélectionnée n'a pas de propriété, son texte dit de double-cliquer dessus |
+| `PropertyEditor` | `QTableWidget` des propriétés inscriptibles de type bool, int, uint, double, QString, QDate, QTime, QDateTime : celles du composant, puis celles de ses `propertyObjects()` (sans `objectName`), sans nom à la suite, avec nom sous une ligne de titre par nom ; pour une galaxy, ses `exposedProperties()` sous leur nom exposé (`Row::name`, `Row::component` = le composant intérieur, pour l'italique et l'infobulle) ; nom en italique pour une propriété tenue par un fichier de réglages, icône Stargate et infobulle pour une propriété qu'une stargate de l'application expose (`exposedBy()`) ; suit les signaux NOTIFY, `propertyObjectsChanged`, `settingsFilesChanged`, `componentsChanged`, `changed` de chaque stargate de l'application et `runningChanged` : en lecture seule pendant l'exécution (`NoEditTriggers`), et par `setReadOnly(true)` dans une galaxy ouverte ; une galaxy sans propriété exposée, ou une stargate, a un texte qui dit de double-cliquer dessus |
 
 Les chaînes affichées passent par `tr()`, en anglais.
 
 **Logo et icônes** (`NebulaStudio/resources/`) : `nebula.svg`, le logo de Nebula (une nébuleuse traversée de trois
-astres liés), et `icons/{universe,galaxy,astre,comet}.svg`, une icône par terme du glossaire, sont des SVG aux couleurs
+astres liés), et `icons/{universe,galaxy,astre,comet,stargate}.svg`, une icône par terme du glossaire, sont des SVG aux couleurs
 du thème, compilés par `nebulastudio.qrc` (AUTORCC, nommé dans `SOURCES`). Les icônes n'emploient que les couleurs de
 zones qui gardent 3 contre 1 sur les champs des deux schémas (`#6366F1`, `#C026D3`, `#3B82F6`, `#EC4899`). Qt Svg est
 lié à NebulaStudio (`find_package` dans son `CMakeLists.txt`) : `QSvgRenderer` dessine le logo sur le splash, et son
 moteur d'icônes, déployé par windeployqt (`iconengines/qsvgicon`), lit les `QIcon` des SVG : `logoPath()` pour
 `QApplication::setWindowIcon()` au début de `main.cpp`, `icon(GlossaryTerm)` de `Theme.h` pour **New** (Univers),
 **Add zone**, l'onglet **Galaxies**, ses lignes et **Description...** (Galaxy), la liste des composants (Astre, `DecorationRole` de la colonne Name) et les fichiers de réglages
-(Comet : **Add settings file**, **Edit settings file...**, `SettingsDialog`). `nebula.ico` (16 à 256 px, entrées PNG),
+(Comet : **Add settings file**, **Edit settings file...**, `SettingsDialog`) et les stargates (Stargate, un anneau à
+chevrons : **Add stargate**, **Expose...**, **Edit stargate...**, `StargateItem`, `StargateDialog`, les propriétés
+exposées du `PropertyEditor`). `nebula.ico` (16 à 256 px, entrées PNG),
 par `nebulastudio.rc` (`IDI_ICON1`, ajouté sous Windows seulement, à côté de la ressource de version de CMakeUtils), est
 l'icône de `NebulaStudio.exe` : rendu du logo, à refaire quand il change, par un petit programme Qt qui le dessine avec
 `QSvgRenderer` à chaque taille et assemble les PNG (pas d'outil dans le dépôt).
@@ -219,7 +252,9 @@ de NebulaStudio (`SpaceGrotesk-OFL.txt`). Seule la graisse Bold sert : en ajoute
 
 **Fichier de projet `.nbp`** (JSON, version 1, format décrit dans le README)
 - Le contenu applicatif est lu et écrit par `Universe` (voir Core), `description` comprise, que **File** >
-  **Description...** édite, et les galaxies posées (`type` `Nebula.Galaxy`, `galaxy` relatif au fichier du projet).
+  **Description...** édite, les galaxies posées (`type` `Nebula.Galaxy`, `galaxy` relatif au fichier du projet,
+  `properties` : valeurs de ses propriétés exposées) et les stargates (`type` `Nebula.Stargate`, `provided`,
+  `consumed`, `exposed`).
   `EditionScene::save()` y ajoute `x` / `y`
   et `color` (`#aarrggbb`, seulement si une couleur a été choisie) dans chaque composant (retrouvé par son nom),
   `x` / `y` dans chaque fichier de `settings` (par rang, dans l'ordre de `settingsFiles()`) et `zones` ;
@@ -254,10 +289,13 @@ de NebulaStudio (`SpaceGrotesk-OFL.txt`). Seule la graisse Bold sert : en ajoute
   en compile un.
 - Composants non opérationnels : **Start** ne les signale pas et ne refuse rien ; seuls le « ! », l'ambre et
   `ProblemList` les montrent.
-- Galaxies : une galaxy posée ne s'édite pas (sa sous-scène est en lecture, #42), n'expose ni propriétés (#44) ni
-  interfaces (#43) : elle n'a donc ni lien ni propriété dans la scène du dessus, et `Galaxy` n'appelle pas
-  `releaseInterfaces()` (rien à libérer tant qu'elle ne fournit rien). Les problèmes de ses composants (interfaces
-  obligatoires non liées) ne remontent pas dans `ProblemList`. Les galaxies ne sont pas dans la liste des composants
+- Galaxies : une galaxy posée ne s'édite pas (sa sous-scène est en lecture, #42) : ses stargates se changent en
+  ouvrant son fichier comme projet, et les instances déjà posées gardent ce qu'elles ont lu. Les problèmes de ses
+  composants (interfaces obligatoires non liées, interface d'une stargate liée à rien) ne remontent pas dans
+  `ProblemList`. Un fichier de réglages de l'application ne tient pas une propriété exposée par une galaxy (seulement
+  ceux de la galaxy, sur ses composants). L'onglet **Galaxies** ne dit pas ce qu'une galaxy expose avant qu'elle soit
+  posée, et une galaxy posée ne montre ses propriétés que dans l'éditeur de propriétés, pas sur son item.
+  **Expose...** pose la stargate sans éviter ce qui est déjà là. Les galaxies ne sont pas dans la liste des composants
   (#42). Un plugin connu n'est pas vérifié contre les types des composants (il faudrait le charger) ; le dossier de
   l'onglet n'est pas mémorisé d'un lancement à l'autre ; la galaxy ouverte n'est pas marquée dans la liste. Le terme
   Galaxy reste aussi sur les zones (`ZoneItem`, **Add zone**).
@@ -317,6 +355,15 @@ de NebulaStudio (`SpaceGrotesk-OFL.txt`). Seule la graisse Bold sert : en ajoute
   du plugin (`QMetaType::fromName("IGreeter*")` plante après coup) et un `QVariant` lu d'une de ses propriétés pointe
   aussi dans la DLL. Conséquences : le fichier `.nbdl` reste verrouillé jusqu'à la fermeture, et un plugin recompilé
   n'est relu qu'au lancement suivant.
+- Le type d'une interface d'un plugin n'est enregistré sous son nom qu'une fois utilisé : `QMetaType::fromName()` ne
+  le trouve pas forcément à la lecture d'une stargate. `Universe::interfaceType()` le cherche donc d'abord parmi les
+  interfaces des composants déjà créés, dont il est le type.
+- Les interfaces d'une stargate se renomment et se retirent : un `ComponentItem` refait alors ses `InterfaceItem`, et
+  leurs `LinkItem` partent avec eux ; c'est `EditionScene::refreshLinks()`, sur `interfacesRebuilt`, qui les redessine
+  d'après les liens de Core. Un nouveau chemin qui lie ou délie hors de `EditionScene::link()` doit l'appeler aussi.
+- Un programme qui pilote `MainWindow` la ferme ou la cache avant de la détruire, comme `main.cpp` : détruite visible,
+  la liste des plugins relit son `PluginModel` pendant la destruction de ses enfants, après celle de l'application, et
+  le `PluginManager` lu n'existe plus.
 
 ## Conventions
 
