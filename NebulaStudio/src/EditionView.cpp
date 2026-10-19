@@ -4,6 +4,7 @@
 #include "EditionView.h"
 
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <QScrollBar>
 #include <QWheelEvent>
 #include <algorithm>
@@ -93,5 +94,77 @@ void EditionView::keyPressEvent(QKeyEvent* event)
         break;
     default:
         break;
+    }
+}
+
+void EditionView::mousePressEvent(QMouseEvent* event)
+{
+    // The middle button alone pans the view, unknown to the scene: the selection, and a name being edited, stay.
+    if(event->button() == Qt::MiddleButton && event->buttons() == Qt::MiddleButton)
+    {
+        startPan(event->position().toPoint());
+        event->accept();
+        return;
+    }
+    endPanIfReleased(*event);
+    // The other buttons are for the scene once the pan is over.
+    if(m_panFrom)
+    {
+        event->accept();
+        return;
+    }
+    QGraphicsView::mousePressEvent(event);
+}
+
+void EditionView::mouseMoveEvent(QMouseEvent* event)
+{
+    endPanIfReleased(*event);
+    if(!m_panFrom)
+    {
+        QGraphicsView::mouseMoveEvent(event);
+        return;
+    }
+    // What was under the cursor stays under it.
+    const QPoint at = event->position().toPoint();
+    const QPoint moved = at - *m_panFrom;
+    horizontalScrollBar()->setValue(horizontalScrollBar()->value() - moved.x());
+    verticalScrollBar()->setValue(verticalScrollBar()->value() - moved.y());
+    m_panFrom = at;
+    event->accept();
+}
+
+void EditionView::mouseReleaseEvent(QMouseEvent* event)
+{
+    if(!m_panFrom)
+    {
+        QGraphicsView::mouseReleaseEvent(event);
+        return;
+    }
+    // Its press was for the pan, or was not given to the scene.
+    endPanIfReleased(*event);
+    event->accept();
+}
+
+void EditionView::startPan(QPoint at)
+{
+    // Started again when the release of the middle button was lost: the cursor from before is kept.
+    if(!m_panFrom)
+    {
+        m_cursor = viewport()->cursor();
+        viewport()->setCursor(Qt::ClosedHandCursor);
+        // Each scroll replays the last mouse event to the scene, where the cursor was before the pan: what passes
+        // there would be hovered, and the cursor would take its shape. Not while the view is not interactive.
+        setInteractive(false);
+    }
+    m_panFrom = at;
+}
+
+void EditionView::endPanIfReleased(const QMouseEvent& event)
+{
+    if(m_panFrom && !event.buttons().testFlag(Qt::MiddleButton))
+    {
+        m_panFrom.reset();
+        setInteractive(true);
+        viewport()->setCursor(m_cursor);
     }
 }
