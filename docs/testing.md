@@ -32,7 +32,7 @@ qu'avec des tests verts.
 | `tests/CMakeLists.txt` | `nebula_add_test()`, la sortie des tests dans `<build>/tests/bin[/<config>]` |
 | `tests/Components/` | Bibliothèque statique `TestComponents` : les composants écrits pour les tests |
 | `tests/Core/` | Un test par classe de Core : `TestComponent`, `TestComponentFactory`, `TestPluginManager`, `TestUniverse`, `TestGalaxy` (une galaxy posée, ses interfaces et ses propriétés exposées compris), `TestStargate`, `TestSettingsFile` |
-| `tests/NebulaStudio/` | Les classes de NebulaStudio qui se passent de sa fenêtre : `TestColors`, `TestTheme`, `TestPluginModel`, `TestComponentModel`, `TestGalaxyModel` |
+| `tests/NebulaStudio/` | Les classes de NebulaStudio qui se passent de sa fenêtre : `TestColors`, `TestTheme`, `TestPluginModel`, `TestComponentModel`, `TestEditionView`, `TestGalaxyModel` |
 
 Les tests ne sont ni installés ni copiés dans le paquet.
 
@@ -133,4 +133,7 @@ void TestUniverse::rename()
 - `QSignalSpy` compte les signaux ; `QTRY_COMPARE` attend ce qui arrive par la boucle d'événements (l'écriture
   regroupée d'un fichier de réglages).
 - `QAbstractItemModelTester` surveille un modèle de NebulaStudio pendant tout le test.
+- Une vue se pilote en envoyant des `QMouseEvent` à son `viewport()` (`TestEditionView`). Un déplacement sans bouton
+  n'y arrive que si la vue suit la souris, ce que fait une `QGraphicsView` dès qu'un item de sa scène accepte le
+  survol ou a un curseur, comme ceux de NebulaStudio.
 - Un test qui passe du premier coup se vérifie en cassant exprès le code qu'il couvre : il doit échouer.

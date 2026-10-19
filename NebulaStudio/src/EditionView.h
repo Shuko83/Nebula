@@ -3,11 +3,14 @@
 
 #pragma once
 
+#include <QCursor>
 #include <QGraphicsView>
+#include <optional>
 
 // Shows the edition zone, at a zoom level that Ctrl and the mouse wheel change around the point under the cursor, and
 // the + and - keys around the middle of the view, unless the name of an item is edited there: what is typed is then
-// for it. The zoom only changes what is seen, not the scene: it is not saved with the project.
+// for it. Dragging with the middle button held moves the view, what is under the cursor following it. The zoom and
+// the move only change what is seen, not the scene: they are not saved with the project.
 class EditionView : public QGraphicsView
 {
     Q_OBJECT
@@ -32,4 +35,16 @@ class EditionView : public QGraphicsView
   protected:
     void wheelEvent(QWheelEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+
+  private:
+    void startPan(QPoint at);
+    // Ends the pan once the middle button is no longer held with event, its release or not: the release is lost when
+    // another window takes the mouse meanwhile.
+    void endPanIfReleased(const QMouseEvent& event);
+
+    std::optional<QPoint> m_panFrom; // Where the cursor was when the view last moved, while the middle button pans it
+    QCursor m_cursor;                // The one of the viewport before the pan
 };
