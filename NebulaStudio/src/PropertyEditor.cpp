@@ -99,16 +99,12 @@ void PropertyEditor::setComponent(Nebula::Component* component)
         connect(component, &QObject::objectNameChanged, this, &PropertyEditor::refreshPlaceholder);
         connect(component, &Nebula::Component::propertyObjectsChanged, this, &PropertyEditor::rebuild);
     }
-    rebuild();
-}
-
-void PropertyEditor::setReadOnly(bool readOnly)
-{
-    if(readOnly != m_readOnly)
+    // What a galaxy exposes is of its components, which are others once it is read again.
+    if(auto* galaxy = qobject_cast<Nebula::Galaxy*>(component))
     {
-        m_readOnly = readOnly;
-        rebuild();
+        connect(galaxy, &Nebula::Galaxy::reloaded, this, &PropertyEditor::rebuild);
     }
+    rebuild();
 }
 
 void PropertyEditor::changeEvent(QEvent* event)
@@ -154,13 +150,10 @@ void PropertyEditor::rebuild()
         }
     }
     m_rows.clear();
-    // What the stargates of the application expose, which the names tell.
-    for(const std::unique_ptr<Nebula::Component>& component : m_application.components())
+    // What the stargates where it is expose, which the names tell.
+    for(const Nebula::Stargate* stargate : stargates())
     {
-        if(const auto* stargate = qobject_cast<const Nebula::Stargate*>(component.get()))
-        {
-            connect(stargate, &Nebula::Stargate::changed, this, &PropertyEditor::rebuild, Qt::UniqueConnection);
-        }
+        connect(stargate, &Nebula::Stargate::changed, this, &PropertyEditor::rebuild, Qt::UniqueConnection);
     }
 
     // Only what can be edited here: the other properties of a component are in the viewer of its component.
@@ -231,8 +224,8 @@ void PropertyEditor::rebuild()
     const QSignalBlocker blocker(m_table); // itemChanged is for the values edited in the table
     m_table->setRowCount(0);               // Closes the editor of a value shown until now
     // A click on a value edits it, while the application is edited.
-    m_table->setEditTriggers(m_readOnly || m_application.isRunning() ? QAbstractItemView::NoEditTriggers
-                                                                     : QAbstractItemView::AllEditTriggers);
+    m_table->setEditTriggers(m_application.isRunning() ? QAbstractItemView::NoEditTriggers
+                                                       : QAbstractItemView::AllEditTriggers);
     m_table->clearSpans();
     m_table->setRowCount(static_cast<int>(m_rows.size()));
     const QMetaMethod refresh = metaObject()->method(metaObject()->indexOfSlot("refreshValues()"));
@@ -298,8 +291,8 @@ void PropertyEditor::refreshPlaceholder()
     }
     else if(qobject_cast<const Nebula::Galaxy*>(m_component) != nullptr)
     {
-        m_placeholder->setText(tr("%1 is a galaxy that exposes no property: double-click it to see its components")
-                                   .arg(m_component->objectName()));
+        m_placeholder->setText(
+            tr("%1 is a galaxy that exposes no property: double-click it to open it").arg(m_component->objectName()));
     }
     else if(qobject_cast<const Nebula::Stargate*>(m_component) != nullptr)
     {
@@ -313,15 +306,28 @@ void PropertyEditor::refreshPlaceholder()
     }
 }
 
+QList<const Nebula::Stargate*> PropertyEditor::stargates() const
+{
+    QList<const Nebula::Stargate*> stargates;
+    if(m_component == nullptr)
+    {
+        return stargates;
+    }
+    for(const std::unique_ptr<Nebula::Component>& component :
+        m_application.components(m_application.galaxyOf(*m_component)))
+    {
+        if(const auto* stargate = qobject_cast<const Nebula::Stargate*>(component.get()))
+        {
+            stargates.append(stargate);
+        }
+    }
+    return stargates;
+}
+
 std::pair<const Nebula::Stargate*, QString> PropertyEditor::exposedBy(const Row& row) const
 {
-    for(const std::unique_ptr<Nebula::Component>& component : m_application.components())
+    for(const Nebula::Stargate* stargate : stargates())
     {
-        const auto* stargate = qobject_cast<const Nebula::Stargate*>(component.get());
-        if(stargate == nullptr)
-        {
-            continue;
-        }
         for(const Nebula::ExposedProperty& exposed : stargate->properties())
         {
             if(exposed.component == row.component && exposed.object == row.object &&

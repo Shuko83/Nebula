@@ -58,7 +58,11 @@ struct ExposedProperty
 // consumes being mandatory: it exposes nothing until they are bound. The pointer passes as it is, and so does its
 // availability: when the one that provides it withdraws it, those that consume it on the other side are told before it
 // goes. In the application itself, which nothing places, they only pass what its components give them. What it exposes
-// is not changed while it runs, nor once its galaxy is placed: a placed galaxy has what its file has.
+// is not changed while it runs. In a galaxy placed, what it is changed with is what the galaxy has from then on: an
+// interface exposed is provided or consumed by the galaxy, what is bound to one renamed is still bound, and what was
+// bound to one removed no longer is; the other instances of the galaxy have it once its file is saved, see
+// Universe::reloadGalaxy(). What the galaxy consumes is mandatory when one of its components needs it as the galaxy is
+// read; one exposed since is not, until the galaxy is read again.
 class CORE_EXPORT Stargate : public Component
 {
     Q_OBJECT
@@ -103,7 +107,7 @@ class CORE_EXPORT Stargate : public Component
     // No longer exposes name. Does nothing when it does not expose it, or is not changed.
     void removeProperty(const QString& name);
 
-    // Whether what it exposes can be changed: not while it runs, nor once its galaxy is placed.
+    // Whether what it exposes can be changed: not while it runs.
     [[nodiscard]] bool isChangeable() const;
 
   signals:
@@ -136,8 +140,12 @@ class CORE_EXPORT Stargate : public Component
     [[nodiscard]] Passage* passage(int id);
     [[nodiscard]] Passage* passage(Exposure exposure, const QString& name);
     // Gives its galaxy what it exposes, once the galaxy is filled: from then on, what one side is given, the other
-    // side has. What its galaxy consumes is mandatory there when a component of the galaxy needs it.
+    // side has, and what it exposes, its galaxy has. What its galaxy consumes is mandatory there when a component of
+    // the galaxy needs it.
     void attach();
+    // Has its galaxy consume exposed, which it exposes the Consumed way, as requirement tells, and pass it what it is
+    // given.
+    void consumeForGalaxy(const Passage& exposed, InterfaceRequirement requirement);
     // Gives its galaxy nothing more: it is being destroyed.
     void detach();
     // Forgets the properties of object, or of its component, being destroyed.

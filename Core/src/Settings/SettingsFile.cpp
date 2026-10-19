@@ -178,8 +178,9 @@ bool writeSettings(const QString& filePath, const QJsonObject& content, QString&
 
 } // namespace
 
-SettingsFile::SettingsFile(Universe& application, QString fileName, Galaxy* galaxy)
-    : m_application(application), m_galaxy(galaxy), m_fileName(std::move(fileName))
+SettingsFile::SettingsFile(Universe& application, QString fileName, Galaxy* galaxy, QString name)
+    : m_application(application), m_galaxy(galaxy), m_fileName(std::move(fileName)),
+      m_name(name.isEmpty() ? m_fileName : std::move(name))
 {
 }
 
@@ -192,14 +193,36 @@ QString SettingsFile::fileName() const
 
 bool SettingsFile::setFileName(const QString& fileName)
 {
+    return m_galaxy == nullptr && rename(fileName, fileName);
+}
+
+QString SettingsFile::name() const
+{
+    return m_name;
+}
+
+bool SettingsFile::setName(const QString& name)
+{
+    // After the same galaxies: what its file name starts with.
+    return rename(m_fileName.chopped(m_name.size()) + name, name);
+}
+
+Galaxy* SettingsFile::galaxy() const
+{
+    return m_galaxy;
+}
+
+bool SettingsFile::rename(const QString& fileName, const QString& name)
+{
     const SettingsFile* named = m_application.settingsFile(fileName);
-    if(fileName.isEmpty() || (named != nullptr && named != this)) // Its own name in another case is its own
+    if(name.isEmpty() || (named != nullptr && named != this)) // Its own name in another case is its own
     {
         return false;
     }
-    if(fileName != m_fileName)
+    if(fileName != m_fileName || name != m_name)
     {
         m_fileName = fileName;
+        m_name = name;
         emit changed();
     }
     return true;

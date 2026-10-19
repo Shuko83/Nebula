@@ -128,6 +128,13 @@ MainWindow::MainWindow(const QCommandLineParser* commandLine, QWidget* parent)
     QAction* openAction = fileMenu->addAction(tr("&Open..."), QKeySequence::Open, this, &MainWindow::openProject);
     fileMenu->addAction(tr("&Save"), QKeySequence::Save, this, &MainWindow::saveProject);
     fileMenu->addAction(tr("Save &As..."), QKeySequence::SaveAs, this, &MainWindow::saveProjectAs);
+    // The galaxy shown, to its own file, which its other instances are read again from.
+    m_saveGalaxyAction =
+        fileMenu->addAction(icon(GlossaryTerm::Galaxy), tr("Save &Galaxy"),
+                            QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_S), this, &MainWindow::saveGalaxy);
+    m_saveGalaxyAction->setToolTip(
+        tr("Save the galaxy shown to its file: each of its instances has what it holds then"));
+    m_saveGalaxyAction->setEnabled(false); // Until a galaxy is shown
     fileMenu->addSeparator();
     QAction* descriptionAction = fileMenu->addAction(tr("&Description..."), this, &MainWindow::editDescription);
     descriptionAction->setIcon(icon(GlossaryTerm::Galaxy)); // The one of the galaxy its file is
@@ -152,6 +159,8 @@ MainWindow::MainWindow(const QCommandLineParser* commandLine, QWidget* parent)
                 descriptionAction->setEnabled(!running);
                 startAction->setEnabled(!running);
                 stopAction->setEnabled(running);
+                // Its instances are read again, which is not done while it runs.
+                m_saveGalaxyAction->setEnabled(!running && !m_galaxyScenes.isEmpty());
                 m_pluginViewer->setUnloadAllowed(!running); // What runs keeps its plugin
                 m_galaxyViewer->setOpenAllowed(!running);
             });
@@ -314,7 +323,11 @@ MainWindow::MainWindow(const QCommandLineParser* commandLine, QWidget* parent)
     connect(problemList, &ProblemList::componentActivated, this,
             [this](const QString& name)
             {
-                showDepth(0); // Where the components of the application are
+                // Where the components of the application are.
+                if(!leaveGalaxies(0))
+                {
+                    return;
+                }
                 const Nebula::Component* component = m_application.component(name);
                 const ComponentItem* item = component != nullptr ? m_scene->select(*component) : nullptr;
                 if(item != nullptr)
@@ -518,6 +531,10 @@ void MainWindow::setProjectFile(const QString& filePath)
 
 bool MainWindow::saveChanges()
 {
+    if(!leaveGalaxies(0, true))
+    {
+        return false;
+    }
     if(m_scene->save() == m_savedProject)
     {
         return true;
@@ -575,7 +592,7 @@ void MainWindow::start()
 {
     // The title of a zone, or the name of a component, is no longer edited: what was typed is taken before the
     // application is no longer edited.
-    m_scene->setFocusItem(nullptr);
+    m_editionView->scene()->setFocusItem(nullptr);
     if(!m_application.start())
     {
         QMessageBox::warning(this, tr("Start"),
@@ -626,6 +643,14 @@ void MainWindow::enterGalaxy(Nebula::Galaxy& galaxy)
     connect(scene, &EditionScene::refused, this, &MainWindow::tell);
     connect(scene, &EditionScene::told, this, &MainWindow::tell);
     connect(scene, &EditionScene::galaxyOpened, this, &MainWindow::enterGalaxy);
+    // The plugins it loaded, and their components, as in the application.
+    connect(scene, &EditionScene::galaxyPlaced, this,
+            [this]
+            {
+                m_pluginModel->refresh();
+                m_pluginViewer->refresh();
+                m_componentModel->refresh();
+            });
     m_galaxyScenes.append(scene);
     showDepth(m_galaxyScenes.size());
 }
@@ -640,10 +665,108 @@ void MainWindow::showDepth(qsizetype depth)
         closed->disconnect(this);
         delete closed;
     }
-    // The components of a galaxy have the values of its file.
-    m_propertyEditor->setReadOnly(depth > 0);
     m_propertyEditor->setComponent(shown->selectedComponent());
+    m_saveGalaxyAction->setEnabled(depth > 0 && !m_application.isRunning());
     refreshPath();
+}
+
+bool MainWindow::leaveGalaxies(qsizetype depth, bool closing)
+{
+    while(m_galaxyScenes.size() > depth)
+    {
+        EditionScene* scene = m_galaxyScenes.constLast();
+        // What was typed in a name is taken before what changed is told.
+        scene->setFocusItem(nullptr);
+        Nebula::Galaxy* galaxy = scene->galaxy();
+        const QString filePath = galaxy->filePath();
+        const bool modified = scene->isModified();
+        QMessageBox::StandardButton answer = QMessageBox::Discard;
+        if(modified)
+        {
+            showDepth(m_galaxyScenes.size()); // The one asked about
+            if(m_application.isRunning() && !closing)
+            {
+                tell(tr("%1 has been modified: stop the application to save it, or to give its changes up")
+                         .arg(galaxy->objectName()));
+                return false;
+            }
+            answer = QMessageBox::warning(
+                this, tr("NebulaStudio"),
+                tr("The galaxy %1 has been modified.\nDo you want to save it to %2? Each of its instances is read "
+                   "again from it then.")
+                    .arg(galaxy->objectName(), QDir::toNativeSeparators(filePath)),
+                QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+            if(answer == QMessageBox::Cancel ||
+               (answer == QMessageBox::Save && !writeGalaxyFile(filePath, scene->save())))
+            {
+                return false;
+            }
+        }
+        showDepth(m_galaxyScenes.size() - 1); // Before it is read again: its scene shows what goes then
+        if(!modified || m_application.isRunning())
+        {
+            continue; // Nothing to read again, or NebulaStudio closes
+        }
+        if(answer == QMessageBox::Save)
+        {
+            readInstancesAgain(filePath);
+        }
+        else if(const QStringList problems = m_application.reloadGalaxy(*galaxy); !problems.isEmpty())
+        {
+            QMessageBox::warning(this, tr("NebulaStudio"),
+                                 tr("%1 could not be read again as its file holds it:\n%2")
+                                     .arg(galaxy->objectName(), problems.join(u'\n')));
+        }
+    }
+    showDepth(depth);
+    return true;
+}
+
+void MainWindow::saveGalaxy()
+{
+    if(m_galaxyScenes.isEmpty() || m_application.isRunning())
+    {
+        return;
+    }
+    EditionScene* scene = m_galaxyScenes.constLast();
+    // What was typed in a name is taken before it is saved.
+    scene->setFocusItem(nullptr);
+    const QString filePath = scene->galaxy()->filePath();
+    if(writeGalaxyFile(filePath, scene->save()))
+    {
+        readInstancesAgain(filePath);
+    }
+}
+
+bool MainWindow::writeGalaxyFile(const QString& filePath, const QJsonObject& project)
+{
+    QSaveFile file(filePath);
+    if(!file.open(QIODevice::WriteOnly) || file.write(QJsonDocument(project).toJson()) < 0 || !file.commit())
+    {
+        QMessageBox::warning(this, tr("Save galaxy"),
+                             tr("%1 cannot be saved:\n%2").arg(QDir::toNativeSeparators(filePath), file.errorString()));
+        return false;
+    }
+    return true;
+}
+
+void MainWindow::readInstancesAgain(const QString& filePath)
+{
+    QStringList problems;
+    const QList<Nebula::Galaxy*> instances = m_application.galaxies(filePath);
+    for(Nebula::Galaxy* instance : instances)
+    {
+        problems.append(m_application.reloadGalaxy(*instance));
+    }
+    m_galaxyModel->refresh(); // What it tells of the galaxy, at once
+    if(problems.isEmpty())
+    {
+        tell(tr("%1 is saved: its instances have what it holds now").arg(QDir::toNativeSeparators(filePath)));
+        return;
+    }
+    QMessageBox::warning(this, tr("Save galaxy"),
+                         tr("%1 is saved, but its instances could not keep everything they had:\n%2")
+                             .arg(QDir::toNativeSeparators(filePath), problems.join(u'\n')));
 }
 
 void MainWindow::refreshPath()
@@ -678,7 +801,8 @@ void MainWindow::refreshPath()
         button->setIcon(levelIcon);
         button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         button->setAutoRaise(true);
-        connect(button, &QToolButton::clicked, this, [this, depth] { showDepth(depth); });
+        // Once the changes of those further down are saved or given up.
+        connect(button, &QToolButton::clicked, this, [this, depth] { leaveGalaxies(depth); });
         path->addWidget(button);
         path->addWidget(new QLabel(QStringLiteral("›"))); // ›
     };
@@ -688,6 +812,11 @@ void MainWindow::refreshPath()
         addLevel(depth, icon(GlossaryTerm::Galaxy), m_galaxyScenes.at(depth - 1)->galaxy()->objectName());
     }
     static_cast<QHBoxLayout*>(path)->addStretch();
+    auto* save = new QToolButton; // Next to the path to the galaxy it saves
+    save->setDefaultAction(m_saveGalaxyAction);
+    save->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    save->setAutoRaise(true);
+    path->addWidget(save);
 }
 
 void MainWindow::tell(const QString& message)

@@ -46,7 +46,13 @@ SettingsDialog::SettingsDialog(Nebula::SettingsFile& file, const Nebula::Univers
     setWindowTitle(tr("Settings file"));
     setWindowIcon(icon(GlossaryTerm::Comet));
 
-    m_fileName = new QLineEdit(file.fileName());
+    m_fileName = new QLineEdit(file.name());
+    if(file.galaxy() != nullptr)
+    {
+        m_fileName->setToolTip(tr("The name the file of the galaxy gives it: each instance of the galaxy writes its "
+                                  "own, named after it, %1 for this one")
+                                   .arg(file.fileName()));
+    }
     m_directory = new QLineEdit(file.directory());
     m_directory->setPlaceholderText(tr("Configuration directory of the user"));
     m_directory->setToolTip(tr("Empty: the configuration directory of the user, for the application that runs\n"
@@ -97,7 +103,8 @@ SettingsDialog::SettingsDialog(Nebula::SettingsFile& file, const Nebula::Univers
 
 void SettingsDialog::fill(const Nebula::Universe& application, const Nebula::ComponentFactory& factory)
 {
-    for(const std::unique_ptr<Nebula::Component>& component : application.components())
+    // Those of its galaxy: it holds no other.
+    for(const std::unique_ptr<Nebula::Component>& component : application.components(m_file.galaxy()))
     {
         auto* componentRow = new QTreeWidgetItem({component->objectName()});
         componentRow->setFlags(Qt::ItemIsEnabled);
@@ -190,33 +197,38 @@ void SettingsDialog::fill(const Nebula::Universe& application, const Nebula::Com
     }
 }
 
+QString SettingsDialog::fileName() const
+{
+    // After the galaxies it is in, as its own is.
+    return m_file.fileName().chopped(m_file.name().size()) + m_fileName->text().trimmed();
+}
+
 void SettingsDialog::refreshPath()
 {
-    const QString fileName = m_fileName->text().trimmed();
-    const Nebula::SettingsFile* named = m_application.settingsFile(fileName);
-    const bool taken = named != nullptr && named != &m_file; // Its own name, whatever its case, is its own
-    if(fileName.isEmpty())
+    const bool named = !m_fileName->text().trimmed().isEmpty();
+    const Nebula::SettingsFile* holder = m_application.settingsFile(fileName());
+    const bool taken = holder != nullptr && holder != &m_file; // Its own name, whatever its case, is its own
+    if(!named)
     {
         m_path->setText(tr("A file name is needed"));
     }
     else if(taken)
     {
-        m_path->setText(tr("Another settings file is named %1").arg(named->fileName()));
+        m_path->setText(tr("Another settings file is named %1").arg(holder->fileName()));
     }
     else
     {
         m_path->setText(
-            QDir::toNativeSeparators(Nebula::SettingsFile::filePath(fileName, m_directory->text().trimmed())));
+            QDir::toNativeSeparators(Nebula::SettingsFile::filePath(fileName(), m_directory->text().trimmed())));
     }
-    m_buttons->button(QDialogButtonBox::Ok)->setEnabled(!fileName.isEmpty() && !taken);
+    m_buttons->button(QDialogButtonBox::Ok)->setEnabled(named && !taken);
 }
 
 void SettingsDialog::browse()
 {
     // From where the file is now.
-    const QString fileName = m_fileName->text().trimmed();
-    const QString current = Nebula::SettingsFile::filePath(fileName.isEmpty() ? m_file.fileName() : fileName,
-                                                           m_directory->text().trimmed());
+    const QString current = Nebula::SettingsFile::filePath(
+        m_fileName->text().trimmed().isEmpty() ? m_file.fileName() : fileName(), m_directory->text().trimmed());
     const QString directory = QFileDialog::getExistingDirectory(this, tr("Directory of the settings file"),
                                                                 QFileInfo(current).absolutePath());
     if(!directory.isEmpty())
@@ -227,7 +239,7 @@ void SettingsDialog::browse()
 
 void SettingsDialog::apply()
 {
-    m_file.setFileName(m_fileName->text().trimmed());
+    m_file.setName(m_fileName->text().trimmed());
     m_file.setDirectory(m_directory->text().trimmed());
     // In the order of the tree: the one the file holds them in.
     for(QTreeWidgetItemIterator row(m_tree); *row != nullptr; ++row)

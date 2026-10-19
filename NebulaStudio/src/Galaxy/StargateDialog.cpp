@@ -36,11 +36,11 @@ enum Column : std::uint8_t
     ColumnCount,
 };
 
-// The stargates of application.
-QList<const Nebula::Stargate*> stargatesOf(const Nebula::Universe& application)
+// The stargates among components.
+QList<const Nebula::Stargate*> stargatesOf(const std::vector<std::unique_ptr<Nebula::Component>>& components)
 {
     QList<const Nebula::Stargate*> stargates;
-    for(const std::unique_ptr<Nebula::Component>& component : application.components())
+    for(const std::unique_ptr<Nebula::Component>& component : components)
     {
         if(const auto* stargate = qobject_cast<const Nebula::Stargate*>(component.get()))
         {
@@ -125,9 +125,9 @@ void StargateDialog::changeEvent(QEvent* event)
 
 void StargateDialog::fill(const Nebula::ComponentFactory& factory)
 {
-    const QList<const Nebula::Stargate*> stargates = stargatesOf(m_application);
+    const QList<const Nebula::Stargate*> stargates = stargatesOf(components());
     QList<std::pair<Nebula::Exposure, QString>> shown; // What the stargate exposes that a row tells
-    for(const std::unique_ptr<Nebula::Component>& owned : m_application.components())
+    for(const std::unique_ptr<Nebula::Component>& owned : components())
     {
         Nebula::Component* component = owned.get();
         if(qobject_cast<const Nebula::Stargate*>(component) != nullptr)
@@ -592,9 +592,14 @@ bool StargateDialog::canShare(const Choice& first, const Choice& second)
            first.type == second.type;
 }
 
+const std::vector<std::unique_ptr<Nebula::Component>>& StargateDialog::components() const
+{
+    return m_application.components(m_application.galaxyOf(m_stargate));
+}
+
 bool StargateDialog::isTaken(std::optional<Nebula::Exposure> exposure, const QString& name) const
 {
-    const QList<const Nebula::Stargate*> stargates = stargatesOf(m_application);
+    const QList<const Nebula::Stargate*> stargates = stargatesOf(components());
     return std::ranges::any_of(stargates,
                                [this, exposure, &name](const Nebula::Stargate* stargate)
                                {

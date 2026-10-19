@@ -48,11 +48,22 @@ class CORE_EXPORT SettingsFile : public QObject
     ~SettingsFile() override;
 
     // As it was added, settings.json, or settings2.json, settings3.json... when another file has that name, until it
-    // is given another one.
+    // is given another one. The one of a file of a galaxy is its name() after the galaxies it is in.
     [[nodiscard]] QString fileName() const;
     // Returns false, changing nothing, when fileName is empty or the name of another file of the application, whatever
-    // its case. Taken into account the next time the application starts.
+    // its case, and for a file of a galaxy, named by setName(). Taken into account the next time the application
+    // starts.
     bool setFileName(const QString& fileName);
+    // The name its project gives it: its fileName() in the application; in a galaxy, the one its file gives it, after
+    // which each instance of the galaxy names its own: settings.json for Clock1.settings.json, see
+    // Universe::instantiateGalaxy().
+    [[nodiscard]] QString name() const;
+    // Names it name in its project: its fileName() is name in the application, name after the galaxies it is in in a
+    // galaxy. Returns false, changing nothing, when name is empty or its fileName() would be the one of another file of
+    // the application, whatever its case. Taken into account the next time the application starts.
+    bool setName(const QString& name);
+    // The galaxy whose components it holds the properties of; nullptr for a file of the application.
+    [[nodiscard]] Galaxy* galaxy() const;
     // Where the file is, see filePath(); empty until it is set.
     [[nodiscard]] QString directory() const;
     // Taken into account the next time the application starts.
@@ -104,9 +115,12 @@ class CORE_EXPORT SettingsFile : public QObject
     };
 
     // fileName is one no other file of application has. It holds the properties of the components of galaxy, one of
-    // those of application, or of the application itself when galaxy is nullptr.
-    SettingsFile(Universe& application, QString fileName, Galaxy* galaxy = nullptr);
+    // those of application, or of the application itself when galaxy is nullptr. name is its name(): fileName ends
+    // with it, and is it when it is empty.
+    SettingsFile(Universe& application, QString fileName, Galaxy* galaxy = nullptr, QString name = {});
 
+    // Names it fileName, and name in its project. Returns false, changing nothing, as setName() does.
+    bool rename(const QString& fileName, const QString& name);
     // Gives the properties it holds the values of its file, writes their default values to it first when it does not
     // exist or misses some, and follows their changes.
     void start();
@@ -128,6 +142,7 @@ class CORE_EXPORT SettingsFile : public QObject
     Universe& m_application;
     Galaxy* m_galaxy = nullptr; // Whose components it holds the properties of; nullptr for those of the application
     QString m_fileName;
+    QString m_name; // As its project names it: m_fileName ends with it
     QString m_directory;
     QList<SettingsEntry> m_entries;
     QString m_errorString;

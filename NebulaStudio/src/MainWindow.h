@@ -17,6 +17,7 @@ class EditionView;
 class GalaxyModel;
 class GalaxyViewer;
 class PluginModel;
+class QAction;
 class PluginViewer;
 class PropertyEditor;
 class QCommandLineParser;
@@ -30,11 +31,12 @@ class QTreeView;
 // is chosen: the project files there, each telling whether the application knows its plugins, opened from its viewer
 // when it does. Between them, the edition zone, where a component dropped from its list is instantiated, and a galaxy
 // dropped from its own is placed, above the editor of the properties of the one selected there, and the list of what
-// keeps components from working, see ProblemList. A galaxy placed there opens in its place, without being edited,
-// under a path back to the application. Its File menu saves what is in the edition zone to a project file, with the
-// description of its galaxy, and opens it again; its View menu zooms the edition zone in and out, at the zoom level its
-// status bar tells; its Run menu starts the application assembled there, which is not edited while it runs, and stops
-// it.
+// keeps components from working, see ProblemList. A galaxy placed there opens in its place, under a path back to the
+// application, where it is edited as the application is: Save galaxy writes it to its file, and every instance of that
+// file is read again from it; leaving a galaxy changed since asks whether to save it. Its File menu saves what is in
+// the edition zone to a project file, with the description of its galaxy, and opens it again; its View menu zooms the
+// edition zone in and out, at the zoom level its status bar tells; its Run menu starts the application assembled there,
+// which is not edited while it runs, and stops it.
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -68,8 +70,9 @@ class MainWindow : public QMainWindow
 
     // filePath is the file of the application, none when empty, which holds it as it is now.
     void setProjectFile(const QString& filePath);
-    // Asks, when the application changed since its file holds it, whether to save it. Returns false when what was
-    // about to replace it is given up: the answer was to cancel, or it could not be saved.
+    // Asks, when the galaxies shown changed since they were, then when the application changed since its file holds
+    // it, whether to save them, see leaveGalaxies(). Returns false when what was about to replace it is given up: the
+    // answer was to cancel, or it could not be saved.
     bool saveChanges();
     // Empties the application, once its changes are saved or given up.
     void newProject();
@@ -92,11 +95,24 @@ class MainWindow : public QMainWindow
     // when it cannot be loaded, as its viewer tells, and while the application runs.
     void openGalaxy(const QString& filePath);
 
-    // Shows galaxy, one placed in what the edition zone shows, in its place, without editing it.
+    // Shows galaxy, one placed in what the edition zone shows, in its place, where it is edited.
     void enterGalaxy(Nebula::Galaxy& galaxy);
     // Shows in the edition zone what is depth galaxies down the path: the application at 0. Those further down are
     // closed.
     void showDepth(qsizetype depth);
+    // Closes the galaxies further than depth down the path, the last one first, asking for each one that changed since
+    // it was shown whether to save it: saved, every instance of its file is read again from it; its changes given up,
+    // it is read again itself. Then shows what is depth galaxies down. Returns false, leaving shown the one whose
+    // question was canceled, or that could not be saved, when one was; while the application runs, one that changed
+    // is not left, unless closing tells that NebulaStudio closes: it is saved without anything read again then.
+    bool leaveGalaxies(qsizetype depth, bool closing = false);
+    // Saves the galaxy shown to its file, then reads every instance of that file again from it.
+    void saveGalaxy();
+    // Writes project, a galaxy as its scene saves it, to its file filePath; tells why and returns false when it cannot
+    // be written.
+    bool writeGalaxyFile(const QString& filePath, const QJsonObject& project);
+    // Reads every instance of the galaxy file filePath again from it, and tells what they could not keep.
+    void readInstancesAgain(const QString& filePath);
     // Rebuilds the path above the edition zone: a button for the application and each galaxy above the one shown;
     // hidden while the application is.
     void refreshPath();
@@ -109,10 +125,11 @@ class MainWindow : public QMainWindow
     QJsonObject m_savedProject;     // What m_scene saved when m_projectFile was set
     PluginModel* m_pluginModel = nullptr;
     QTreeView* m_pluginView = nullptr;
-    EditionScene* m_scene = nullptr;      // Of m_application
-    QList<EditionScene*> m_galaxyScenes;  // Opened, each of a galaxy of the one before: m_scene, then them
-    QWidget* m_path = nullptr;            // Above the edition zone, while a galaxy is shown
-    EditionView* m_editionView = nullptr; // Shows m_scene, or the last of m_galaxyScenes
+    EditionScene* m_scene = nullptr;       // Of m_application
+    QList<EditionScene*> m_galaxyScenes;   // Opened, each of a galaxy of the one before: m_scene, then them
+    QWidget* m_path = nullptr;             // Above the edition zone, while a galaxy is shown
+    QAction* m_saveGalaxyAction = nullptr; // Enabled while a galaxy is shown and the application does not run
+    EditionView* m_editionView = nullptr;  // Shows m_scene, or the last of m_galaxyScenes
     PluginViewer* m_pluginViewer = nullptr;
     ComponentModel* m_componentModel = nullptr;
     ComponentViewer* m_componentViewer = nullptr;
