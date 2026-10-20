@@ -32,7 +32,7 @@ qu'avec des tests verts.
 | `tests/CMakeLists.txt` | `nebula_add_test()`, la sortie des tests dans `<build>/tests/bin[/<config>]` |
 | `tests/Components/` | Bibliothèque statique `TestComponents` : les composants écrits pour les tests |
 | `tests/Core/` | Un test par classe de Core : `TestComponent`, `TestComponentFactory`, `TestPluginManager`, `TestUniverse`, `TestGalaxy` (une galaxy posée, ses interfaces, ses propriétés exposées, son édition et sa relecture compris), `TestStargate`, `TestSettingsFile` |
-| `tests/NebulaStudio/` | Les classes de NebulaStudio qui se passent de sa fenêtre : `TestColors`, `TestTheme`, `TestPluginModel`, `TestComponentModel`, `TestEditionView`, `TestGalaxyModel` |
+| `tests/NebulaStudio/` | Les classes de NebulaStudio qui se passent de sa fenêtre : `TestColors`, `TestTheme`, `TestPluginModel`, `TestComponentModel`, `TestEditionView`, `TestEditionScene` (la zone d'édition : sélection et suppression d'un lien), `TestGalaxyModel` |
 | `tests/exemple/` | Les composants d'un plugin d'exemple, chargés depuis son fichier comme le fait une application : `TestWidgetsPlugin` (la fenêtre principale, sa barre, les actions et le compteur, assemblés par leurs interfaces) |
 
 Les tests ne sont ni installés ni copiés dans le paquet.
@@ -60,7 +60,12 @@ Cette plateforme a ses limites : elle n'a pas de polices (un texte montré, celu
 ne trouve pas leur dossier) et avertit qu'elle ne suit pas les contraintes de taille d'une fenêtre (`This plugin does
 not support propagateSizeHints()`) quand une fenêtre montrée change la taille qu'elle demande, celle d'une
 `QMainWindow` avec une barre d'outils. Un test évite le premier en vérifiant la visibilité sans montrer le texte
-(`isVisibleTo()`), et attend le second par `QTest::ignoreMessage()`.
+(`isVisibleTo()`), et attend le second par `QTest::ignoreMessage()`. Un test qui ne peut pas éviter de montrer du texte
+(`TestEditionScene` : les noms des composants, ses menus) charge les polices une fois dans `initTestCase()`, avant
+`QTest::failOnWarning()` (`QFontDatabase::families()`) : l'avertissement y est écrit sans faire échouer, et ne revient
+plus. Un menu ouvert (`QMenu::exec()`) avertit enfin qu'elle ne sait ni le mettre au premier plan (`This plugin does not
+support raise()`) ni lui donner le clavier (`This plugin does not support grabbing the keyboard`), deux messages
+attendus par `QTest::ignoreMessage()` à chaque menu.
 
 Une classe de NebulaStudio n'est pas dans une bibliothèque : son test recompile ses sources (`SOURCES`), avec
 `nebulastudio.qrc` quand il lui faut les icônes ou la police.
@@ -143,5 +148,9 @@ void TestUniverse::rename()
 - `QAbstractItemModelTester` surveille un modèle de NebulaStudio pendant tout le test.
 - Une vue se pilote en envoyant des `QMouseEvent` à son `viewport()` (`TestEditionView`). Un déplacement sans bouton
   n'y arrive que si la vue suit la souris, ce que fait une `QGraphicsView` dès qu'un item de sa scène accepte le
-  survol ou a un curseur, comme ceux de NebulaStudio.
+  survol ou a un curseur, comme ceux de NebulaStudio. Un clic qu'aucun item ne prend s'envoie de même, plutôt que par
+  `QTest::mouseClick()`, qui avertit que la vue n'a pas accepté le relâchement.
+- Un menu contextuel bloque dans `exec()` : le test programme d'abord, par `QTimer::singleShot(0, …)`, ce qui le lit
+  (`QApplication::activePopupWidget()`) puis le ferme, par Entrée sur l'action choisie (`setActiveAction()`) ou par
+  Échap, puis envoie le `QContextMenuEvent` au `viewport()` (`TestEditionScene::contextMenu()`).
 - Un test qui passe du premier coup se vérifie en cassant exprès le code qu'il couvre : il doit échouer.
