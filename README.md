@@ -441,7 +441,7 @@ The [exemple](exemple/) folder holds `ExampleUniverseApp`, which runs the projec
 
 ## 🤝 Contributing
 
-The coding conventions the code follows, from formatting and naming to commits and pull requests, are described in [CONVENTIONS.md](CONVENTIONS.md) (in French).
+The coding conventions the code follows, from formatting and naming to commits and pull requests, are described in [CONVENTIONS.md](CONVENTIONS.md) (in French). What changes from one version to the next is listed in [CHANGELOG.md](CHANGELOG.md), and told in more detail in the notes of each release, in [docs/release-notes](docs/release-notes/).
 
 Each class of Core, and those of NebulaStudio that need no window, has its Qt Test executable in [tests](tests/), data-driven wherever it can be. They are built with the rest (`-DNEBULA_BUILD_TESTS=OFF` leaves them out) and run by CTest from the build directory, with no window shown:
 
