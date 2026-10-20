@@ -11,8 +11,8 @@
 
 class Ticker;
 
-// Logic of a Ticker, built with it by ExternalPlugin: counts the ticks of a timer while the Ticker runs, and shows
-// them in the display the Ticker provides.
+// Logic of a Ticker, created by it: counts the ticks of a timer while the Ticker runs, and shows them in the display
+// the Ticker provides.
 class TickerLogic : public QObject
 {
     Q_OBJECT

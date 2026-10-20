@@ -7,7 +7,7 @@
 
 class QWidget;
 
-// Exposes the ticks of a timer while it runs, counted by TickerLogic, which ExternalPlugin builds it with.
+// Exposes the ticks of a timer while it runs, counted by its TickerLogic, which it creates.
 // It provides the interface "display", a QWidget showing its ticks: it needs a QApplication.
 class Ticker : public Nebula::Component
 {
@@ -18,6 +18,8 @@ class Ticker : public Nebula::Component
     Q_PROPERTY(int ticks READ ticks NOTIFY ticksChanged)
 
   public:
+    Ticker();
+
     // In milliseconds.
     [[nodiscard]] int interval() const;
     void setInterval(int interval);

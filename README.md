@@ -49,7 +49,7 @@ The common vocabulary of the framework, Nebula, Univers, Galaxy, Astre, Comet an
 
 ## 🔌 Writing a Plugin
 
-A plugin is declared with `nebula_add_plugin`, available once `Core` is added, or found in an installed Nebula (see [Building a plugin outside Nebula](#building-a-plugin-outside-nebula)). CMake generates its root object and its metadata; the plugin only declares its class, which builds its components (see below).
+A plugin is declared with `nebula_add_plugin`, available once `Core` is added, or found in an installed Nebula (see [Building a plugin outside Nebula](#building-a-plugin-outside-nebula)). CMake generates its root object and its metadata; the plugin only declares its class, in which its components are registered (see below).
 
 ```cmake
 nebula_add_plugin(
@@ -84,7 +84,7 @@ qInfo() << plugins.plugin(QStringLiteral("FabienDG.Nebula.Network"))->buildDate;
 
 `scan()` skips, with a warning, the files that are not Nebula plugins, the plugins built against another major version of `Core` or a newer one, and the ids already found. `addFile(filePath)` adds a single plugin, anywhere on the disk, with the same checks; it tells why a file cannot be added through `errorString()`. Loading a plugin registers its components. `unload(pluginId)` forgets them and destroys its plugin class: none of its components may still be instantiated then, which `Universe::unloadPlugin()` sees to. A `PluginManager` unloads the plugins it loaded when it is destroyed: it has to outlive their components, as the one of a `Universe` does. An unloaded plugin can be loaded again, but its library stays in memory until the application exits: its file cannot be replaced meanwhile, and loading it again does not read the file again.
 
-The [exemple](exemple/) folder holds `ExamplePlugin`, a plugin providing the `Greeter` component, and `ExampleApp`, which loads the plugins next to it, lists their components and runs a `Greeter`, whose interface it follows: run it from `<build>/bin` (`<build>/bin/<config>` with Visual Studio).
+The [exemple](exemple/) folder holds `ExamplePlugin`, a plugin providing the `Greeter` component, `WidgetsPlugin`, next to it, whose components make the main window of an application (see [NebulaStudio](#-nebulastudio)), and `ExampleApp`, which loads the plugins next to it, lists their components and runs a `Greeter`, whose interface it follows: run it from `<build>/bin` (`<build>/bin/<config>` with Visual Studio).
 
 ### Building a plugin outside Nebula
 
@@ -111,39 +111,34 @@ Installed with `-Dcmu_install_mode=PACKAGE`, Nebula is a single prefix whose pac
 
 ## 🧩 Writing a Component
 
-A component belongs to a plugin. It derives from `Nebula::Component` and only exposes what it is, with `Q_PROPERTY`, signals and `Q_CLASSINFO`; it registers itself in the class of its plugin, which builds it. Its logic is in other classes, which the plugin instantiates when it builds it:
+A component belongs to a plugin. It derives from `Nebula::Component`, its name ends with `Component`, `MainWindowComponent` say, and it registers itself in the class of its plugin. It creates the objects it is made of itself, when it is constructed: a window, a timer, a class of its own holding its logic. It tells what can be set and followed with `Q_PROPERTY`, signals and `Q_CLASSINFO`, and meets the other components through the interfaces it provides and consumes, see below. The class of its plugin knows nothing of its objects: it only gathers the components of the plugin.
 
 ```cpp
-// Greeter.h
-class Greeter : public Nebula::Component
+// MainWindowComponent.h
+class MainWindowComponent : public Nebula::Component
 {
     Q_OBJECT
-    Q_CLASSINFO("description", "Greets its recipient when it starts") // optional
-    Q_CLASSINFO("category", "Example")                                 // optional
-    Q_PROPERTY(QString recipient READ recipient WRITE setRecipient NOTIFY recipientChanged)
+    Q_CLASSINFO("description", "The main window of the application, which other components fill") // optional
+    Q_CLASSINFO("category", "Widgets")                                                               // optional
+    Q_PROPERTY(QString title READ title WRITE setTitle NOTIFY titleChanged)
     ...
+  private:
+    QMainWindow m_window; // Created with the component, destroyed with it
 };
 
-// Greeter.cpp
-NEBULA_REGISTER_COMPONENT(ExamplePlugin, Greeter);
+// MainWindowComponent.cpp
+NEBULA_REGISTER_COMPONENT(WidgetsPlugin, MainWindowComponent);
 
-// ExamplePlugin.h: the class of the plugin, one per plugin
-class ExamplePlugin : public Nebula::Plugin
+// WidgetsPlugin.h: the class of the plugin, one per plugin
+class WidgetsPlugin : public Nebula::Plugin
 {
-  public:
-    void build(Greeter& greeter); // One build() per component registered in the plugin
 };
 
-// ExamplePlugin.cpp
-NEBULA_PLUGIN(ExamplePlugin);
-
-void ExamplePlugin::build(Greeter& greeter)
-{
-    new GreeterLogic(greeter); // A child of greeter: its logic, destroyed with it
-}
+// WidgetsPlugin.cpp
+NEBULA_PLUGIN(WidgetsPlugin);
 ```
 
-The plugin class is created when its plugin is loaded, after its components are registered in it. Registering a component in a class that does not derive from `Nebula::Plugin`, or has no public `build()` for it, does not compile; a plugin without `NEBULA_PLUGIN` does not link.
+The plugin class is created when its plugin is loaded, after its components are registered in it. Registering a component in a class that does not derive from `Nebula::Plugin` does not compile, nor in one that has a `build()` for it, which Nebula no longer calls: what a component is made of is created in its constructor. A plugin without `NEBULA_PLUGIN` does not link.
 
 `Nebula::ComponentFactory::instance()` knows the components of the loaded plugins, read from their `QMetaObject` without instantiating them:
 
@@ -155,7 +150,7 @@ The plugin class is created when its plugin is loaded, after its components are 
 | `category`    | `Q_CLASSINFO("category", ...)`, empty when not given                     |
 | `properties`  | Its `Q_PROPERTY`, including those of its base classes up to `Component`  |
 
-The factory is the only way to instantiate a component, which it has its plugin build: `new Greeter` does not compile, as a class deriving from `Component` stays abstract until its plugin builds it. A component therefore needs a default constructor and cannot be `final`; registering a class that is not a component, or lacks `Q_OBJECT`, does not compile either.
+The factory is the only way to instantiate a component: `new Greeter` does not compile, as a class deriving from `Component` stays abstract, and only the class its registration derives from it can be instantiated. A component therefore needs a default constructor and cannot be `final`; registering a class that is not a component, or lacks `Q_OBJECT`, does not compile either.
 
 ```cpp
 std::unique_ptr<Nebula::Component> greeter =
@@ -262,6 +257,8 @@ For now, it lists:
 - under the edition zone, the editable properties of the instance selected in it, with their values: those that can be written and whose type has an editor (texts, numbers, booleans, dates). They are edited there and follow the changes the component notifies; the others are only listed in the viewer of the component. The properties of the objects the component added with `addPropertiesForQObject()` are edited there as well, after its own, those of a named object in a group under its name: selecting a `Ticker` shows its `interval`, then the properties of its display under **Display**. The name of a property a settings file holds is in italics: its value is the default one. While the application runs, they are only shown.
 - under the properties, the problems of the application: a row for each interface an instance cannot do without and that is bound to nothing, with the instance, the interface and its type, and how to fix it: drag from its dot to the dot of an interface of its type another instance provides, named there (`Ticker1.display`), or, when none does, add a component that provides one first. Double-clicking a row, or pressing Enter on it, selects its instance in the edition zone and shows it. The list follows the instances, their names and their links as they change; a sentence tells when every instance has what it needs.
 - in its **Run** menu, **Start** (F5) and **Stop** (Shift+F5): the application assembled in the edition zone runs there as it does on its own, see Running an Application below. A triangle in the corner of each instance tells that it runs. The application has two modes, as its instances do: it is edited, then it runs, and it is not edited while it runs. Until it is stopped, its instances can be selected, and their properties read under the edition zone, but nothing is dropped, moved, linked, renamed, recolored, added or removed in the edition zone, nor any property edited: its context menu and the Delete key only tell, in the status bar, that the application has to be stopped first. **New** and **Open...** are disabled meanwhile, as is **Start**; a refusal to start is told in a message box, and the application is edited again. While it runs, its properties change, from the values of the user its settings files give them, or from what its components do, and what changes those the files hold is written to them; **Stop** gives every property the value it had when it started, the one of the edition, and the project is saved with these values, even while it runs: running it does not change it. The status bar tells when a file cannot be read or written.
+
+`WidgetsPlugin`, listed from the start, makes the main window of an application from its components, each of which creates its own widgets. A `MainWindowComponent` provides its window as `mainWindow`, shown while the application runs at its `width` and `height`, under its `title`, and shows in its middle the widget it consumes as `centralWidget`. A `TopBarComponent` cannot do without a `mainWindow`: it is the bar at the top of that window, showing the actions it consumes, `action1` to `action4`, then the widgets, `widget1` and `widget2`, each in the place of its interface, those bound to nothing leaving no gap; it has a `title`, its name in the context menu of the window, and is `movable` or not. An `ActionComponent` provides an `action`, with its `text` and its `shortcut` (`Ctrl+N`), and a `CounterComponent`, which cannot do without an `action`, counts the times it is triggered while the application runs, and provides a `display` of its `count`, written as its `text` tells, `%1` standing for the count. Bind the `action` to `action1` of the bar and to the counter, its `display` to the `centralWidget`, and **Start**: each click on the action in the bar adds one to the count in the window.
 
 `ExternalPlugin`, opened with **Open plugin...** from `<build>/external-plugins` (`<build>/external-plugins/<config>` with Visual Studio), or listed from the start with `NebulaStudio --plugin-dir <that directory>`, has a pair to bind: the `display` a `Ticker` provides and the `content` a `Window` consumes, which it shows in a window. Its `ProfileSelector` provides a `display` too, the list of its `profiles` in which the user chooses its `profile`: once a settings file holds that `profile`, the application shows the one chosen the next time it runs.
 
@@ -438,7 +435,7 @@ A galaxy placed is assembled through any of its instances, as the application is
 
 Its settings files, `settingsFiles()`, keep the values the user gives some properties, from one run to the next; `Nebula::SettingsFile` is one of them. When the application starts, before any of its components is started, each file gives the properties it holds the values it has for them; a file that does not exist yet is first written with the values of the project, their default values, and a file that cannot be read is set aside, a `.bak` added to its name, then written again. While the application runs, what changes these properties is written to their files, changes made together being written once; when it stops, each file is written a last time, then the properties have their default values again, which `save()` writes, even while it runs. `settingsFileFailed()` tells when a file cannot be read or written: the application runs all the same. `addSettingsFile()` adds a file, named `settings.json`, or `settings2.json`, `settings3.json`... when another file has that name, `settingsFile(entry)` tells which one holds a property, `settingsFile(fileName)` which one has a name, whatever its case, and `removeSettingsFile()` removes one; a `SettingsFile` has its `setFileName()`, which refuses the name of another file of the application, whatever its case, its `name()`, the one its project gives it, which is its file name in the application and, in a galaxy, the name before which each instance puts its own, `Clock1.` say, changed with `setName()`, its `galaxy()`, `setDirectory()`, `add({component, object, property})`, the object being the component itself or one of its objects, `remove()`, and `writeDefaults()`, which writes the values of the project to its file while the application does not run.
 
-The [exemple](exemple/) folder holds `ExampleUniverseApp`, which runs the project given on its command line until its last window is closed: assemble a `Ticker` and a `Window` in NebulaStudio, save them as `scene/clock.nbp`, then run `ExampleUniverseApp scene/clock.nbp` from `<build>/bin` (`<build>/bin/<config>` with Visual Studio). It takes `--plugin-dir` and `--plugin-root` too: `ExampleUniverseApp --plugin-dir ../external-plugins scene/clock.nbp` finds `ExternalPlugin` there even when the project no longer leads to its file (`../../external-plugins/<config>` with Visual Studio). With a `ProfileSelector` in place of the `Ticker`, and a settings file that holds its `profile`, the profile chosen in the window is the one it shows the next time.
+The [exemple](exemple/) folder holds `ExampleUniverseApp`, which runs the project given on its command line until its last window is closed: assemble a `Ticker` and a `Window` in NebulaStudio, save them as `scene/clock.nbp`, then run `ExampleUniverseApp scene/clock.nbp` from `<build>/bin` (`<build>/bin/<config>` with Visual Studio). It takes `--plugin-dir` and `--plugin-root` too: `ExampleUniverseApp --plugin-dir ../external-plugins scene/clock.nbp` finds `ExternalPlugin` there even when the project no longer leads to its file (`../../external-plugins/<config>` with Visual Studio). With a `ProfileSelector` in place of the `Ticker`, and a settings file that holds its `profile`, the profile chosen in the window is the one it shows the next time. The main window of `WidgetsPlugin` runs the same way, its plugin being next to the application: closing it ends the application.
 
 ---
 

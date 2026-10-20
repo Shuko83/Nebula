@@ -10,8 +10,8 @@
 
 class Greeter;
 
-// Logic of a Greeter, built with it by ExamplePlugin: writes the greeting of its recipient when the Greeter starts,
-// and is the IGreeter it provides while it runs.
+// Logic of a Greeter, created by it: writes the greeting of its recipient when the Greeter starts, and is the
+// IGreeter it provides while it runs.
 class GreeterLogic : public QObject, public IGreeter
 {
     Q_OBJECT

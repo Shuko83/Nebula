@@ -6,8 +6,14 @@
 #include <QWidget>
 
 #include "ExternalPlugin.h"
+#include "ProfileSelectorLogic.h"
 
 NEBULA_REGISTER_COMPONENT(ExternalPlugin, ProfileSelector);
+
+ProfileSelector::ProfileSelector()
+{
+    new ProfileSelectorLogic(*this); // A child: its logic, destroyed with it
+}
 
 QString ProfileSelector::profiles() const
 {

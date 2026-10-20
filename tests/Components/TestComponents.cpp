@@ -18,14 +18,6 @@ NEBULA_REGISTER_COMPONENT(TestComponents, Source);
 NEBULA_REGISTER_COMPONENT(TestComponents, Sink);
 NEBULA_REGISTER_COMPONENT(TestComponents, Panel);
 
-void TestComponents::build(Probe& /*probe*/) {}
-
-void TestComponents::build(Source& /*source*/) {}
-
-void TestComponents::build(Sink& /*sink*/) {}
-
-void TestComponents::build(Panel& /*panel*/) {}
-
 Nebula::Plugin& registerTestComponents()
 {
     // After the factory, which is created first: destroyed before it.

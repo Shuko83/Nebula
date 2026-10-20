@@ -6,8 +6,14 @@
 #include <QWidget>
 
 #include "ExternalPlugin.h"
+#include "TickerLogic.h"
 
 NEBULA_REGISTER_COMPONENT(ExternalPlugin, Ticker);
+
+Ticker::Ticker()
+{
+    new TickerLogic(*this); // A child: its logic, destroyed with it
+}
 
 int Ticker::interval() const
 {

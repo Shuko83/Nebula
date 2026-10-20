@@ -3,27 +3,4 @@
 
 #include "ExternalPlugin.h"
 
-#include "ProfileSelector.h"
-#include "ProfileSelectorLogic.h"
-#include "Ticker.h"
-#include "TickerLogic.h"
-#include "Window.h"
-#include "WindowLogic.h"
-
 NEBULA_PLUGIN(ExternalPlugin);
-
-void ExternalPlugin::build(ProfileSelector& selector)
-{
-    new ProfileSelectorLogic(selector);
-}
-
-void ExternalPlugin::build(Ticker& ticker)
-{
-    // Owned by ticker, as a child QObject: it lives as long as the component.
-    new TickerLogic(ticker);
-}
-
-void ExternalPlugin::build(Window& window)
-{
-    new WindowLogic(window);
-}

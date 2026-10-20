@@ -20,6 +20,7 @@ namespace
 
 const QString ExamplePluginId = QStringLiteral("FabienDG.Nebula.ExamplePlugin");
 const QString ExternalPluginId = QStringLiteral("FabienDG.Nebula.ExternalPlugin");
+const QString WidgetsPluginId = QStringLiteral("FabienDG.Nebula.WidgetsPlugin");
 
 // The file of ExamplePlugin, as the build wrote it.
 QString examplePluginFile()
@@ -76,11 +77,16 @@ void TestPluginManager::scan_data()
     QTest::addColumn<QString>("id");
     QTest::addColumn<QString>("name");
     QTest::addColumn<QString>("description");
+    // How many plugins its directory has.
+    QTest::addColumn<int>("count");
 
     QTest::newRow("ExamplePlugin") << NEBULA_EXAMPLE_PLUGINS_DIR << ExamplePluginId << "ExamplePlugin"
-                                   << "Example plugin: its metadata is read without loading it";
+                                   << "Example plugin: its metadata is read without loading it" << 2;
+    QTest::newRow("WidgetsPlugin") << NEBULA_EXAMPLE_PLUGINS_DIR << WidgetsPluginId << "WidgetsPlugin"
+                                   << "Example plugin: a main window, its top bar and its actions, each a component"
+                                   << 2;
     QTest::newRow("ExternalPlugin") << NEBULA_EXTERNAL_PLUGINS_DIR << ExternalPluginId << "ExternalPlugin"
-                                    << "Example plugin outside the plugins directory, opened from NebulaStudio";
+                                    << "Example plugin outside the plugins directory, opened from NebulaStudio" << 1;
 }
 
 void TestPluginManager::scan()
@@ -89,11 +95,12 @@ void TestPluginManager::scan()
     QFETCH(QString, id);
     QFETCH(QString, name);
     QFETCH(QString, description);
+    QFETCH(int, count);
 
     PluginManager plugins;
     const QList<PluginInfo> found = plugins.scan(directory);
-    QCOMPARE(found.size(), 1);
-    QCOMPARE(plugins.plugins().size(), 1);
+    QCOMPARE(found.size(), count);
+    QCOMPARE(plugins.plugins().size(), count);
 
     const std::optional<PluginInfo> info = plugins.plugin(id);
     QVERIFY(info.has_value());
@@ -111,7 +118,7 @@ void TestPluginManager::scan()
 void TestPluginManager::scanSkipsWhatItKnows()
 {
     PluginManager plugins;
-    QCOMPARE(plugins.scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR)).size(), 1);
+    QCOMPARE(plugins.scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR)).size(), 2);
     QVERIFY(plugins.scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR)).isEmpty());
 
     // The same plugin in another file: skipped, its id being known.
@@ -121,7 +128,7 @@ void TestPluginManager::scanSkipsWhatItKnows()
                                                                          "provided by")
                                                               .arg(QRegularExpression::escape(ExamplePluginId))));
     QVERIFY(plugins.scan(copies.path()).isEmpty());
-    QCOMPARE(plugins.plugins().size(), 1);
+    QCOMPARE(plugins.plugins().size(), 2);
 }
 
 void TestPluginManager::scanReadsOnlyPlugins()
@@ -208,6 +215,9 @@ void TestPluginManager::loadAndUnload_data()
     QTest::addColumn<QStringList>("components");
 
     QTest::newRow("ExamplePlugin") << NEBULA_EXAMPLE_PLUGINS_DIR << ExamplePluginId << QStringList{"Greeter"};
+    QTest::newRow("WidgetsPlugin") << NEBULA_EXAMPLE_PLUGINS_DIR << WidgetsPluginId
+                                   << QStringList{"MainWindowComponent", "TopBarComponent", "ActionComponent",
+                                                  "CounterComponent"};
     QTest::newRow("ExternalPlugin") << NEBULA_EXTERNAL_PLUGINS_DIR << ExternalPluginId
                                     << QStringList{"Ticker", "ProfileSelector", "Window"};
 }

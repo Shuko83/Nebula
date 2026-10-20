@@ -8,8 +8,8 @@
 
 class ProfileSelector;
 
-// Logic of a ProfileSelector, built with it by ExternalPlugin: lists its profiles, the one it has selected, in the
-// display it provides, and has it choose the one the user selects there.
+// Logic of a ProfileSelector, created by it: lists its profiles, the one it has selected, in the display it provides,
+// and has it choose the one the user selects there.
 class ProfileSelectorLogic : public QObject
 {
     Q_OBJECT

@@ -20,9 +20,9 @@ add_subdirectory(Components)
 # Adds the test <NAME>, a QTest executable built from <NAME>.cpp, in the current directory, and SOURCES.
 #   nebula_add_test(<NAME> [SOURCES <file>...] [LINK_LIBRARIES <library>...] [INCLUDE_DIRECTORIES <directory>...])
 # It runs on the Core and the Qt of the build, with no window shown (QT_QPA_PLATFORM=offscreen): ctest, and the
-# debugger of Visual Studio, find them through PATH. It has the directory of the example plugins, built before it, in
-# NEBULA_EXAMPLE_PLUGINS_DIR and the one of ExternalPlugin in NEBULA_EXTERNAL_PLUGINS_DIR, and the version of the
-# project in NEBULA_VERSION.
+# debugger of Visual Studio, find them through PATH. It has the directory of the example plugins, ExamplePlugin and
+# WidgetsPlugin, built before it, in NEBULA_EXAMPLE_PLUGINS_DIR and the one of ExternalPlugin in
+# NEBULA_EXTERNAL_PLUGINS_DIR, and the version of the project in NEBULA_VERSION.
 function(nebula_add_test NAME)
     cmake_parse_arguments(PARSE_ARGV 1 ARG "" "" "SOURCES;LINK_LIBRARIES;INCLUDE_DIRECTORIES")
     add_executable(${NAME} ${NAME}.cpp ${ARG_SOURCES})
@@ -33,7 +33,7 @@ function(nebula_add_test NAME)
         "NEBULA_EXTERNAL_PLUGINS_DIR=\"$<TARGET_FILE_DIR:ExternalPlugin>\""
         "NEBULA_VERSION=\"${PROJECT_VERSION}\"")
     set_target_properties(${NAME} PROPERTIES AUTOMOC ON AUTORCC ON FOLDER tests)
-    add_dependencies(${NAME} ExamplePlugin ExternalPlugin)
+    add_dependencies(${NAME} ExamplePlugin WidgetsPlugin ExternalPlugin)
 
     add_test(NAME ${NAME} COMMAND ${NAME})
     # Qt first: Core.dll is next to the Qt NebulaStudio was deployed with, which lacks the offscreen platform.
@@ -51,3 +51,4 @@ endfunction()
 
 add_subdirectory(Core)
 add_subdirectory(NebulaStudio)
+add_subdirectory(exemple)

@@ -4,6 +4,7 @@
 #include "Greeter.h"
 
 #include "ExamplePlugin.h"
+#include "GreeterLogic.h"
 #include "IGreeter.h"
 
 NEBULA_REGISTER_COMPONENT(ExamplePlugin, Greeter);
@@ -19,6 +20,7 @@ Greeter::Greeter()
 {
     // Declared, without a pointer yet: known as soon as the Greeter is built.
     provideInterface<IGreeter>(GreeterInterface);
+    new GreeterLogic(*this); // A child: its logic, destroyed with it
 }
 
 QString Greeter::recipient() const

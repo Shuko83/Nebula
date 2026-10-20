@@ -33,6 +33,7 @@ qu'avec des tests verts.
 | `tests/Components/` | Bibliothèque statique `TestComponents` : les composants écrits pour les tests |
 | `tests/Core/` | Un test par classe de Core : `TestComponent`, `TestComponentFactory`, `TestPluginManager`, `TestUniverse`, `TestGalaxy` (une galaxy posée, ses interfaces, ses propriétés exposées, son édition et sa relecture compris), `TestStargate`, `TestSettingsFile` |
 | `tests/NebulaStudio/` | Les classes de NebulaStudio qui se passent de sa fenêtre : `TestColors`, `TestTheme`, `TestPluginModel`, `TestComponentModel`, `TestEditionView`, `TestGalaxyModel` |
+| `tests/exemple/` | Les composants d'un plugin d'exemple, chargés depuis son fichier comme le fait une application : `TestWidgetsPlugin` (la fenêtre principale, sa barre, les actions et le compteur, assemblés par leurs interfaces) |
 
 Les tests ne sont ni installés ni copiés dans le paquet.
 
@@ -45,14 +46,21 @@ nebula_add_test(TestUniverse LINK_LIBRARIES TestComponents)
 Crée l'exécutable `<NAME>` à partir de `<NAME>.cpp` (et de `SOURCES`), le lie à `Qt6::Test` et à `LINK_LIBRARIES`,
 active AUTOMOC et AUTORCC, et l'enregistre auprès de CTest. Il reçoit :
 
-- `NEBULA_EXAMPLE_PLUGINS_DIR` et `NEBULA_EXTERNAL_PLUGINS_DIR`, les dossiers d'`ExamplePlugin` et
-  d'`ExternalPlugin`, construits avant lui : les vrais plugins sur lesquels tester `PluginManager` ;
+- `NEBULA_EXAMPLE_PLUGINS_DIR` et `NEBULA_EXTERNAL_PLUGINS_DIR`, les dossiers d'`ExamplePlugin` et `WidgetsPlugin`
+  (le même), et d'`ExternalPlugin`, construits avant lui : les vrais plugins sur lesquels tester `PluginManager` et
+  les composants d'exemple ;
 - `NEBULA_VERSION`, la version du projet.
 
 CTest le lance avec, devant `PATH`, le dossier de Qt puis celui de `Core.dll`, la plateforme `offscreen` (aucune
 fenêtre ne s'ouvre, en local comme en CI) et `QT_FORCE_STDERR_LOGGING=1`, sans quoi Windows n'envoie le journal de
 QTest qu'au débogueur. Le Qt du build passe avant le dossier de `Core.dll` : celui que windeployqt y a copié pour
 NebulaStudio n'a pas la plateforme `offscreen`.
+
+Cette plateforme a ses limites : elle n'a pas de polices (un texte montré, celui d'un `QLabel` visible, avertit qu'elle
+ne trouve pas leur dossier) et avertit qu'elle ne suit pas les contraintes de taille d'une fenêtre (`This plugin does
+not support propagateSizeHints()`) quand une fenêtre montrée change la taille qu'elle demande, celle d'une
+`QMainWindow` avec une barre d'outils. Un test évite le premier en vérifiant la visibilité sans montrer le texte
+(`isVisibleTo()`), et attend le second par `QTest::ignoreMessage()`.
 
 Une classe de NebulaStudio n'est pas dans une bibliothèque : son test recompile ses sources (`SOURCES`), avec
 `nebulastudio.qrc` quand il lui faut les icônes ou la police.
