@@ -1,0 +1,79 @@
+# Changelog
+
+What changes in Nebula, formerly AppForge, from one version to the next, the latest first. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Each version is told in more detail, in English and in
+French, in its notes in [docs/release-notes](docs/release-notes/), the text of its GitHub release, with how to upgrade
+to it.
+
+## [1.0.0] - 2026-10-20
+
+### Added
+
+- Galaxies: a project file placed in an application as a single component, as many times as needed, each instance with
+  its own components (`Universe::instantiateGalaxy()`). Its plugins are found by their id and loaded; a galaxy that
+  would contain itself is refused.
+- Stargates (`Nebula::Stargate`, `Universe::addStargate()`): what a placed galaxy provides, consumes and exposes of the
+  interfaces and properties of its components.
+- A placed galaxy is edited as the application is: `Universe::saveGalaxy()` and `reloadGalaxy()`, and in NebulaStudio
+  **Open galaxy**, **Save Galaxy** (Ctrl+Alt+S), **Add stargate**, **Expose...** and **Edit stargate...**.
+- The **Galaxies** tab of NebulaStudio: the galaxies of a directory, and whether their plugins are known
+  (`Universe::readGalaxy()`, `missingPlugins()`).
+- The description of a project: `Universe::description()`, and **File** > **Description...** in NebulaStudio.
+- Mandatory consumed interfaces (`InterfaceRequirement::Mandatory`) and `Component::unboundMandatoryInterfaces()`;
+  NebulaStudio marks the components that cannot work and lists what to bind under its property editor.
+- `WidgetsPlugin`, an example whose components create their objects and assemble a main window.
+- NebulaStudio: a theme, dark or light as the system is, at the AA contrast level of the WCAG; a logo and an icon for
+  each term of the [glossary](docs/glossary.md); zoom of the edition zone, and moving it with the middle button; a
+  single link selected and removed.
+- Qt Test executables for the classes of Core and of NebulaStudio, run by CTest and by the CI.
+
+### Changed
+
+- AppForge is renamed Nebula: Forge becomes NebulaStudio, `ForgeApplication` becomes `Nebula::Universe`,
+  `ExampleForgeApp` becomes `ExampleUniverseApp`; the package, its target and function become
+  `find_package(Nebula)`, `Nebula::Core` and `nebula_add_plugin()`, the macros `NEBULA_*`, plugins `.nbdl` files and
+  projects `.nbp` files.
+- A component is either `Editing` or `Running`. Running an application no longer changes its project, and NebulaStudio
+  locks its edition zone while it runs.
+- A component creates its own objects in its constructor; the class of a plugin only gathers its components.
+- Plugins built against 0.3.0 are refused: build them again.
+
+### Removed
+
+- `initialize()`, `onInitialize()` and the `Ready` state of a component.
+- `build(<component>&)` in the class of a plugin: a plugin class that still declares one does not compile.
+- `start(instance)` and **Start component**: nothing is added while an application runs.
+
+## [0.3.0] - 2026-10-16
+
+### Added
+
+- Settings files, in a new `Settings` module: the values the user of an application gives some properties, kept from
+  one run to the next. **Add settings file** in Forge.
+- `--plugin-dir` and `--plugin-root` on the command line, through `ForgeApplication::addCommandLineOptions()` and
+  `applyCommandLine()`.
+- Forge: a splash screen, a logo, a search bar above the list of components, and **Start component**.
+
+### Changed
+
+- A plugin of a project is looked for by its id among the plugins found, its file being only a last resort.
+
+### Fixed
+
+- The context menu of a component no longer offers to add a zone under it.
+
+## [0.2.0] - 2026-10-13
+
+First published version.
+
+### Added
+
+- Core: plugins built with `appforge_add_plugin()`, `PluginManager`, components and `ComponentFactory`, interfaces
+  bound by name and type, the properties of inner objects, and `ForgeApplication`, which opens and runs a project.
+- Forge, the editor that assembles components, saves them as projects and runs them.
+- The package for other projects: `find_package(AppForge 0.2 REQUIRED COMPONENTS Core)`.
+- Examples: `ExamplePlugin`, `ExternalPlugin`, `ExampleApp` and `ExampleForgeApp`.
+
+[1.0.0]: https://github.com/Shuko83/Nebula/releases/tag/1.0.0
+[0.3.0]: https://github.com/Shuko83/Nebula/releases/tag/0.3.0
+[0.2.0]: https://github.com/Shuko83/Nebula/releases/tag/0.2.0

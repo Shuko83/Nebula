@@ -18,6 +18,7 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `exemple/ExampleUniverseApp` | exe console + Widgets | Le `main` type : options de `Universe::addCommandLineOptions()`, `applyCommandLine()`, `open()` du projet passé en argument, puis `start()` |
 | `CMakeUtils/` | sous-module git | `cmu_add_target` / `cmu_add_executable` / `cmu_add_shared_library` |
 | `docs/release-notes/` | — | Notes de chaque version, `<x.y.z>.md` : le texte de sa release GitHub |
+| `CHANGELOG.md` | — | Ce qui change d'une version à l'autre, la dernière en premier, au format Keep a Changelog, en anglais : une section `## [x.y.z] - <date>` par version (Added, Changed, Removed, Fixed) et son lien vers la release en bas |
 | `docs/glossary.md` | — | Glossaire Nebula (Nebula, Univers, Galaxy, Astre, Comet, Stargate), en anglais puis en français, référencé par le README : le vocabulaire à employer pour nommer code, documentation et interface ; Nebula et Univers (la classe `Universe`) sont déjà employés, Galaxy pour un fichier de projet (`GalaxyInfo`, onglet **Galaxies**), et Stargate pour ce qu'une galaxy expose (`Stargate`) |
 | `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Core/` (une par classe, `TestGalaxy` pour les galaxies posées, leurs interfaces, leurs propriétés exposées, leur édition et leur relecture, `TestStargate` pour la Stargate dans l'application qui l'édite) et `NebulaStudio/` (Colors, Theme, PluginModel, ComponentModel, EditionView, EditionScene pour ses liens, GalaxyModel, sources recompilées), `exemple/` (`TestWidgetsPlugin` : ses composants chargés depuis le plugin et assemblés), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`, et `Plugins/`, les plugins de test construits par `nebula_add_test_plugin()` (`nebula_add_plugin()`, puis retirés du paquet) : `FirstPlugin` (`Alpha`) et `ThirdPlugin` (`Gamma`, `Delta`) dans `test-plugins/`, `SecondPlugin` (`Beta`) dans `other-test-plugins/`, à côté des tests mais pas dans leur `plugins/` (`NEBULA_TEST_PLUGINS_DIR`, `NEBULA_OTHER_TEST_PLUGINS_DIR`). `PluginManager`, les plugins d'un projet ou d'une galaxy et `PluginModel` se testent sur eux : seul `TestWidgetsPlugin` dépend d'un exemple, celui qu'il teste (issue #83). Rien n'est installé |
 | `docs/testing.md` | — | Lancer, déboguer et écrire les tests, en français |
@@ -458,7 +459,8 @@ issue, un commit ou un push sur `main`, une fusion sans PR, ou une demande sans 
 **Livraison d'une version** : le même cycle, puis un tag.
 
 1. Une PR passe `project(Nebula VERSION x.y.z)` et les `find_package(Nebula x.y …)` du README à la nouvelle
-   version, et ajoute `docs/release-notes/<x.y.z>.md`, en anglais puis en français.
+   version, ajoute `docs/release-notes/<x.y.z>.md`, en anglais puis en français, et la section de la version en tête
+   de `CHANGELOG.md`, avec son lien.
 2. Une fois la PR fusionnée, le tag `<x.y.z>`, les trois nombres de la version sans préfixe `v`, est posé sur ce
    commit de `main` et poussé, à la demande de l'utilisateur. `release.yml` compile alors en Release, refuse un tag
    qui n'est pas la version du projet, installe le paquet, y ajoute les licences et le README, et publie la release
