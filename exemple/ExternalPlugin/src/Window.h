@@ -8,7 +8,7 @@
 class QWidget;
 
 // Shows the widget it consumes as the interface "content" in a window, for as long as it has it; the window is the one
-// of WindowLogic, which ExternalPlugin builds it with. It needs a QApplication.
+// of its WindowLogic, which it creates. It needs a QApplication.
 class Window : public Nebula::Component
 {
     Q_OBJECT

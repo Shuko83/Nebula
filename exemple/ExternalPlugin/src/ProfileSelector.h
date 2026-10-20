@@ -9,9 +9,9 @@
 
 class QWidget;
 
-// Lets the user of the application choose a profile among those it offers, in the list of ProfileSelectorLogic, which
-// ExternalPlugin builds it with. It provides the interface "display", a QWidget showing that list: it needs a
-// QApplication. Held by a settings file, its profile is the one the user finds again the next time.
+// Lets the user of the application choose a profile among those it offers, in the list of its ProfileSelectorLogic,
+// which it creates. It provides the interface "display", a QWidget showing that list: it needs a QApplication. Held by
+// a settings file, its profile is the one the user finds again the next time.
 class ProfileSelector : public Nebula::Component
 {
     Q_OBJECT
@@ -21,6 +21,8 @@ class ProfileSelector : public Nebula::Component
     Q_PROPERTY(QString profile READ profile WRITE setProfile NOTIFY profileChanged)
 
   public:
+    ProfileSelector();
+
     // Their names, separated by commas.
     [[nodiscard]] QString profiles() const;
     void setProfiles(const QString& profiles);

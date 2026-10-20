@@ -5,11 +5,7 @@
 
 #include "Nebula/Plugin/Plugin.h"
 
-class Greeter;
-
-// Class of the plugin: builds each of its components with the class holding its logic.
+// Class of the plugin, in which its components are registered.
 class ExamplePlugin : public Nebula::Plugin
 {
-  public:
-    void build(Greeter& greeter);
 };

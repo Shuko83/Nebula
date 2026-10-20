@@ -7,11 +7,6 @@
 
 #include "Nebula/Plugin/Plugin.h"
 
-class Panel;
-class Probe;
-class Sink;
-class Source;
-
 // The plugin class of the components of the tests, in the process of the test rather than in a plugin file: see
 // registerTestComponents().
 class TestComponents : public Nebula::Plugin
@@ -19,11 +14,6 @@ class TestComponents : public Nebula::Plugin
   public:
     // The plugin id they are registered under: their ids are Test.<class name>.
     static constexpr QLatin1StringView Id{"Test"};
-
-    void build(Probe& probe);
-    void build(Source& source);
-    void build(Sink& sink);
-    void build(Panel& panel);
 };
 
 // Registers the components of the tests in ComponentFactory::instance(), under TestComponents::Id, the first time it is

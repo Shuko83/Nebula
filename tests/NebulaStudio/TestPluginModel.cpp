@@ -68,10 +68,12 @@ void TestPluginModel::data_data()
     QTest::addColumn<int>("role");
     QTest::addColumn<QVariant>("value");
 
-    // By id: ExamplePlugin, then ExternalPlugin.
+    // By id: ExamplePlugin, ExternalPlugin, then WidgetsPlugin.
     QTest::newRow("name") << 0 << int(PluginModel::Name) << int(Qt::DisplayRole) << QVariant(u"ExamplePlugin"_s);
     QTest::newRow("name of the second") << 1 << int(PluginModel::Name) << int(Qt::DisplayRole)
                                         << QVariant(u"ExternalPlugin"_s);
+    QTest::newRow("name of the third") << 2 << int(PluginModel::Name) << int(Qt::DisplayRole)
+                                       << QVariant(u"WidgetsPlugin"_s);
     QTest::newRow("version") << 0 << int(PluginModel::Version) << int(Qt::DisplayRole) << QVariant(u"1.0.0"_s);
     QTest::newRow("state") << 0 << int(PluginModel::State) << int(Qt::DisplayRole) << QVariant(u"Not loaded"_s);
     QTest::newRow("id") << 0 << int(PluginModel::Name) << PluginModel::IdRole << QVariant(ExamplePluginId);
@@ -88,7 +90,7 @@ void TestPluginModel::data()
     QFETCH(int, role);
     QFETCH(QVariant, value);
 
-    QCOMPARE(m_model->rowCount(), 2);
+    QCOMPARE(m_model->rowCount(), 3);
     QCOMPARE(m_model->columnCount(), int(PluginModel::ColumnCount));
     QCOMPARE(m_model->index(row, column).data(role), value);
 }
@@ -120,15 +122,17 @@ void TestPluginModel::refreshInsertsNewPlugins()
     const QSignalSpy inserted(&model, &QAbstractItemModel::rowsInserted);
     QCOMPARE(model.rowCount(), 0);
 
-    // The second one by id first: the first one is inserted before it.
+    // The second one by id first: the first one is inserted before it, the third one after it.
     plugins.scan(QStringLiteral(NEBULA_EXTERNAL_PLUGINS_DIR));
     model.refresh();
     plugins.scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
     model.refresh();
-    QCOMPARE(inserted.count(), 2);
-    QCOMPARE(inserted.last().at(1).toInt(), 0);
+    QCOMPARE(inserted.count(), 3);
+    QCOMPARE(inserted.at(1).at(1).toInt(), 0);
+    QCOMPARE(inserted.at(2).at(1).toInt(), 2);
     QCOMPARE(model.index(0, PluginModel::Name).data().toString(), QStringLiteral("ExamplePlugin"));
     QCOMPARE(model.index(1, PluginModel::Name).data().toString(), QStringLiteral("ExternalPlugin"));
+    QCOMPARE(model.index(2, PluginModel::Name).data().toString(), QStringLiteral("WidgetsPlugin"));
 }
 
 void TestPluginModel::refreshUpdatesTheState()

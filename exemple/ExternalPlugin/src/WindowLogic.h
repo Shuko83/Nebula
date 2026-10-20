@@ -8,8 +8,8 @@
 
 class Window;
 
-// Logic of a Window, built with it by ExternalPlugin: owns the window, shown with the content of the Window in it for
-// as long as it is available.
+// Logic of a Window, created by it: owns the window, shown with the content of the Window in it for as long as it is
+// available.
 class WindowLogic : public QObject
 {
     Q_OBJECT

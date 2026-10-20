@@ -20,7 +20,7 @@ class IPlugin
     // __DATE__ " " __TIME__ of the plugin, e.g. "Oct  6 2026 21:14:03".
     [[nodiscard]] virtual std::string_view buildDate() const = 0;
 
-    // The plugin class declared with NEBULA_PLUGIN, which builds the components of the plugin.
+    // The plugin class declared with NEBULA_PLUGIN, in which the components of the plugin are registered.
     [[nodiscard]] virtual Plugin& plugin() = 0;
 };
 

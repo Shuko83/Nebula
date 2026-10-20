@@ -105,7 +105,7 @@ std::unique_ptr<Component> ComponentFactory::create(const QString& componentId) 
     {
         return nullptr;
     }
-    std::unique_ptr<Component> component = type->second.builder(*type->second.plugin);
+    std::unique_ptr<Component> component = type->second.builder();
     component->m_componentId = componentId;
     return component;
 }

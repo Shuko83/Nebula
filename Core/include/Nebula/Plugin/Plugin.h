@@ -16,9 +16,9 @@ namespace Nebula
 
 class ComponentFactory;
 
-// Base of the class every plugin declares with NEBULA_PLUGIN. It builds the components registered in it with
-// NEBULA_REGISTER_COMPONENT: for each one ComponentFactory creates, it calls its build(<component>&), which
-// instantiates the classes holding the logic of the component.
+// Base of the class every plugin declares with NEBULA_PLUGIN, in which its components are registered with
+// NEBULA_REGISTER_COMPONENT. It does not know what they are made of: a component creates its own objects when it is
+// constructed, and ComponentFactory creates the component.
 class CORE_EXPORT Plugin
 {
   public:
@@ -27,7 +27,7 @@ class CORE_EXPORT Plugin
     Plugin(const Plugin&) = delete;
     Plugin& operator=(const Plugin&) = delete;
 
-    // Registers the component T in the plugin class P, which builds it with P::build(T&); see NEBULA_REGISTER_COMPONENT.
+    // Registers the component T in the plugin class P; see NEBULA_REGISTER_COMPONENT.
     template <typename P, typename T> static bool add()
     {
         static_assert(std::is_base_of_v<Plugin, P>, "A component is registered in a class deriving from Nebula::Plugin");
@@ -37,9 +37,11 @@ class CORE_EXPORT Plugin
         static_assert(!std::is_final_v<T>, "A component cannot be final: Plugin derives from it");
         static_assert(!std::is_abstract_v<Instance<T>>, "A component implements every pure virtual function");
         static_assert(std::is_default_constructible_v<Instance<T>>, "A component needs a default constructor");
-        static_assert(requires(P& plugin, T& component) { plugin.build(component); },
-                      "The plugin class of a component declares a public build(<component>&)");
-        registered<P>().append(ComponentType{.metaObject = &T::staticMetaObject, .builder = &build<P, T>});
+        // Never called: what it would create would be missing without a word.
+        static_assert(
+            !requires(P& plugin, T& component) { plugin.build(component); },
+            "build(<component>&) is no longer called: a component creates its objects in its constructor");
+        registered<P>().append(ComponentType{.metaObject = &T::staticMetaObject, .builder = &create<T>});
         return true;
     }
 
@@ -59,7 +61,7 @@ class CORE_EXPORT Plugin
   private:
     friend class ComponentFactory;
 
-    using Builder = std::unique_ptr<Component> (*)(Plugin& plugin);
+    using Builder = std::unique_ptr<Component> (*)();
 
     struct ComponentType
     {
@@ -81,11 +83,9 @@ class CORE_EXPORT Plugin
         void builtByPlugin() override {}
     };
 
-    template <typename P, typename T> static std::unique_ptr<Component> build(Plugin& plugin)
+    template <typename T> static std::unique_ptr<Component> create()
     {
-        auto component = std::make_unique<Instance<T>>();
-        static_cast<P&>(plugin).build(static_cast<T&>(*component));
-        return component;
+        return std::make_unique<Instance<T>>();
     }
 
     // The components registered in P while its plugin loads, before P is instantiated.
@@ -117,8 +117,8 @@ std::unique_ptr<Plugin> createPlugin();
     }                                                                                                                  \
     static_assert(true, "NEBULA_PLUGIN ends with a semicolon")
 
-// Registers Class, a component, in PluginClass, the plugin class (NEBULA_PLUGIN) that builds it with
-// PluginClass::build(Class&). Used once per component, in a source file: NEBULA_REGISTER_COMPONENT(ExamplePlugin, Greeter);
+// Registers Class, a component, in PluginClass, the plugin class (NEBULA_PLUGIN) of its plugin. Used once per
+// component, in a source file: NEBULA_REGISTER_COMPONENT(ExamplePlugin, Greeter);
 // Registering can only throw when memory runs out, which ends the program while a plugin loads anyway.
 // NOLINTBEGIN(bugprone-throwing-static-initialization)
 #define NEBULA_REGISTER_COMPONENT(PluginClass, Class)                                                                  \

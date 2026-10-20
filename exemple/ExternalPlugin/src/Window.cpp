@@ -6,6 +6,7 @@
 #include <QWidget>
 
 #include "ExternalPlugin.h"
+#include "WindowLogic.h"
 
 NEBULA_REGISTER_COMPONENT(ExternalPlugin, Window);
 
@@ -16,6 +17,7 @@ Window::Window()
     consumeInterface<QWidget>(
         QStringLiteral("content"), m_content, Nebula::InterfaceRequirement::Mandatory,
         [this] { emit contentAvailable(); }, [this] { emit contentUnavailable(); });
+    new WindowLogic(*this); // A child: its logic, destroyed with it
 }
 
 QWidget* Window::content() const

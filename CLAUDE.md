@@ -12,13 +12,14 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `Core/cmake/` | — | `nebula_add_plugin()` et les gabarits `plugin.h.in` / `plugin.json.in`, livrés avec `Core` dans le paquet |
 | `NebulaStudio/` | `NebulaStudio` (exe Widgets) | L'éditeur graphique ; le code est dans `NebulaStudio/src/`, sans namespace, celui des fichiers de réglages dans `NebulaStudio/src/Settings/`, celui des galaxies (`GalaxyModel`, `GalaxyViewer`) dans `NebulaStudio/src/Galaxy/`, le logo de Nebula, les icônes du glossaire et la police des titres dans `NebulaStudio/resources/` |
 | `exemple/ExamplePlugin` | `.nbdl` dans `bin/plugins` | Composant `Greeter` (fournit `greeter` : `IGreeter`) |
+| `exemple/WidgetsPlugin` | `.nbdl` dans `bin/plugins` | L'exemple de la bonne pratique (issue #79) : des composants nommés `<Nom>Component`, chacun créant ses objets (membres) dans son constructeur. `MainWindowComponent` (fournit `mainWindow` : la `QMainWindow`, montrée pendant l'exécution ; consomme `centralWidget` : `QWidget`), `TopBarComponent` (une `QToolBar` ; consomme `mainWindow`, `Mandatory`, `action1` à `action4` : `QAction`, `widget1` et `widget2` : `QWidget`, emplacements fixes faute de consommation de liste, #67), `ActionComponent` (fournit `action` : `QAction`) et `CounterComponent` (consomme `action`, `Mandatory`, compte pendant l'exécution ; fournit `display` : son `QLabel`) |
 | `exemple/ExternalPlugin` | `.nbdl` dans `<build>/external-plugins` | `Ticker` (fournit `display` : `QWidget`, dont il expose les propriétés dans le groupe `Display`), `ProfileSelector` (fournit `display` : la `QComboBox` de ses `profiles`, où l'utilisateur choisit `profile`) et `Window` (consomme `content` : `QWidget`, `Mandatory`) |
 | `exemple/ExampleApp` | exe console | Scanne, charge, liste et fait tourner un `Greeter` |
 | `exemple/ExampleUniverseApp` | exe console + Widgets | Le `main` type : options de `Universe::addCommandLineOptions()`, `applyCommandLine()`, `open()` du projet passé en argument, puis `start()` |
 | `CMakeUtils/` | sous-module git | `cmu_add_target` / `cmu_add_executable` / `cmu_add_shared_library` |
 | `docs/release-notes/` | — | Notes de chaque version, `<x.y.z>.md` : le texte de sa release GitHub |
 | `docs/glossary.md` | — | Glossaire Nebula (Nebula, Univers, Galaxy, Astre, Comet, Stargate), en anglais puis en français, référencé par le README : le vocabulaire à employer pour nommer code, documentation et interface ; Nebula et Univers (la classe `Universe`) sont déjà employés, Galaxy pour un fichier de projet (`GalaxyInfo`, onglet **Galaxies**), et Stargate pour ce qu'une galaxy expose (`Stargate`) |
-| `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Core/` (une par classe, `TestGalaxy` pour les galaxies posées, leurs interfaces, leurs propriétés exposées, leur édition et leur relecture, `TestStargate` pour la Stargate dans l'application qui l'édite) et `NebulaStudio/` (Colors, Theme, PluginModel, ComponentModel, EditionView, GalaxyModel, sources recompilées), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`. `PluginManager` se teste sur `ExamplePlugin` et `ExternalPlugin`. Rien n'est installé |
+| `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Core/` (une par classe, `TestGalaxy` pour les galaxies posées, leurs interfaces, leurs propriétés exposées, leur édition et leur relecture, `TestStargate` pour la Stargate dans l'application qui l'édite) et `NebulaStudio/` (Colors, Theme, PluginModel, ComponentModel, EditionView, GalaxyModel, sources recompilées), `exemple/` (`TestWidgetsPlugin` : ses composants chargés depuis le plugin et assemblés), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`. `PluginManager` se teste sur `ExamplePlugin`, `WidgetsPlugin` et `ExternalPlugin`. Rien n'est installé |
 | `docs/testing.md` | — | Lancer, déboguer et écrire les tests, en français |
 | `CFmake/` | non suivi, dépôt à part | Ne fait pas partie du build : ne pas y toucher |
 
@@ -34,8 +35,8 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   affiché par le splash de NebulaStudio. `Shuko83` reste le compte GitHub : adresse du dépôt, du sous-module
   CMakeUtils, et `organizationDomain` (valeur par défaut de CMakeUtils).
 - Sorties : `<build>/bin[/<config>]`, plugins dans `plugins/` à côté. Extension `.nbdl`, seule scannée.
-- `add_dependencies(NebulaStudio ExamplePlugin ExternalPlugin)`, de même pour `ExampleUniverseApp` : construire l'un
-  reconstruit les plugins du dépôt.
+- `add_dependencies(NebulaStudio ExamplePlugin WidgetsPlugin ExternalPlugin)`, de même pour `ExampleUniverseApp` (et
+  `ExampleApp` pour ceux de `plugins/`) : construire l'un reconstruit les plugins du dépôt.
 - Tests : `tests/`, un exécutable Qt Test par classe, lancés par `ctest -C <config>` depuis le build (option
   `NEBULA_BUILD_TESTS`, `ON` par défaut), voir [docs/testing.md](docs/testing.md). CI : Windows, MSVC 2022, Qt 6.8,
   Release, puis `ctest`. `release.yml` fait la même compilation sur un tag
@@ -53,10 +54,13 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 - `nebula_add_plugin(NAME …)` crée une bibliothèque MODULE et génère l'objet racine
   `Nebula::Generated::<Nom>Plugin` (QObject + `IPlugin`, `Q_PLUGIN_METADATA` avec le JSON id / name / description /
   version / coreVersion).
-- Le plugin écrit une classe dérivant de `Nebula::Plugin`, `NEBULA_PLUGIN(Classe);` une fois, et un
-  `build(<Composant>&)` public par composant, où il crée la logique (un QObject enfant du composant).
+- Le plugin écrit une classe dérivant de `Nebula::Plugin`, vide, et `NEBULA_PLUGIN(Classe);` une fois. Elle ne connaît
+  pas les objets de ses composants : un composant les crée lui-même dans son constructeur (issue #79). Elle n'a plus de
+  `build(<Composant>&)`, que Core n'appelle plus : `Plugin::add()` refuse de compiler s'il en trouve un, pour que ce
+  qu'il créait ne manque pas sans un mot.
 - `NEBULA_REGISTER_COMPONENT(ClassePlugin, Composant);` : initialisation statique qui appelle `Plugin::add<P, T>()`
   (série de `static_assert`), stocké dans `registered<P>()` puis copié dans `m_componentTypes` par `instantiate<P>()`.
+  `ComponentFactory::create()` appelle le `Builder` du type, `create<T>()`, sans argument.
 - `Plugin::Instance<T>` est la seule classe instanciable dérivant d'un composant : elle implémente la virtuelle pure
   privée `Component::builtByPlugin()`, et son destructeur appelle `releaseInterfaces()` avant celui de `T`.
 - `PluginManager` : `scan(dir)` / `addFile(path)` lisent les métadonnées sans charger (contrôle de l'IID, puis même
@@ -323,6 +327,10 @@ de NebulaStudio (`SpaceGrotesk-OFL.txt`). Seule la graisse Bold sert : en ajoute
   (#42). Un plugin connu n'est pas vérifié contre les types des composants (il faudrait le charger) ; le dossier de
   l'onglet n'est pas mémorisé d'un lancement à l'autre ; la galaxy ouverte n'est pas marquée dans la liste. Le terme
   Galaxy reste aussi sur les zones (`ZoneItem`, **Add zone**).
+- Exemples : `Greeter`, `Ticker`, `ProfileSelector` et `Window` gardent leur nom et leur classe `*Logic`, que le
+  composant crée désormais ; seuls ceux de `WidgetsPlugin` suivent la bonne pratique (`<Nom>Component`, objets
+  membres). `TopBarComponent` consomme un nombre fixe d'actions et de widgets en attendant la consommation de liste
+  (#67). Aucun projet d'exemple n'assemble `WidgetsPlugin` dans le dépôt.
 - Fichiers de réglages : pas de fenêtre « Préférences » générique où l'utilisateur final éditerait tout un fichier
   (chaque composant montre les siens), pas de partage d'une même valeur entre deux instances, et le cas de plusieurs
   objets de même nom dans un composant (`index` d'une entrée) n'est exercé que par les tests (`Panel`).
@@ -351,7 +359,15 @@ de NebulaStudio (`SpaceGrotesk-OFL.txt`). Seule la graisse Bold sert : en ajoute
   dates valides par défaut.
 - Sous Windows, sans console, Qt n'envoie ses messages (le journal de QTest compris) qu'au débogueur :
   `QT_FORCE_STDERR_LOGGING=1` les fait écrire sur la sortie d'erreur, ce que `nebula_add_test()` donne à CTest.
-- `Ticker` et `Window` ont besoin d'un `QApplication` (widgets) : pas utilisables dans `ExampleApp`.
+- `Ticker` et `Window` ont besoin d'un `QApplication` (widgets) : pas utilisables dans `ExampleApp`, pas plus que les
+  composants de `WidgetsPlugin`. `ExampleApp` charge tout `plugins/`, donc `WidgetsPlugin` aussi, sans l'instancier ;
+  dans le paquet, son dossier n'a pas `Qt6Widgets` (windeployqt ne voit que l'exécutable) : il dit que ce plugin n'est
+  pas chargé et continue.
+- Un objet qu'un composant prend d'un autre par une interface (un widget qu'il place, une barre ajoutée à une fenêtre)
+  lui est rendu sans parent dans `onUnavailable` (`setParent(nullptr)`, `takeCentralWidget()`, `removeToolBar()`) :
+  sinon le parent qui le tient le détruirait avec lui, alors que c'est le membre d'un autre composant. Une
+  `QToolBar` possède les widgets qu'on y ajoute (`addWidget()`) : `TopBarComponent` y met des supports à lui, où il
+  range les widgets consommés.
 - Tout ce qu'un objet ajouté par `addPropertiesForQObject()` a d'inscriptible est enregistré : pour l'afficheur du
   `Ticker`, `value` compris, qui change à chaque tic, et que `stop()` remet donc à sa valeur d'édition (`ticks`, en
   lecture seule, n'est pas remis). C'est aussi ce que propose la fenêtre d'un fichier de réglages : toutes les

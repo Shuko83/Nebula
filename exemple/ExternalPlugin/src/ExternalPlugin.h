@@ -5,15 +5,7 @@
 
 #include "Nebula/Plugin/Plugin.h"
 
-class ProfileSelector;
-class Ticker;
-class Window;
-
-// Class of the plugin: builds each of its components with the class holding its logic.
+// Class of the plugin, in which its components are registered.
 class ExternalPlugin : public Nebula::Plugin
 {
-  public:
-    void build(ProfileSelector& selector);
-    void build(Ticker& ticker);
-    void build(Window& window);
 };

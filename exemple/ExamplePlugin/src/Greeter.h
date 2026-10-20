@@ -9,7 +9,7 @@
 
 class IGreeter;
 
-// Exposes a greeting for its recipient, written when it starts by GreeterLogic, which ExamplePlugin builds it with.
+// Exposes a greeting for its recipient, written when it starts by its GreeterLogic, which it creates.
 // While it runs, it provides the interface "greeter", an IGreeter.
 class Greeter : public Nebula::Component
 {
