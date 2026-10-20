@@ -15,6 +15,7 @@
 #include "InterfaceItem.h"
 
 class ComponentItem;
+class LinkItem;
 class QGraphicsPathItem;
 class SettingsItem;
 class StargateItem;
@@ -38,7 +39,8 @@ class SettingsFile;
 // renames and recolors the component under the cursor too, see ComponentItem. A component keeps a name no other one of
 // the application has: see refused().
 // The same menu removes the component under the cursor from the application, with its links, and the Delete key
-// removes the selected ones.
+// removes the selected ones. A link, selected by clicking it, is removed the same way, which unbinds its interfaces: by
+// the Delete key, or from the menu opened on it.
 // The menu adds a settings file of the application as well, see SettingsItem, whose properties are chosen at once, and
 // again when it is double-clicked or from its own menu, which writes its default values or removes it.
 // The menu adds a stargate too, see StargateItem, which exposes what the galaxy the project is has once placed: what
@@ -108,7 +110,7 @@ class EditionScene : public QGraphicsScene
     // Double-clicking a settings file edits it; a stargate edits what it exposes by itself, see StargateItem.
     void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
     void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
-    // Delete removes the selected components and settings files, unless a name is edited: the key is for what is
+    // Delete removes the selected components, settings files and links, unless a name is edited: the key is for what is
     // typed then.
     void keyPressEvent(QKeyEvent* event) override;
     // A grid, and a hint while nothing is in the edition zone.
@@ -145,6 +147,10 @@ class EditionScene : public QGraphicsScene
     // Binds the consumed one to the provided one, whichever is which, and draws their link, in place of the one the
     // consumed one had; does nothing when they cannot be bound.
     void link(InterfaceItem& source, InterfaceItem& target);
+    // The link at position, unless something is shown over it there; nullptr when there is none.
+    [[nodiscard]] LinkItem* linkAt(const QPointF& position) const;
+    // Unbinds the interfaces links are drawn between, and removes them from the edition zone.
+    void unlink(const QList<LinkItem*>& links);
     // The zone position is in, the smallest one when several are; nullptr when there is none.
     [[nodiscard]] ZoneItem* zoneAt(const QPointF& position) const;
     // Adds a zone, its top left corner at position; of the next color when color is not valid.

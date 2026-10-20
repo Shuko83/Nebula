@@ -26,6 +26,7 @@
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "ComponentItem.h"
@@ -154,7 +155,7 @@ void EditionScene::showGalaxyAgain()
 
 Nebula::Component* EditionScene::selectedComponent() const
 {
-    // Only the components can be selected.
+    // Not a settings file nor a link, which can be selected too.
     const QList<QGraphicsItem*> selected = selectedItems();
     const auto* item =
         selected.size() == 1 ? qobject_cast<const ComponentItem*>(selected.constFirst()->toGraphicsObject()) : nullptr;
@@ -460,6 +461,7 @@ void EditionScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     }
     ComponentItem* component = componentAt(event->scenePos());
     SettingsItem* settings = component == nullptr ? settingsAt(event->scenePos()) : nullptr;
+    LinkItem* link = component == nullptr && settings == nullptr ? linkAt(event->scenePos()) : nullptr;
     ZoneItem* zone = zoneAt(event->scenePos());
     QMenu menu(event->widget());
     const QAction* renameComponent = nullptr;
@@ -469,6 +471,7 @@ void EditionScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     const QAction* editSettingsFile = nullptr;
     QAction* writeDefaultValues = nullptr;
     const QAction* removeSettingsFile = nullptr;
+    const QAction* removeLink = nullptr;
     const QAction* add = nullptr;
     const QAction* addSettingsFile = nullptr;
     const QAction* addStargate = nullptr;
@@ -512,6 +515,10 @@ void EditionScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
         writeDefaultValues->setToolTip(
             tr("Writes the values of the project to the file, in place of those of the user"));
         removeSettingsFile = menu.addAction(tr("Remove settings file"));
+    }
+    else if(link != nullptr)
+    {
+        removeLink = menu.addAction(tr("Remove link"));
     }
     else
     {
@@ -584,6 +591,10 @@ void EditionScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     {
         remove(*settings);
     }
+    else if(chosen == removeLink)
+    {
+        unlink({link});
+    }
     else if(chosen == add)
     {
         addZone(event->scenePos(), ZoneSize, tr("Zone"))->editTitle(); // Named at once
@@ -640,6 +651,7 @@ void EditionScene::keyPressEvent(QKeyEvent* event)
     }
     QList<ComponentItem*> removed;
     QList<SettingsItem*> removedSettings;
+    QList<LinkItem*> removedLinks;
     const QList<QGraphicsItem*> selected = selectedItems();
     for(QGraphicsItem* item : selected)
     {
@@ -651,8 +663,14 @@ void EditionScene::keyPressEvent(QKeyEvent* event)
         {
             removedSettings.append(settings);
         }
+        else if(auto* link = qgraphicsitem_cast<LinkItem*>(item))
+        {
+            removedLinks.append(link);
+        }
     }
     clearSelection(); // Told once, rather than as each of them goes
+    // The links before the components, which they would go with.
+    unlink(removedLinks);
     // The files first: they would otherwise join themselves again to what is left as each of their components goes.
     for(SettingsItem* settings : std::as_const(removedSettings))
     {
@@ -817,6 +835,30 @@ void EditionScene::link(InterfaceItem& source, InterfaceItem& target)
     {
         refreshLinks();
     }
+}
+
+LinkItem* EditionScene::linkAt(const QPointF& position) const
+{
+    return qgraphicsitem_cast<LinkItem*>(itemAt(position, QTransform())); // The topmost item
+}
+
+void EditionScene::unlink(const QList<LinkItem*>& links)
+{
+    if(links.isEmpty())
+    {
+        return;
+    }
+    // Read before any is unbound: a component shows its interfaces again, without their links, as they change.
+    QList<std::pair<Nebula::Component*, QString>> bound;
+    for(const LinkItem* link : links)
+    {
+        bound.append({&link->consumed().component(), link->consumed().name()});
+    }
+    for(const auto& [consumer, name] : std::as_const(bound))
+    {
+        consumer->unbindInterface(name);
+    }
+    refreshLinks(); // Which no longer draws them
 }
 
 ZoneItem* EditionScene::zoneAt(const QPointF& position) const
