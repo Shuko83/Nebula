@@ -27,7 +27,7 @@ using namespace Qt::StringLiterals;
 namespace
 {
 
-const QString ExamplePluginId = QStringLiteral("FabienDG.Nebula.ExamplePlugin");
+const QString FirstPluginId = QStringLiteral("FabienDG.Nebula.FirstPlugin");
 
 // A galaxy of a Source, a Sink bound to it, and a Probe counting 7.
 const QByteArray Clock = R"({"version": 1, "description": "Ticks",
@@ -326,22 +326,22 @@ void TestGalaxy::loadsItsPlugins()
     const QTemporaryDir directory;
     const QString filePath =
         write(directory, u"Hello.nbp"_s,
-              R"({"version": 1, "plugins": [{"id": "FabienDG.Nebula.ExamplePlugin", "file": "nowhere.nbdl"}],
-            "components": [{"name": "Greeter1", "type": "FabienDG.Nebula.ExamplePlugin.Greeter"}]})");
+              R"({"version": 1, "plugins": [{"id": "FabienDG.Nebula.FirstPlugin", "file": "nowhere.nbdl"}],
+            "components": [{"name": "Alpha1", "type": "FabienDG.Nebula.FirstPlugin.Alpha"}]})");
 
     Universe universe;
-    universe.plugins().scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
-    QVERIFY(!universe.plugins().isLoaded(ExamplePluginId));
+    universe.plugins().scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
+    QVERIFY(!universe.plugins().isLoaded(FirstPluginId));
     // Found by its id, not by its file, and loaded.
     const Galaxy* galaxy = universe.instantiateGalaxy(filePath);
     QVERIFY2(galaxy != nullptr, qPrintable(universe.errorString()));
-    QVERIFY(universe.plugins().isLoaded(ExamplePluginId));
-    QCOMPARE(namesOf(galaxy->components()), QStringList{"Greeter1"});
+    QVERIFY(universe.plugins().isLoaded(FirstPluginId));
+    QCOMPARE(namesOf(galaxy->components()), QStringList{"Alpha1"});
 
     // Saved with the plugins of the components of its galaxies.
     const QJsonArray plugins = universe.save().value(u"plugins").toArray();
     QCOMPARE(plugins.size(), 1);
-    QCOMPARE(plugins.first().toObject().value(u"id").toString(), ExamplePluginId);
+    QCOMPARE(plugins.first().toObject().value(u"id").toString(), FirstPluginId);
 }
 
 void TestGalaxy::nested()
@@ -608,22 +608,22 @@ void TestGalaxy::componentsOfAndUnloadPlugin()
 {
     const QTemporaryDir directory;
     QVERIFY(!write(directory, u"Hello.nbp"_s,
-                   R"({"version": 1, "plugins": [{"id": "FabienDG.Nebula.ExamplePlugin", "file": "x.nbdl"}],
-                       "components": [{"name": "Greeter1", "type": "FabienDG.Nebula.ExamplePlugin.Greeter"}]})")
+                   R"({"version": 1, "plugins": [{"id": "FabienDG.Nebula.FirstPlugin", "file": "x.nbdl"}],
+                       "components": [{"name": "Alpha1", "type": "FabienDG.Nebula.FirstPlugin.Alpha"}]})")
                  .isEmpty());
     const QString filePath = write(directory, u"Home.nbp"_s, placing(u"Hello.nbp"_s, u"Hello1"_s));
 
     Universe universe;
-    universe.plugins().scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
+    universe.plugins().scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
     const Galaxy* home = universe.instantiateGalaxy(filePath);
     QVERIFY(home != nullptr);
     QVERIFY(universe.instantiate(testComponentId(u"Probe"_s)) != nullptr);
 
     // A galaxy that holds one of its components, directly or not, is of the plugin too: it goes with it.
-    QCOMPARE(universe.componentsOf(ExamplePluginId), QList<Nebula::Component*>{universe.component(u"Home1"_s)});
-    QVERIFY(universe.unloadPlugin(ExamplePluginId));
+    QCOMPARE(universe.componentsOf(FirstPluginId), QList<Nebula::Component*>{universe.component(u"Home1"_s)});
+    QVERIFY(universe.unloadPlugin(FirstPluginId));
     QCOMPARE(namesOf(universe.components()), QStringList{"Probe1"});
-    QVERIFY(!universe.plugins().isLoaded(ExamplePluginId));
+    QVERIFY(!universe.plugins().isLoaded(FirstPluginId));
 }
 
 void TestGalaxy::stargateInterfaces()

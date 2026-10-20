@@ -30,8 +30,8 @@ using Nebula::Universe;
 namespace
 {
 
-const QString ExamplePluginId = QStringLiteral("FabienDG.Nebula.ExamplePlugin");
-const QString GreeterId = ExamplePluginId + QStringLiteral(".Greeter");
+const QString FirstPluginId = QStringLiteral("FabienDG.Nebula.FirstPlugin");
+const QString AlphaId = FirstPluginId + QStringLiteral(".Alpha");
 
 // An instance of the component of the tests T in universe, named name, or after its component when empty.
 template <typename T> T* instantiate(Universe& universe, const QString& name = {})
@@ -581,10 +581,10 @@ void TestUniverse::missingPlugins_data()
     QTest::addColumn<QStringList>("missing");
 
     QTest::newRow("none") << QStringList{} << QStringList{};
-    QTest::newRow("known, not loaded") << QStringList{ExamplePluginId} << QStringList{};
+    QTest::newRow("known, not loaded") << QStringList{FirstPluginId} << QStringList{};
     QTest::newRow("unknown") << QStringList{"Other.Plugin"} << QStringList{"Other.Plugin"};
     QTest::newRow("known and unknown, in their order")
-        << QStringList{"Z.Plugin", ExamplePluginId, "A.Plugin"} << QStringList{"Z.Plugin", "A.Plugin"};
+        << QStringList{"Z.Plugin", FirstPluginId, "A.Plugin"} << QStringList{"Z.Plugin", "A.Plugin"};
     QTest::newRow("unknown twice") << QStringList{"Other.Plugin", "Other.Plugin"} << QStringList{"Other.Plugin"};
     // Registered in the factory, by registerTestComponents(), but no plugin manager knows it.
     const QString testPluginId = TestComponents::Id;
@@ -597,7 +597,7 @@ void TestUniverse::missingPlugins()
     QFETCH(QStringList, missing);
 
     Universe universe;
-    universe.plugins().scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
+    universe.plugins().scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
     QCOMPARE(universe.missingPlugins({.name = QStringLiteral("Galaxy"),
                                       .description = {},
                                       .plugins = plugins,
@@ -815,8 +815,8 @@ void TestUniverse::savePluginsRelativeToTheRoot_data()
     QTest::addColumn<QString>("root");
     QTest::addColumn<QString>("file");
 
-    QTest::newRow("its directory") << NEBULA_EXAMPLE_PLUGINS_DIR << "ExamplePlugin.nbdl";
-    QTest::newRow("above it") << NEBULA_EXAMPLE_PLUGINS_DIR "/.." << "plugins/ExamplePlugin.nbdl";
+    QTest::newRow("its directory") << NEBULA_TEST_PLUGINS_DIR << "FirstPlugin.nbdl";
+    QTest::newRow("above it") << NEBULA_TEST_PLUGINS_DIR "/.." << "test-plugins/FirstPlugin.nbdl";
 }
 
 void TestUniverse::savePluginsRelativeToTheRoot()
@@ -828,23 +828,23 @@ void TestUniverse::savePluginsRelativeToTheRoot()
     {
         Universe universe;
         universe.setPluginRoot(root);
-        universe.plugins().scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
-        QVERIFY(universe.plugins().load(ExamplePluginId));
-        QVERIFY(universe.instantiate(GreeterId) != nullptr);
+        universe.plugins().scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
+        QVERIFY(universe.plugins().load(FirstPluginId));
+        QVERIFY(universe.instantiate(AlphaId) != nullptr);
         ::instantiate<Probe>(universe); // Of no plugin it knows: none is written for it
         saved = universe.save();
     }
     const QJsonArray plugins = saved.value(u"plugins").toArray();
     QCOMPARE(plugins.size(), 1);
-    QCOMPARE(plugins.first().toObject().value(u"id").toString(), ExamplePluginId);
+    QCOMPARE(plugins.first().toObject().value(u"id").toString(), FirstPluginId);
     QCOMPARE(plugins.first().toObject().value(u"file").toString(), file);
 
     // Its plugin found again from the root, by its file.
     Universe universe;
     universe.setPluginRoot(root);
     QCOMPARE(universe.load(saved), QStringList());
-    QVERIFY(universe.plugins().isLoaded(ExamplePluginId));
-    QVERIFY(universe.component(QStringLiteral("Greeter1")) != nullptr);
+    QVERIFY(universe.plugins().isLoaded(FirstPluginId));
+    QVERIFY(universe.component(QStringLiteral("Alpha1")) != nullptr);
 }
 
 void TestUniverse::applyCommandLine()
@@ -855,14 +855,14 @@ void TestUniverse::applyCommandLine()
     Universe::addCommandLineOptions(parser);
     QVERIFY(
         parser.parse({QStringLiteral("app"), QStringLiteral("--plugin-dir"), missing, QStringLiteral("--plugin-dir"),
-                      QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR), QStringLiteral("--plugin-root"), root.path()}));
+                      QStringLiteral(NEBULA_TEST_PLUGINS_DIR), QStringLiteral("--plugin-root"), root.path()}));
 
     Universe universe;
     QTest::ignoreMessage(
         QtWarningMsg,
         qPrintable(QStringLiteral("Skipping %1 - it is not a directory").arg(QDir::toNativeSeparators(missing))));
     universe.applyCommandLine(parser);
-    QVERIFY(universe.plugins().plugin(ExamplePluginId).has_value());
+    QVERIFY(universe.plugins().plugin(FirstPluginId).has_value());
     QCOMPARE(universe.pluginRoot(), QDir(root.path()).absolutePath());
 
     // Without them, nothing changes.
@@ -879,18 +879,18 @@ void TestUniverse::applyCommandLine()
 void TestUniverse::unloadPlugin()
 {
     Universe universe;
-    universe.plugins().scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
-    QVERIFY(universe.plugins().load(ExamplePluginId));
-    QVERIFY(universe.instantiate(GreeterId) != nullptr);
+    universe.plugins().scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
+    QVERIFY(universe.plugins().load(FirstPluginId));
+    QVERIFY(universe.instantiate(AlphaId) != nullptr);
     ::instantiate<Probe>(universe);
-    QVERIFY(universe.instantiate(GreeterId) != nullptr);
-    QCOMPARE(universe.componentsOf(ExamplePluginId).size(), 2);
+    QVERIFY(universe.instantiate(AlphaId) != nullptr);
+    QCOMPARE(universe.componentsOf(FirstPluginId).size(), 2);
 
-    QVERIFY(universe.unloadPlugin(ExamplePluginId));
+    QVERIFY(universe.unloadPlugin(FirstPluginId));
     QVERIFY(universe.errorString().isEmpty());
     QCOMPARE(names(universe), QStringList{"Probe1"});
-    QVERIFY(!universe.plugins().isLoaded(ExamplePluginId));
-    QVERIFY(!Nebula::ComponentFactory::instance().component(GreeterId).has_value());
+    QVERIFY(!universe.plugins().isLoaded(FirstPluginId));
+    QVERIFY(!Nebula::ComponentFactory::instance().component(AlphaId).has_value());
 
     // Not loaded by it: its components go, but it stays.
     QVERIFY(!universe.unloadPlugin(TestComponents::Id));
