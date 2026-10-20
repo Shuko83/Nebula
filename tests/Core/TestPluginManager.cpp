@@ -18,14 +18,14 @@ using Nebula::PluginManager;
 namespace
 {
 
-const QString ExamplePluginId = QStringLiteral("FabienDG.Nebula.ExamplePlugin");
-const QString ExternalPluginId = QStringLiteral("FabienDG.Nebula.ExternalPlugin");
-const QString WidgetsPluginId = QStringLiteral("FabienDG.Nebula.WidgetsPlugin");
+const QString FirstPluginId = QStringLiteral("FabienDG.Nebula.FirstPlugin");
+const QString SecondPluginId = QStringLiteral("FabienDG.Nebula.SecondPlugin");
+const QString ThirdPluginId = QStringLiteral("FabienDG.Nebula.ThirdPlugin");
 
-// The file of ExamplePlugin, as the build wrote it.
-QString examplePluginFile()
+// The file of FirstPlugin, as the build wrote it.
+QString firstPluginFile()
 {
-    return QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR "/ExamplePlugin.nbdl");
+    return QStringLiteral(NEBULA_TEST_PLUGINS_DIR "/FirstPlugin.nbdl");
 }
 
 // Whether ComponentFactory::instance() can create componentId.
@@ -36,8 +36,7 @@ bool isRegistered(const QString& componentId)
 
 } // namespace
 
-// PluginManager, with the example plugins of the repository: how it finds them, loads and unloads them, and what it
-// refuses.
+// PluginManager, with the plugins of the tests: how it finds them, loads and unloads them, and what it refuses.
 class TestPluginManager : public QObject
 {
     Q_OBJECT
@@ -77,16 +76,16 @@ void TestPluginManager::scan_data()
     QTest::addColumn<QString>("id");
     QTest::addColumn<QString>("name");
     QTest::addColumn<QString>("description");
+    QTest::addColumn<QString>("version");
     // How many plugins its directory has.
     QTest::addColumn<int>("count");
 
-    QTest::newRow("ExamplePlugin") << NEBULA_EXAMPLE_PLUGINS_DIR << ExamplePluginId << "ExamplePlugin"
-                                   << "Example plugin: its metadata is read without loading it" << 2;
-    QTest::newRow("WidgetsPlugin") << NEBULA_EXAMPLE_PLUGINS_DIR << WidgetsPluginId << "WidgetsPlugin"
-                                   << "Example plugin: a main window, its top bar and its actions, each a component"
-                                   << 2;
-    QTest::newRow("ExternalPlugin") << NEBULA_EXTERNAL_PLUGINS_DIR << ExternalPluginId << "ExternalPlugin"
-                                    << "Example plugin outside the plugins directory, opened from NebulaStudio" << 1;
+    QTest::newRow("FirstPlugin") << NEBULA_TEST_PLUGINS_DIR << FirstPluginId << "FirstPlugin"
+                                 << "First plugin of the tests" << "1.0.0" << 2;
+    QTest::newRow("ThirdPlugin") << NEBULA_TEST_PLUGINS_DIR << ThirdPluginId << "ThirdPlugin"
+                                 << "Third plugin of the tests, with two components" << "2.0.0" << 2;
+    QTest::newRow("SecondPlugin") << NEBULA_OTHER_TEST_PLUGINS_DIR << SecondPluginId << "SecondPlugin"
+                                  << "Second plugin of the tests, in another directory" << "1.1.0" << 1;
 }
 
 void TestPluginManager::scan()
@@ -95,6 +94,7 @@ void TestPluginManager::scan()
     QFETCH(QString, id);
     QFETCH(QString, name);
     QFETCH(QString, description);
+    QFETCH(QString, version);
     QFETCH(int, count);
 
     PluginManager plugins;
@@ -107,7 +107,7 @@ void TestPluginManager::scan()
     QCOMPARE(info->id, id);
     QCOMPARE(info->name, name);
     QCOMPARE(info->description, description);
-    QCOMPARE(info->version, QVersionNumber(1, 0, 0));
+    QCOMPARE(info->version, QVersionNumber::fromString(version));
     QCOMPARE(info->coreVersion, QVersionNumber::fromString(QStringLiteral(NEBULA_VERSION)));
     QCOMPARE(info->filePath, QFileInfo(directory + u'/' + name + QStringLiteral(".nbdl")).canonicalFilePath());
     // Read without loading it.
@@ -118,15 +118,15 @@ void TestPluginManager::scan()
 void TestPluginManager::scanSkipsWhatItKnows()
 {
     PluginManager plugins;
-    QCOMPARE(plugins.scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR)).size(), 2);
-    QVERIFY(plugins.scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR)).isEmpty());
+    QCOMPARE(plugins.scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR)).size(), 2);
+    QVERIFY(plugins.scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR)).isEmpty());
 
     // The same plugin in another file: skipped, its id being known.
     const QTemporaryDir copies;
-    QVERIFY(QFile::copy(examplePluginFile(), copies.filePath(QStringLiteral("Copy.nbdl"))));
+    QVERIFY(QFile::copy(firstPluginFile(), copies.filePath(QStringLiteral("Copy.nbdl"))));
     QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("^Skipping .*Copy\\.nbdl - %1 is already "
                                                                          "provided by")
-                                                              .arg(QRegularExpression::escape(ExamplePluginId))));
+                                                              .arg(QRegularExpression::escape(FirstPluginId))));
     QVERIFY(plugins.scan(copies.path()).isEmpty());
     QCOMPARE(plugins.plugins().size(), 2);
 }
@@ -156,13 +156,12 @@ void TestPluginManager::addFile_data()
     // A part of errorString(); empty when it is.
     QTest::addColumn<QString>("error");
 
-    QTest::newRow("plugin") << "example" << true << "";
-    QTest::newRow("known already") << "example again" << true << "";
+    QTest::newRow("plugin") << "first" << true << "";
+    QTest::newRow("known already") << "first again" << true << "";
     QTest::newRow("missing") << "missing" << false << "is not a file";
     QTest::newRow("directory") << "directory" << false << "is not a file";
     QTest::newRow("not a plugin") << "text" << false << "";
-    QTest::newRow("id of another file") << "copy" << false
-                                        << ExamplePluginId + QStringLiteral(" is already provided by");
+    QTest::newRow("id of another file") << "copy" << false << FirstPluginId + QStringLiteral(" is already provided by");
 }
 
 void TestPluginManager::addFile()
@@ -174,14 +173,14 @@ void TestPluginManager::addFile()
     const QTemporaryDir directory;
     const QString copy = directory.filePath(QStringLiteral("Copy.nbdl"));
     const QString text = directory.filePath(QStringLiteral("text.nbdl"));
-    QVERIFY(QFile::copy(examplePluginFile(), copy));
+    QVERIFY(QFile::copy(firstPluginFile(), copy));
     QFile textFile(text);
     QVERIFY(textFile.open(QIODevice::WriteOnly));
     textFile.write("Not a plugin");
     textFile.close();
     const QHash<QString, QString> paths{
-        {QStringLiteral("example"), examplePluginFile()},
-        {QStringLiteral("example again"), examplePluginFile()},
+        {QStringLiteral("first"), firstPluginFile()},
+        {QStringLiteral("first again"), firstPluginFile()},
         {QStringLiteral("missing"), directory.filePath("none")},
         {QStringLiteral("directory"), directory.path()},
         {QStringLiteral("text"), text},
@@ -189,15 +188,15 @@ void TestPluginManager::addFile()
     };
 
     PluginManager plugins;
-    if(file == u"example again" || file == u"copy")
+    if(file == u"first again" || file == u"copy")
     {
-        QVERIFY(plugins.addFile(examplePluginFile()).has_value());
+        QVERIFY(plugins.addFile(firstPluginFile()).has_value());
     }
     const std::optional<PluginInfo> info = plugins.addFile(paths.value(file));
     QCOMPARE(info.has_value(), added);
     if(added)
     {
-        QCOMPARE(info->id, ExamplePluginId);
+        QCOMPARE(info->id, FirstPluginId);
         QVERIFY(plugins.errorString().isEmpty());
     }
     else
@@ -205,7 +204,7 @@ void TestPluginManager::addFile()
         QVERIFY(!plugins.errorString().isEmpty());
         QVERIFY2(plugins.errorString().contains(error), qPrintable(plugins.errorString()));
     }
-    QCOMPARE(plugins.plugins().size(), file == u"example again" || file == u"copy" || added ? 1 : 0);
+    QCOMPARE(plugins.plugins().size(), file == u"first again" || file == u"copy" || added ? 1 : 0);
 }
 
 void TestPluginManager::loadAndUnload_data()
@@ -214,12 +213,10 @@ void TestPluginManager::loadAndUnload_data()
     QTest::addColumn<QString>("id");
     QTest::addColumn<QStringList>("components");
 
-    QTest::newRow("ExamplePlugin") << NEBULA_EXAMPLE_PLUGINS_DIR << ExamplePluginId << QStringList{"Greeter"};
-    QTest::newRow("WidgetsPlugin") << NEBULA_EXAMPLE_PLUGINS_DIR << WidgetsPluginId
-                                   << QStringList{"MainWindowComponent", "TopBarComponent", "ActionComponent",
-                                                  "CounterComponent"};
-    QTest::newRow("ExternalPlugin") << NEBULA_EXTERNAL_PLUGINS_DIR << ExternalPluginId
-                                    << QStringList{"Ticker", "ProfileSelector", "Window"};
+    QTest::newRow("FirstPlugin") << NEBULA_TEST_PLUGINS_DIR << FirstPluginId << QStringList{"Alpha"};
+    QTest::newRow("SecondPlugin") << NEBULA_OTHER_TEST_PLUGINS_DIR << SecondPluginId << QStringList{"Beta"};
+    QTest::newRow("ThirdPlugin, two components")
+        << NEBULA_TEST_PLUGINS_DIR << ThirdPluginId << QStringList{"Gamma", "Delta"};
 }
 
 void TestPluginManager::loadAndUnload()
@@ -265,62 +262,62 @@ void TestPluginManager::unknownPlugin()
 void TestPluginManager::unloadWhatIsNotLoaded()
 {
     PluginManager plugins;
-    plugins.scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
-    QVERIFY(plugins.unload(ExamplePluginId));
+    plugins.scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
+    QVERIFY(plugins.unload(FirstPluginId));
     QVERIFY(plugins.errorString().isEmpty());
 }
 
 void TestPluginManager::pluginLoadedByTwoManagers()
 {
-    const QString greeter = ExamplePluginId + QStringLiteral(".Greeter");
+    const QString alpha = FirstPluginId + QStringLiteral(".Alpha");
     PluginManager first;
     PluginManager second;
-    first.scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
-    second.scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
-    QVERIFY(first.load(ExamplePluginId));
-    QVERIFY(second.load(ExamplePluginId));
+    first.scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
+    second.scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
+    QVERIFY(first.load(FirstPluginId));
+    QVERIFY(second.load(FirstPluginId));
 
     // It stays loaded for the second one, its components with it.
-    QVERIFY(!first.unload(ExamplePluginId));
-    QCOMPARE(first.errorString(), ExamplePluginId + QStringLiteral(" is still loaded by another plugin manager"));
-    QVERIFY(first.isLoaded(ExamplePluginId));
-    QVERIFY(isRegistered(greeter));
+    QVERIFY(!first.unload(FirstPluginId));
+    QCOMPARE(first.errorString(), FirstPluginId + QStringLiteral(" is still loaded by another plugin manager"));
+    QVERIFY(first.isLoaded(FirstPluginId));
+    QVERIFY(isRegistered(alpha));
 
-    QVERIFY(second.unload(ExamplePluginId));
-    QVERIFY(!second.isLoaded(ExamplePluginId));
-    QVERIFY(!first.isLoaded(ExamplePluginId));
-    QVERIFY(!isRegistered(greeter));
+    QVERIFY(second.unload(FirstPluginId));
+    QVERIFY(!second.isLoaded(FirstPluginId));
+    QVERIFY(!first.isLoaded(FirstPluginId));
+    QVERIFY(!isRegistered(alpha));
 }
 
 void TestPluginManager::pluginLoadedByAnotherManager()
 {
     PluginManager loading;
     PluginManager other;
-    loading.scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
-    other.scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
-    QVERIFY(loading.load(ExamplePluginId));
+    loading.scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
+    other.scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
+    QVERIFY(loading.load(FirstPluginId));
 
     // Only the one that loaded it unloads it.
-    QVERIFY(other.isLoaded(ExamplePluginId));
-    QVERIFY(!other.unload(ExamplePluginId));
-    QCOMPARE(other.errorString(), ExamplePluginId + QStringLiteral(" was loaded by another plugin manager"));
-    QVERIFY(loading.isLoaded(ExamplePluginId));
-    QVERIFY(loading.unload(ExamplePluginId));
+    QVERIFY(other.isLoaded(FirstPluginId));
+    QVERIFY(!other.unload(FirstPluginId));
+    QCOMPARE(other.errorString(), FirstPluginId + QStringLiteral(" was loaded by another plugin manager"));
+    QVERIFY(loading.isLoaded(FirstPluginId));
+    QVERIFY(loading.unload(FirstPluginId));
 }
 
 void TestPluginManager::destructorUnloads()
 {
     {
         PluginManager plugins;
-        plugins.scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
-        QVERIFY(plugins.load(ExamplePluginId));
-        QVERIFY(isRegistered(ExamplePluginId + QStringLiteral(".Greeter")));
+        plugins.scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
+        QVERIFY(plugins.load(FirstPluginId));
+        QVERIFY(isRegistered(FirstPluginId + QStringLiteral(".Alpha")));
     }
-    QVERIFY(!isRegistered(ExamplePluginId + QStringLiteral(".Greeter")));
+    QVERIFY(!isRegistered(FirstPluginId + QStringLiteral(".Alpha")));
 
     PluginManager again;
-    again.scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
-    QVERIFY(!again.isLoaded(ExamplePluginId));
+    again.scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
+    QVERIFY(!again.isLoaded(FirstPluginId));
 }
 
 QTEST_GUILESS_MAIN(TestPluginManager)

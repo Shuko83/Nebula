@@ -22,8 +22,8 @@ using namespace Qt::StringLiterals;
 namespace
 {
 
-const QString ExamplePluginId = QStringLiteral("FabienDG.Nebula.ExamplePlugin");
-const QString ExternalPluginId = QStringLiteral("FabienDG.Nebula.ExternalPlugin");
+const QString FirstPluginId = QStringLiteral("FabienDG.Nebula.FirstPlugin");
+const QString SecondPluginId = QStringLiteral("FabienDG.Nebula.SecondPlugin");
 
 // A project of the plugins pluginIds, described as description when it is not empty.
 QByteArray project(const QStringList& pluginIds, const QString& description = {})
@@ -82,13 +82,13 @@ void TestGalaxyModel::init()
     QTest::failOnWarning(); // What is expected is told with QTest::ignoreMessage()
     m_directory = std::make_unique<QTemporaryDir>();
     // Sorted by name whatever its case: Alpha, beta, Gamma. The text file is not a galaxy.
-    QVERIFY(write(*m_directory, u"Alpha.nbp"_s, project({ExamplePluginId}, u"Says hello"_s)));
-    QVERIFY(write(*m_directory, u"beta.nbp"_s, project({ExamplePluginId, ExternalPluginId, u"Other.Plugin"_s})));
+    QVERIFY(write(*m_directory, u"Alpha.nbp"_s, project({FirstPluginId}, u"Says hello"_s)));
+    QVERIFY(write(*m_directory, u"beta.nbp"_s, project({FirstPluginId, SecondPluginId, u"Other.Plugin"_s})));
     QVERIFY(write(*m_directory, u"Gamma.nbp"_s, "{ version"));
     QVERIFY(write(*m_directory, u"notes.txt"_s, project({})));
 
     m_application = std::make_unique<Nebula::Universe>();
-    m_application->plugins().scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
+    m_application->plugins().scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
     m_model = std::make_unique<GalaxyModel>(*m_application);
     m_tester = std::make_unique<QAbstractItemModelTester>(m_model.get(),
                                                           QAbstractItemModelTester::FailureReportingMode::QtTest);
@@ -123,7 +123,7 @@ void TestGalaxyModel::data_data()
     QTest::newRow("unreadable") << 2 << int(GalaxyModel::State) << int(Qt::DisplayRole) << QVariant(u"Unreadable"_s);
     QTest::newRow("nothing missing") << 0 << int(GalaxyModel::State) << int(Qt::ToolTipRole) << QVariant();
     QTest::newRow("what is missing") << 1 << int(GalaxyModel::State) << int(Qt::ToolTipRole)
-                                     << QVariant(u"Missing: FabienDG.Nebula.ExternalPlugin, Other.Plugin"_s);
+                                     << QVariant(u"Missing: FabienDG.Nebula.SecondPlugin, Other.Plugin"_s);
     QTest::newRow("other role") << 0 << int(GalaxyModel::Name) << int(Qt::EditRole) << QVariant();
 }
 
@@ -146,7 +146,7 @@ void TestGalaxyModel::loadable_data()
     QTest::addColumn<QStringList>("missingPlugins");
 
     QTest::newRow("known plugins") << 0 << true << QStringList{};
-    QTest::newRow("unknown plugins") << 1 << false << QStringList{ExternalPluginId, u"Other.Plugin"_s};
+    QTest::newRow("unknown plugins") << 1 << false << QStringList{SecondPluginId, u"Other.Plugin"_s};
     QTest::newRow("unreadable file") << 2 << false << QStringList{};
 }
 
@@ -244,7 +244,7 @@ void TestGalaxyModel::refreshFollowsTheFiles()
     QCOMPARE(m_model->rowCount(), 3);
 
     // Written again: read again, in its row.
-    QVERIFY(write(*m_directory, u"Gamma.nbp"_s, project({ExamplePluginId}, u"Fixed"_s)));
+    QVERIFY(write(*m_directory, u"Gamma.nbp"_s, project({FirstPluginId}, u"Fixed"_s)));
     m_model->refresh();
     QCOMPARE(inserted.count(), 1);
     QCOMPARE(m_model->index(2, GalaxyModel::Name).data().toString(), u"Gamma"_s);
@@ -254,7 +254,7 @@ void TestGalaxyModel::refreshFollowsTheFiles()
 
 void TestGalaxyModel::refreshKnowsNewPlugins()
 {
-    m_application->plugins().scan(QStringLiteral(NEBULA_EXTERNAL_PLUGINS_DIR));
+    m_application->plugins().scan(QStringLiteral(NEBULA_OTHER_TEST_PLUGINS_DIR));
     const QSignalSpy dataChanged(m_model.get(), &QAbstractItemModel::dataChanged);
     m_model->refresh();
     QCOMPARE(dataChanged.count(), 1);
@@ -264,7 +264,7 @@ void TestGalaxyModel::refreshKnowsNewPlugins()
 void TestGalaxyModel::followsTheDirectory()
 {
     // Without refresh(): the model follows the files of its directory, written again in place, added and removed.
-    QVERIFY(write(*m_directory, u"beta.nbp"_s, project({ExamplePluginId})));
+    QVERIFY(write(*m_directory, u"beta.nbp"_s, project({FirstPluginId})));
     QTRY_COMPARE(m_model->index(1, GalaxyModel::State).data().toString(), u"Loadable"_s);
 
     QVERIFY(write(*m_directory, u"Delta.nbp"_s, project({})));
@@ -304,7 +304,7 @@ void TestGalaxyModel::galaxyAndIndexOf()
     const std::optional<GalaxyModel::Galaxy> galaxy = m_model->galaxy(filePath);
     QVERIFY(galaxy.has_value() && galaxy->info.has_value());
     QCOMPARE(galaxy->info->name, u"beta"_s);
-    QCOMPARE(galaxy->info->plugins, (QStringList{ExamplePluginId, ExternalPluginId, u"Other.Plugin"_s}));
+    QCOMPARE(galaxy->info->plugins, (QStringList{FirstPluginId, SecondPluginId, u"Other.Plugin"_s}));
 
     QVERIFY(!m_model->indexOf(m_directory->filePath(u"notes.txt"_s)).isValid());
     QVERIFY(!m_model->galaxy(m_directory->filePath(u"Missing.nbp"_s)).has_value());

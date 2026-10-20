@@ -29,13 +29,14 @@ qu'avec des tests verts.
 
 | Dossier | Contenu |
 | --- | --- |
-| `tests/CMakeLists.txt` | `nebula_add_test()`, la sortie des tests dans `<build>/tests/bin[/<config>]` |
+| `tests/CMakeLists.txt` | `nebula_add_test()`, `nebula_add_test_plugin()`, la sortie des tests dans `<build>/tests/bin[/<config>]` |
 | `tests/Components/` | Bibliothèque statique `TestComponents` : les composants écrits pour les tests |
+| `tests/Plugins/` | Les plugins écrits pour les tests, chargés depuis leur fichier : `FirstPlugin`, `SecondPlugin`, `ThirdPlugin` |
 | `tests/Core/` | Un test par classe de Core : `TestComponent`, `TestComponentFactory`, `TestPluginManager`, `TestUniverse`, `TestGalaxy` (une galaxy posée, ses interfaces, ses propriétés exposées, son édition et sa relecture compris), `TestStargate`, `TestSettingsFile` |
 | `tests/NebulaStudio/` | Les classes de NebulaStudio qui se passent de sa fenêtre : `TestColors`, `TestTheme`, `TestPluginModel`, `TestComponentModel`, `TestEditionView`, `TestEditionScene` (la zone d'édition : sélection et suppression d'un lien), `TestGalaxyModel` |
-| `tests/exemple/` | Les composants d'un plugin d'exemple, chargés depuis son fichier comme le fait une application : `TestWidgetsPlugin` (la fenêtre principale, sa barre, les actions et le compteur, assemblés par leurs interfaces) |
+| `tests/exemple/` | Les composants d'un plugin d'exemple, chargés depuis son fichier comme le fait une application : `TestWidgetsPlugin` (la fenêtre principale, sa barre, les actions et le compteur, assemblés par leurs interfaces), le seul test qui dépend d'un exemple, celui qu'il teste |
 
-Les tests ne sont ni installés ni copiés dans le paquet.
+Les tests et leurs plugins ne sont ni installés ni copiés dans le paquet.
 
 ### `nebula_add_test()`
 
@@ -46,10 +47,12 @@ nebula_add_test(TestUniverse LINK_LIBRARIES TestComponents)
 Crée l'exécutable `<NAME>` à partir de `<NAME>.cpp` (et de `SOURCES`), le lie à `Qt6::Test` et à `LINK_LIBRARIES`,
 active AUTOMOC et AUTORCC, et l'enregistre auprès de CTest. Il reçoit :
 
-- `NEBULA_EXAMPLE_PLUGINS_DIR` et `NEBULA_EXTERNAL_PLUGINS_DIR`, les dossiers d'`ExamplePlugin` et `WidgetsPlugin`
-  (le même), et d'`ExternalPlugin`, construits avant lui : les vrais plugins sur lesquels tester `PluginManager` et
-  les composants d'exemple ;
+- `NEBULA_TEST_PLUGINS_DIR` et `NEBULA_OTHER_TEST_PLUGINS_DIR`, les dossiers des plugins de test (voir plus bas),
+  construits avant lui ;
 - `NEBULA_VERSION`, la version du projet.
+
+Il ne dépend d'aucun plugin d'exemple. `TestWidgetsPlugin` reçoit en plus, de `tests/exemple/CMakeLists.txt`,
+`NEBULA_EXAMPLE_PLUGINS_DIR`, le dossier de `WidgetsPlugin`, construit avant lui.
 
 CTest le lance avec, devant `PATH`, le dossier de Qt puis celui de `Core.dll`, la plateforme `offscreen` (aucune
 fenêtre ne s'ouvre, en local comme en CI) et `QT_FORCE_STDERR_LOGGING=1`, sans quoi Windows n'envoie le journal de
@@ -86,6 +89,36 @@ d'un plugin, et le test les récupère par `qobject_cast`.
 
 Un composant ajouté ici doit être enregistré dans `TestComponents.cpp`, à côté des autres : c'est le seul fichier de
 la bibliothèque statique dont l'éditeur de liens est sûr de garder l'initialisation statique.
+
+### Les plugins de test
+
+`tests/Plugins/` contient des plugins que les tests chargent depuis leur fichier, comme le fait une application :
+`PluginManager`, les plugins d'un projet ou d'une galaxy, leur déchargement et `PluginModel` se testent sur eux, pas sur
+les plugins d'exemple, qui changent avec ce qu'ils montrent. `nebula_add_test_plugin()` les construit par
+`nebula_add_plugin()`, comme un projet tiers construit les siens, dans un dossier à côté des tests mais pas dans leur
+`plugins/` : chaque `Universe` scanne celui-là à sa construction, un test scanne lui-même ceux-ci. Il les retire du
+paquet, où CMakeUtils met toute cible qu'il crée.
+
+```cmake
+nebula_add_test_plugin(
+    NAME SecondPlugin
+    DIRECTORY "${NEBULA_OTHER_TEST_PLUGINS_DIR}"
+    DESCRIPTION "Second plugin of the tests, in another directory"
+    VERSION 1.1.0
+)
+```
+
+| Plugin | Dossier | Version | Composants |
+| --- | --- | --- | --- |
+| `FirstPlugin` | `NEBULA_TEST_PLUGINS_DIR` (`test-plugins/`) | 1.0.0 | `Alpha` |
+| `SecondPlugin` | `NEBULA_OTHER_TEST_PLUGINS_DIR` (`other-test-plugins/`) | 1.1.0 | `Beta` |
+| `ThirdPlugin` | `NEBULA_TEST_PLUGINS_DIR` | 2.0.0 | `Gamma`, `Delta` |
+
+Leurs ids, `FabienDG.Nebula.FirstPlugin`…, se suivent dans l'ordre de leurs noms, le second seul dans l'autre dossier :
+une liste triée par id range ce qu'elle y trouve entre les deux autres. Leurs composants ne font rien et se passent
+d'un `QApplication`. Un plugin ajouté a son dossier dans `tests/Plugins/`, sa classe et ses composants dans `src/`
+comme ceux d'un plugin d'exemple, et son `add_subdirectory()` dans `tests/Plugins/CMakeLists.txt` ; chaque test est
+construit après lui.
 
 ## Écrire un test
 

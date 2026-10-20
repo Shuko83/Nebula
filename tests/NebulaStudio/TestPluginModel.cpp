@@ -14,12 +14,12 @@ using namespace Qt::StringLiterals;
 namespace
 {
 
-const QString ExamplePluginId = QStringLiteral("FabienDG.Nebula.ExamplePlugin");
-const QString ExternalPluginId = QStringLiteral("FabienDG.Nebula.ExternalPlugin");
+const QString FirstPluginId = QStringLiteral("FabienDG.Nebula.FirstPlugin");
+const QString SecondPluginId = QStringLiteral("FabienDG.Nebula.SecondPlugin");
 
 } // namespace
 
-// PluginModel, the list of the plugins of NebulaStudio, over the example plugins of the repository.
+// PluginModel, the list of the plugins of NebulaStudio, over the plugins of the tests.
 class TestPluginModel : public QObject
 {
     Q_OBJECT
@@ -49,8 +49,8 @@ void TestPluginModel::init()
     m_model = std::make_unique<PluginModel>(*m_plugins);
     m_tester = std::make_unique<QAbstractItemModelTester>(m_model.get(),
                                                           QAbstractItemModelTester::FailureReportingMode::QtTest);
-    m_plugins->scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
-    m_plugins->scan(QStringLiteral(NEBULA_EXTERNAL_PLUGINS_DIR));
+    m_plugins->scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
+    m_plugins->scan(QStringLiteral(NEBULA_OTHER_TEST_PLUGINS_DIR));
     m_model->refresh();
 }
 
@@ -68,18 +68,18 @@ void TestPluginModel::data_data()
     QTest::addColumn<int>("role");
     QTest::addColumn<QVariant>("value");
 
-    // By id: ExamplePlugin, ExternalPlugin, then WidgetsPlugin.
-    QTest::newRow("name") << 0 << int(PluginModel::Name) << int(Qt::DisplayRole) << QVariant(u"ExamplePlugin"_s);
+    // By id: FirstPlugin, SecondPlugin, then ThirdPlugin.
+    QTest::newRow("name") << 0 << int(PluginModel::Name) << int(Qt::DisplayRole) << QVariant(u"FirstPlugin"_s);
     QTest::newRow("name of the second") << 1 << int(PluginModel::Name) << int(Qt::DisplayRole)
-                                        << QVariant(u"ExternalPlugin"_s);
+                                        << QVariant(u"SecondPlugin"_s);
     QTest::newRow("name of the third") << 2 << int(PluginModel::Name) << int(Qt::DisplayRole)
-                                       << QVariant(u"WidgetsPlugin"_s);
+                                       << QVariant(u"ThirdPlugin"_s);
     QTest::newRow("version") << 0 << int(PluginModel::Version) << int(Qt::DisplayRole) << QVariant(u"1.0.0"_s);
     QTest::newRow("state") << 0 << int(PluginModel::State) << int(Qt::DisplayRole) << QVariant(u"Not loaded"_s);
-    QTest::newRow("id") << 0 << int(PluginModel::Name) << PluginModel::IdRole << QVariant(ExamplePluginId);
+    QTest::newRow("id") << 0 << int(PluginModel::Name) << PluginModel::IdRole << QVariant(FirstPluginId);
     QTest::newRow("id, in every column") << 1 << int(PluginModel::State) << PluginModel::IdRole
-                                         << QVariant(ExternalPluginId);
-    QTest::newRow("tooltip") << 0 << int(PluginModel::Version) << int(Qt::ToolTipRole) << QVariant(ExamplePluginId);
+                                         << QVariant(SecondPluginId);
+    QTest::newRow("tooltip") << 0 << int(PluginModel::Version) << int(Qt::ToolTipRole) << QVariant(FirstPluginId);
     QTest::newRow("other role") << 0 << int(PluginModel::Name) << int(Qt::DecorationRole) << QVariant();
 }
 
@@ -123,22 +123,22 @@ void TestPluginModel::refreshInsertsNewPlugins()
     QCOMPARE(model.rowCount(), 0);
 
     // The second one by id first: the first one is inserted before it, the third one after it.
-    plugins.scan(QStringLiteral(NEBULA_EXTERNAL_PLUGINS_DIR));
+    plugins.scan(QStringLiteral(NEBULA_OTHER_TEST_PLUGINS_DIR));
     model.refresh();
-    plugins.scan(QStringLiteral(NEBULA_EXAMPLE_PLUGINS_DIR));
+    plugins.scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
     model.refresh();
     QCOMPARE(inserted.count(), 3);
     QCOMPARE(inserted.at(1).at(1).toInt(), 0);
     QCOMPARE(inserted.at(2).at(1).toInt(), 2);
-    QCOMPARE(model.index(0, PluginModel::Name).data().toString(), QStringLiteral("ExamplePlugin"));
-    QCOMPARE(model.index(1, PluginModel::Name).data().toString(), QStringLiteral("ExternalPlugin"));
-    QCOMPARE(model.index(2, PluginModel::Name).data().toString(), QStringLiteral("WidgetsPlugin"));
+    QCOMPARE(model.index(0, PluginModel::Name).data().toString(), QStringLiteral("FirstPlugin"));
+    QCOMPARE(model.index(1, PluginModel::Name).data().toString(), QStringLiteral("SecondPlugin"));
+    QCOMPARE(model.index(2, PluginModel::Name).data().toString(), QStringLiteral("ThirdPlugin"));
 }
 
 void TestPluginModel::refreshUpdatesTheState()
 {
     const QSignalSpy dataChanged(m_model.get(), &QAbstractItemModel::dataChanged);
-    QVERIFY(m_plugins->load(ExamplePluginId));
+    QVERIFY(m_plugins->load(FirstPluginId));
     m_model->refresh();
     QCOMPARE(dataChanged.count(), 1);
     QCOMPARE(m_model->index(0, PluginModel::State).data().toString(), QStringLiteral("Loaded"));
@@ -147,7 +147,7 @@ void TestPluginModel::refreshUpdatesTheState()
 
 void TestPluginModel::indexOf()
 {
-    QCOMPARE(m_model->indexOf(ExternalPluginId), m_model->index(1, 0));
+    QCOMPARE(m_model->indexOf(SecondPluginId), m_model->index(1, 0));
     QVERIFY(!m_model->indexOf(QStringLiteral("Unknown")).isValid());
 }
 
