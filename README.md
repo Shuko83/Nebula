@@ -96,16 +96,16 @@ project(Acme VERSION 1.0.0 LANGUAGES CXX)
 
 set(cmu_organization "AcmeCorp")   # first part of the plugin ids: AcmeCorp.Acme.Network
 
-find_package(Nebula 0.3 REQUIRED COMPONENTS Core)
+find_package(Nebula 1.0 REQUIRED COMPONENTS Core)
 
 add_subdirectory(Network)          # nebula_add_plugin(NAME Network), its sources in Network/src
 ```
 
-Point `CMAKE_PREFIX_PATH` at the package: `<build>/package`, staged after each build of Nebula, the prefix `cmake --install` wrote it to, or the unzipped package of a [release](https://github.com/Shuko83/AppForge/releases). `find_package` defines `Nebula::Core` and `nebula_add_plugin`, and includes CMakeUtils unless the project already did: call it after `project()`, in the root `CMakeLists.txt`, with the `cmu_*` variables set before it. Qt is found as in any project, through `CMAKE_PREFIX_PATH` or the `QTDIR` environment variable.
+Point `CMAKE_PREFIX_PATH` at the package: `<build>/package`, staged after each build of Nebula, the prefix `cmake --install` wrote it to, or the unzipped package of a [release](https://github.com/Shuko83/Nebula/releases). `find_package` defines `Nebula::Core` and `nebula_add_plugin`, and includes CMakeUtils unless the project already did: call it after `project()`, in the root `CMakeLists.txt`, with the `cmu_*` variables set before it. Qt is found as in any project, through `CMAKE_PREFIX_PATH` or the `QTDIR` environment variable.
 
 The plugin is written to `<build>/bin/plugins` (`<build>/bin/<config>/plugins` with Visual Studio): copy it to `plugins/` next to an application, or open it from NebulaStudio with **Open plugin...**. Its `coreVersion` is the version of the installed `Core`, whatever the version of its project. Build it in a configuration Nebula was installed in: Qt does not load a `Debug` plugin into a `Release` application, nor the other way round.
 
-Installed with `-Dcmu_install_mode=PACKAGE`, Nebula is a single prefix whose package has no components: `find_package(Nebula 0.3 REQUIRED)`.
+Installed with `-Dcmu_install_mode=PACKAGE`, Nebula is a single prefix whose package has no components: `find_package(Nebula 1.0 REQUIRED)`.
 
 ---
 
