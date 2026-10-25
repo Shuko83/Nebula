@@ -8,6 +8,7 @@
 #include <QObject>
 #include <memory>
 
+#include "@NEBULA_PLUGIN_NAME@.h"
 #include "@NEBULA_PLUGIN_NAME@_info.h"
 #include "Nebula/Plugin/IPlugin.h"
 #include "Nebula/Plugin/Plugin.h"
@@ -34,8 +35,8 @@ class @NEBULA_PLUGIN_IDENTIFIER@Plugin final : public QObject, public IPlugin
     }
 
   private:
-    // Created once the plugin is loaded, after its components registered in it: see NEBULA_PLUGIN.
-    const std::unique_ptr<Plugin> m_plugin = createPlugin();
+    // Created once the plugin is loaded, after its components registered in it with NEBULA_REGISTER_COMPONENT.
+    const std::unique_ptr<Plugin> m_plugin = Plugin::instantiate<::@NEBULA_PLUGIN_IDENTIFIER@>();
 };
 
 } // namespace Nebula::Generated

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 # A plugin outside <application directory>/plugins: not found when an application starts, NebulaStudio opens it with
-# "Open plugin...". Its class (NEBULA_PLUGIN) and its components are in src/.
+# "Open plugin...". Its components are in src/, registered in its generated class.
 # Empty: not installed in plugins/ next to the applications either.
 set(cmu_plugins_dir "")
 nebula_add_plugin(
