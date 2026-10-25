@@ -326,13 +326,15 @@ void Stargate::attach()
         const auto needs = [this, &exposed](const std::unique_ptr<Component>& component)
         {
             const QList<InterfaceInfo> consumed = component->consumedInterfaces();
-            return std::ranges::any_of(consumed,
-                                       [this, &exposed, &component](const InterfaceInfo& consumedInterface)
-                                       {
-                                           const InterfaceBinding bound = component->binding(consumedInterface.name);
-                                           return consumedInterface.requirement == InterfaceRequirement::Mandatory &&
-                                                  bound.provider == this && bound.providedName == exposed.info.name;
-                                       });
+            return std::ranges::any_of(
+                consumed,
+                [this, &exposed, &component](const InterfaceInfo& consumedInterface)
+                {
+                    const QList<InterfaceBinding> bound = component->bindings(consumedInterface.name);
+                    return consumedInterface.requirement == InterfaceRequirement::Mandatory &&
+                           std::ranges::any_of(bound, [this, &exposed](const InterfaceBinding& to)
+                                               { return to.provider == this && to.providedName == exposed.info.name; });
+                });
         };
         consumeForGalaxy(exposed, std::ranges::any_of(m_galaxy->components(), needs) ? InterfaceRequirement::Mandatory
                                                                                      : InterfaceRequirement::Optional);

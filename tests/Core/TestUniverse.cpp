@@ -83,6 +83,7 @@ class TestUniverse : public QObject
     void saveAndLoad();
     void saveLeavesWhatJsonCannotHold();
     void saveAndLoadBindings();
+    void saveAndLoadListBindings();
     void saveAndLoadObjects();
     void loadReportsProblems_data();
     void loadReportsProblems();
@@ -351,6 +352,42 @@ void TestUniverse::saveAndLoadBindings()
     QCOMPARE(universe.component(QStringLiteral("Sink2"))->binding(QStringLiteral("object")).provider, nullptr);
 }
 
+void TestUniverse::saveAndLoadListBindings()
+{
+    QJsonObject saved;
+    {
+        Universe universe;
+        Source* first = ::instantiate<Source>(universe);
+        Source* second = ::instantiate<Source>(universe);
+        Sink* sink = ::instantiate<Sink>(universe);
+        QVERIFY(sink->bindInterface(QStringLiteral("objects"), *second, QStringLiteral("object")));
+        QVERIFY(sink->bindInterface(QStringLiteral("objects"), *first, QStringLiteral("object")));
+        saved = universe.save();
+    }
+    // One for each, in the order of the list.
+    const QJsonArray bindings = saved.value(u"bindings").toArray();
+    QCOMPARE(bindings.size(), 2);
+    QCOMPARE(bindings.at(0).toObject(), project(R"({"consumer": "Sink1", "consumed": "objects",
+                                                    "provider": "Source2", "provided": "object"})"));
+    QCOMPARE(bindings.at(1).toObject(), project(R"({"consumer": "Sink1", "consumed": "objects",
+                                                    "provider": "Source1", "provided": "object"})"));
+
+    Universe universe;
+    QCOMPARE(universe.load(saved), QStringList());
+    const auto* sink = qobject_cast<const Sink*>(universe.component(QStringLiteral("Sink1")));
+    const QList<Nebula::InterfaceBinding> bound = sink->bindings(QStringLiteral("objects"));
+    QCOMPARE(bound.size(), 2);
+    QCOMPARE(bound.at(0).provider, universe.component(QStringLiteral("Source2")));
+    QCOMPARE(bound.at(1).provider, universe.component(QStringLiteral("Source1")));
+    // Each source provides its object while it runs.
+    QVERIFY(universe.start());
+    QCOMPARE(sink->objects(),
+             (QList<QObject*>{&qobject_cast<Source*>(universe.component(QStringLiteral("Source2")))->object(),
+                              &qobject_cast<Source*>(universe.component(QStringLiteral("Source1")))->object()}));
+    universe.stop();
+    QVERIFY(sink->objects().isEmpty());
+}
+
 void TestUniverse::saveAndLoadObjects()
 {
     QJsonObject saved;
@@ -417,10 +454,11 @@ void TestUniverse::loadReportsProblems_data()
     QTest::newRow("settings of a missing component")
         << QByteArray(R"({"settings": [{"file": "s.json", "entries": [{"component": "Nope", "property": "count"}]}]})")
         << QStringList{"The property count of Nope is not held by s.json"};
-    QTest::newRow("settings of a missing object") << QByteArray(R"({"components": [{"name": "P", "type": "Test.Panel"}],
+    QTest::newRow("settings of a missing object")
+        << QByteArray(R"({"components": [{"name": "P", "type": "Test.Panel"}],
         "settings": [{"file": "s.json", "entries": [{"component": "P", "object": "page", "index": 2, "property": "level"}]}]})")
-                                                  << QStringList{"The property level of the object page of P is not "
-                                                                 "held by s.json"};
+        << QStringList{"The property level of the object page of P is not "
+                       "held by s.json"};
     QTest::newRow("settings file name taken")
         << QByteArray(R"({"settings": [{"file": "s.json"}, {"file": "S.json"}]})")
         << QStringList{"The settings file S.json is named settings.json: another one has its name"};

@@ -145,11 +145,12 @@ class EditionScene : public QGraphicsScene
     // Empties the edition zone, while the components it shows still exist.
     void removeItems();
     // Binds the consumed one to the provided one, whichever is which, and draws their link, in place of the one the
-    // consumed one had; does nothing when they cannot be bound.
+    // consumed one had, or next to those of a list; does nothing when they cannot be bound.
     void link(InterfaceItem& source, InterfaceItem& target);
     // The link at position, unless something is shown over it there; nullptr when there is none.
     [[nodiscard]] LinkItem* linkAt(const QPointF& position) const;
-    // Unbinds the interfaces links are drawn between, and removes them from the edition zone.
+    // Unbinds the interfaces links are drawn between, each from the one it is drawn to, and removes them from the
+    // edition zone: a list keeps the others.
     void unlink(const QList<LinkItem*>& links);
     // The zone position is in, the smallest one when several are; nullptr when there is none.
     [[nodiscard]] ZoneItem* zoneAt(const QPointF& position) const;

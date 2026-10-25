@@ -67,7 +67,8 @@ void TestComponentFactory::component_data()
                            << QStringList{"refusesToStart", "count",  "ratio", "text",  "date",
                                           "time",           "moment", "point", "starts"};
     QTest::newRow("no category") << "Source" << "Provides an object while it runs" << "" << QStringList{"label"};
-    QTest::newRow("no property") << "Sink" << "Consumes an object and a timer" << "Test" << QStringList{};
+    QTest::newRow("no property") << "Sink" << "Consumes an object, a timer and a list of objects" << "Test"
+                                 << QStringList{};
     QTest::newRow("no class info") << "Panel" << "" << "" << QStringList{"title"};
 }
 

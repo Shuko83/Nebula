@@ -30,6 +30,8 @@ constexpr int OutlineDots = 6;
 constexpr qreal HoverMargin = 3;
 // Between the dot and the name.
 constexpr qreal Spacing = 5;
+// How far out of the component the circle behind the one of a list is.
+constexpr qreal ListOffset = 3.5;
 // How much of its color a dimmed interface keeps.
 constexpr float DimmedOpacity = 0.3F;
 
@@ -47,7 +49,8 @@ QPen dottedOutline(const QColor& color)
 
 InterfaceItem::InterfaceItem(Kind kind, const Nebula::InterfaceInfo& info, qreal nameWidth, ComponentItem& parent)
     : QGraphicsItem(&parent), m_componentItem(parent), m_kind(kind), m_name(info.name), m_type(info.type),
-      m_mandatory(info.requirement == Nebula::InterfaceRequirement::Mandatory), m_nameWidth(nameWidth)
+      m_mandatory(info.requirement == Nebula::InterfaceRequirement::Mandatory), m_list(info.list),
+      m_nameWidth(nameWidth)
 {
     setFlag(ItemSendsScenePositionChanges); // For its links to follow it
     setAcceptHoverEvents(true);
@@ -77,6 +80,11 @@ InterfaceItem::Kind InterfaceItem::kind() const
 const QString& InterfaceItem::name() const
 {
     return m_name;
+}
+
+bool InterfaceItem::isList() const
+{
+    return m_list;
 }
 
 Nebula::Component& InterfaceItem::component() const
@@ -115,10 +123,13 @@ void InterfaceItem::setMissing(bool missing)
 void InterfaceItem::refreshToolTip()
 {
     // What it is, which tells what it can be bound to: the other kind, of the same type.
-    QString what = (m_kind == Kind::Provided ? tr("Provides %1") : tr("Consumes %1")).arg(typeName(m_type));
+    QString what = m_kind == Kind::Provided ? tr("Provides %1").arg(typeName(m_type))
+                   : m_list ? tr("Consumes a list of %1: several interfaces can be bound to it").arg(typeName(m_type))
+                            : tr("Consumes %1").arg(typeName(m_type));
     if(m_mandatory)
     {
-        what += u'\n' + tr("Mandatory: the component does not work without it");
+        what += u'\n' + (m_list ? tr("Mandatory: the component does not work without one at least")
+                                : tr("Mandatory: the component does not work without it"));
     }
     QString state = m_available ? tr("Available") : tr("Unavailable");
     if(m_missing)
@@ -163,8 +174,8 @@ QRectF InterfaceItem::nameRect() const
 
 QRectF InterfaceItem::boundingRect() const
 {
-    // From what shape() takes around its dot to its name, which is inside the component.
-    const qreal dot = DotRadius + HoverMargin;
+    // From what shape() takes around its dot, or the circle behind it for a list, to its name, inside the component.
+    const qreal dot = DotRadius + HoverMargin + (m_list ? ListOffset : 0);
     const qreal width = dot + DotRadius + Spacing + m_nameWidth;
     return {m_kind == Kind::Provided ? dot - width : -dot, -RowHeight / 2, width, RowHeight};
 }
@@ -189,11 +200,16 @@ void InterfaceItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* /*o
     const QColor color = over(ink, background);
 
     // Shapes rather than colors, which not everyone tells apart: a disc is provided, a circle is consumed, and a dotted
-    // circle is provided but unavailable. Not filled, it still hides the edge of the component it is on.
+    // circle is provided but unavailable, two stacked circles are a list. Not filled, it still hides the edge of the
+    // component it is on.
     const bool provided = m_kind == Kind::Provided;
     painter->setRenderHint(QPainter::Antialiasing);
     painter->setPen(provided && !m_available ? dottedOutline(color) : QPen(color, DotOutline));
     painter->setBrush(provided && m_available ? color : background);
+    if(m_list) // Behind, out of the component, which a list is consumed from
+    {
+        painter->drawEllipse(QPointF(-ListOffset, 0), DotRadius, DotRadius);
+    }
     painter->drawEllipse(QPointF(0, 0), DotRadius, DotRadius);
 
     if(m_componentItem.isNameEdited(*this)) // Its name is the text being edited

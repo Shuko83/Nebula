@@ -16,6 +16,7 @@
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <memory>
 #include <optional>
 
@@ -48,6 +49,17 @@ QList<const Nebula::Stargate*> stargatesOf(const std::vector<std::unique_ptr<Neb
         }
     }
     return stargates;
+}
+
+// What name, which component consumes, is bound to in stargate; nothing when it is not bound to it. A list can be
+// bound to it besides what else it is bound to.
+std::optional<QString> boundTo(const Nebula::Component& component, const QString& name,
+                               const Nebula::Stargate& stargate)
+{
+    const QList<Nebula::InterfaceBinding> bindings = component.bindings(name);
+    const auto bound = std::ranges::find_if(bindings, [&stargate](const Nebula::InterfaceBinding& binding)
+                                            { return binding.provider == &stargate; });
+    return bound != bindings.end() ? std::optional(bound->providedName) : std::nullopt;
 }
 
 } // namespace
@@ -143,28 +155,39 @@ void StargateDialog::fill(const Nebula::ComponentFactory& factory)
         const QList<Nebula::InterfaceInfo> consumed = component->consumedInterfaces();
         for(const Nebula::InterfaceInfo& info : consumed)
         {
-            const Nebula::InterfaceBinding bound = component->binding(info.name);
-            const auto* through = qobject_cast<const Nebula::Stargate*>(bound.provider);
+            // A list can be bound to the stargate besides what else it is bound to, another stargate included.
+            const QList<Nebula::InterfaceBinding> bindings = component->bindings(info.name);
+            const std::optional<QString> toThis = boundTo(*component, info.name, m_stargate);
             QString exposedAs;
             QString exposedBy;
-            if(through == &m_stargate)
+            if(toThis)
             {
-                exposedAs = bound.providedName;
-                shown.append({Nebula::Exposure::Consumed, bound.providedName});
+                exposedAs = *toThis;
+                shown.append({Nebula::Exposure::Consumed, *toThis});
             }
-            else if(through != nullptr)
+            else if(const auto* through = !info.list && !bindings.isEmpty()
+                                              ? qobject_cast<const Nebula::Stargate*>(bindings.constFirst().provider)
+                                              : nullptr)
             {
                 exposedBy = through->objectName();
             }
-            addChoice(componentRow, info.name, tr("consumes %1").arg(InterfaceItem::typeName(info.type)),
-                      Choice{.kind = Kind::Consumed, .component = component, .name = info.name, .type = info.type},
-                      exposedAs, exposedBy);
+            addChoice(
+                componentRow, info.name,
+                (info.list ? tr("consumes a list of %1") : tr("consumes %1")).arg(InterfaceItem::typeName(info.type)),
+                Choice{.kind = Kind::Consumed, .component = component, .name = info.name, .type = info.type}, exposedAs,
+                exposedBy);
             QTreeWidgetItem* row = componentRow->child(componentRow->childCount() - 1);
-            if(bound.provider != nullptr && through == nullptr)
+            if(info.list)
             {
-                row->setToolTip(ExposesColumn,
-                                tr("Bound to %1.%2: exposed, it is given what the galaxy consumes instead")
-                                    .arg(bound.provider->objectName(), bound.providedName));
+                row->setToolTip(ExposesColumn, tr("A list: exposed, it is also given what the galaxy consumes"));
+            }
+            else if(!bindings.isEmpty() &&
+                    qobject_cast<const Nebula::Stargate*>(bindings.constFirst().provider) == nullptr)
+            {
+                row->setToolTip(
+                    ExposesColumn,
+                    tr("Bound to %1.%2: exposed, it is given what the galaxy consumes instead")
+                        .arg(bindings.constFirst().provider->objectName(), bindings.constFirst().providedName));
             }
         }
         const QList<Nebula::InterfaceInfo> provided = component->providedInterfaces();
@@ -493,12 +516,12 @@ void StargateDialog::apply()
         {
             continue;
         }
-        const Nebula::InterfaceBinding bound = component->binding(choice->name);
-        const bool kept = choice.key()->checkState(ExposesColumn) == Qt::Checked &&
-                          choice.key()->text(NameColumn) == bound.providedName;
-        if(bound.provider == &m_stargate && !kept)
+        const std::optional<QString> toThis = boundTo(*component, choice->name, m_stargate);
+        const bool kept =
+            choice.key()->checkState(ExposesColumn) == Qt::Checked && choice.key()->text(NameColumn) == toThis;
+        if(toThis && !kept)
         {
-            component->unbindInterface(choice->name);
+            component->unbindInterface(choice->name, m_stargate, *toThis); // A list keeps the others
         }
     }
     // Its interfaces no longer wanted, or wanted of another type, go; then those wanted are exposed, in the order of
@@ -548,8 +571,7 @@ void StargateDialog::apply()
         }
         else
         {
-            const Nebula::InterfaceBinding bound = component->binding(choice.name);
-            if(bound.provider != &m_stargate || bound.providedName != name)
+            if(boundTo(*component, choice.name, m_stargate) != name)
             {
                 component->bindInterface(choice.name, m_stargate, name);
             }

@@ -9,9 +9,15 @@ Sink::Sink()
 {
     consumeInterface<QObject>(QStringLiteral("object"), m_object, Nebula::InterfaceRequirement::Mandatory);
     consumeInterface<QTimer>(QStringLiteral("timer"), m_timer);
+    consumeInterfaceList<QObject>(QStringLiteral("objects"), m_objects);
 }
 
 QObject* Sink::object() const
 {
     return m_object;
+}
+
+QList<QObject*> Sink::objects() const
+{
+    return m_objects;
 }

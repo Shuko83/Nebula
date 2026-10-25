@@ -27,6 +27,25 @@ bool Probe::consumeTimer(const QString& name, Nebula::InterfaceRequirement requi
     return consume(name, m_timers[name], requirement);
 }
 
+bool Probe::consumeObjects(const QString& name, Nebula::InterfaceRequirement requirement)
+{
+    QList<QObject*>& member = m_lists[name];
+    return consumeInterfaceList<QObject>(
+        name, member, requirement, [this, name](QObject* object)
+        { m_events.append(QStringLiteral("inserted %1 %2").arg(name, object->objectName())); },
+        [this, name, &member](QObject* object)
+        {
+            m_events.append(QStringLiteral("removed %1 %2").arg(name, object->objectName()) +
+                            (member.contains(object) ? QStringLiteral(" (set)") : QString()));
+        });
+}
+
+QList<QObject*> Probe::consumedList(const QString& name) const
+{
+    const auto list = m_lists.find(name);
+    return list != m_lists.end() ? list->second : QList<QObject*>();
+}
+
 QObject* Probe::consumed(const QString& name) const
 {
     if(const auto object = m_objects.find(name); object != m_objects.end())

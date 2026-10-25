@@ -80,6 +80,15 @@ class TestComponent : public QObject
     void unboundMandatoryInterfaces_data();
     void unboundMandatoryInterfaces();
 
+    void consumeInterfaceList();
+    void listInTheOrderOfItsBindings();
+    void listBoundTwiceToTheSameIsRefused();
+    void listFollowsItsProviders();
+    void unbindOneOfAList();
+    void unbindAList();
+    void destroyedProviderLeavesAList();
+    void unboundMandatoryList();
+
     void addPropertiesForQObject();
     void addPropertiesForQObjectRefuses_data();
     void addPropertiesForQObjectRefuses();
@@ -466,6 +475,218 @@ void TestComponent::unboundMandatoryInterfaces()
         }
     }
     QCOMPARE(consumer->unboundMandatoryInterfaces(), unbound);
+}
+
+void TestComponent::consumeInterfaceList()
+{
+    const std::unique_ptr<Probe> probe = createProbe();
+    QVERIFY(probe->consumeObject(QStringLiteral("one")));
+    QVERIFY(probe->consumeObjects(QStringLiteral("many"), InterfaceRequirement::Mandatory));
+    QTest::ignoreMessage(QtWarningMsg, "Interface many is already consumed");
+    QVERIFY(!probe->consumeObjects(QStringLiteral("many")));
+
+    const QList<InterfaceInfo> consumed = probe->consumedInterfaces();
+    QCOMPARE(consumed.size(), 2);
+    QVERIFY(!consumed.at(0).list);
+    QCOMPARE(consumed.at(1).name, QStringLiteral("many"));
+    QCOMPARE(consumed.at(1).type, QMetaType::fromType<QObject*>());
+    QCOMPARE(consumed.at(1).requirement, InterfaceRequirement::Mandatory);
+    QVERIFY(consumed.at(1).list);
+    QVERIFY(!consumed.at(1).available);
+    QVERIFY(probe->consumedList(QStringLiteral("many")).isEmpty());
+}
+
+void TestComponent::listInTheOrderOfItsBindings()
+{
+    QObject first;
+    QObject second;
+    QObject third;
+    first.setObjectName(QStringLiteral("first"));
+    second.setObjectName(QStringLiteral("second"));
+    third.setObjectName(QStringLiteral("third"));
+    const std::unique_ptr<Probe> consumer = createProbe();
+    const std::unique_ptr<Probe> provider = createProbe();
+    const std::unique_ptr<Probe> other = createProbe();
+    QVERIFY(consumer->consumeObjects(QStringLiteral("in")));
+    QVERIFY(provider->provideObject(QStringLiteral("a"), &first));
+    QVERIFY(provider->provideObject(QStringLiteral("b"))); // Not available yet
+    QVERIFY(other->provideObject(QStringLiteral("c"), &third));
+
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *other, QStringLiteral("c")));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("b")));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("a")));
+    QCOMPARE(consumer->consumedList(QStringLiteral("in")), (QList<QObject*>{&third, &first}));
+    QVERIFY(consumer->consumedInterfaces().first().available);
+    // Available, it takes its place among the others: that of its binding.
+    QVERIFY(provider->provideObject(QStringLiteral("b"), &second));
+    QCOMPARE(consumer->consumedList(QStringLiteral("in")), (QList<QObject*>{&third, &second, &first}));
+    QCOMPARE(consumer->events(), (QStringList{"inserted in third", "inserted in first", "inserted in second"}));
+
+    const QList<Nebula::InterfaceBinding> bindings = consumer->bindings(QStringLiteral("in"));
+    QCOMPARE(bindings.size(), 3);
+    QCOMPARE(bindings.at(0).provider, other.get());
+    QCOMPARE(bindings.at(0).providedName, QStringLiteral("c"));
+    QCOMPARE(bindings.at(1).provider, provider.get());
+    QCOMPARE(bindings.at(1).providedName, QStringLiteral("b"));
+    QCOMPARE(bindings.at(2).providedName, QStringLiteral("a"));
+    // The first one.
+    QCOMPARE(consumer->binding(QStringLiteral("in")).provider, other.get());
+}
+
+void TestComponent::listBoundTwiceToTheSameIsRefused()
+{
+    const std::unique_ptr<Probe> consumer = createProbe();
+    const std::unique_ptr<Probe> provider = createProbe();
+    QVERIFY(consumer->consumeObjects(QStringLiteral("in")));
+    QVERIFY(provider->provideObject(QStringLiteral("out")));
+    QVERIFY(provider->provideTimer(QStringLiteral("timer")));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("out")));
+
+    QVERIFY(!consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("out")));
+    QVERIFY(!consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("timer"))); // Another type
+    QVERIFY(!consumer->bindInterface(QStringLiteral("in"), *consumer, QStringLiteral("out")));
+    QCOMPARE(consumer->bindings(QStringLiteral("in")).size(), 1);
+}
+
+void TestComponent::listFollowsItsProviders()
+{
+    QObject first;
+    QObject second;
+    QObject replacing;
+    first.setObjectName(QStringLiteral("first"));
+    second.setObjectName(QStringLiteral("second"));
+    replacing.setObjectName(QStringLiteral("replacing"));
+    const std::unique_ptr<Probe> consumer = createProbe();
+    const std::unique_ptr<Probe> provider = createProbe();
+    QVERIFY(consumer->consumeObjects(QStringLiteral("in")));
+    QVERIFY(provider->provideObject(QStringLiteral("a"), &first));
+    QVERIFY(provider->provideObject(QStringLiteral("b"), &second));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("a")));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("b")));
+    consumer->clearEvents();
+
+    // Its member still has the object when it is told: the last time it can use it.
+    QVERIFY(provider->provideObject(QStringLiteral("a"), nullptr));
+    QCOMPARE(consumer->consumedList(QStringLiteral("in")), QList<QObject*>{&second});
+    QVERIFY(consumer->consumedInterfaces().first().available);
+    QVERIFY(provider->provideObject(QStringLiteral("a"), &replacing));
+    QCOMPARE(consumer->consumedList(QStringLiteral("in")), (QList<QObject*>{&replacing, &second}));
+    // Replaced: removed, then inserted, in the same place.
+    QVERIFY(provider->provideObject(QStringLiteral("b"), &first));
+    QCOMPARE(consumer->consumedList(QStringLiteral("in")), (QList<QObject*>{&replacing, &first}));
+    QCOMPARE(consumer->events(), (QStringList{"removed in first (set)", "inserted in replacing",
+                                              "removed in second (set)", "inserted in first"}));
+}
+
+void TestComponent::unbindOneOfAList()
+{
+    QObject first;
+    QObject second;
+    first.setObjectName(QStringLiteral("first"));
+    second.setObjectName(QStringLiteral("second"));
+    const std::unique_ptr<Probe> consumer = createProbe();
+    const std::unique_ptr<Probe> provider = createProbe();
+    QVERIFY(consumer->consumeObjects(QStringLiteral("in")));
+    QVERIFY(provider->provideObject(QStringLiteral("a"), &first));
+    QVERIFY(provider->provideObject(QStringLiteral("b"), &second));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("a")));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("b")));
+    consumer->clearEvents();
+    const QSignalSpy interfacesChanged(consumer.get(), &Nebula::Component::interfacesChanged);
+
+    consumer->unbindInterface(QStringLiteral("in"), *provider, QStringLiteral("a"));
+    QCOMPARE(consumer->consumedList(QStringLiteral("in")), QList<QObject*>{&second});
+    QCOMPARE(consumer->bindings(QStringLiteral("in")).size(), 1);
+    QCOMPARE(consumer->binding(QStringLiteral("in")).providedName, QStringLiteral("b"));
+    QCOMPARE(consumer->events(), QStringList{"removed in first (set)"});
+    QVERIFY(interfacesChanged.count() > 0);
+    // No longer bound to it: what it provides no longer reaches the consumer.
+    QVERIFY(provider->provideObject(QStringLiteral("a"), &second));
+    QCOMPARE(consumer->consumedList(QStringLiteral("in")), QList<QObject*>{&second});
+
+    // Not bound to it, or not consumed: nothing happens.
+    consumer->clearEvents();
+    consumer->unbindInterface(QStringLiteral("in"), *provider, QStringLiteral("a"));
+    consumer->unbindInterface(QStringLiteral("unknown"), *provider, QStringLiteral("b"));
+    QVERIFY(consumer->events().isEmpty());
+
+    // Neither is an interface consumed alone, but by what it is bound to.
+    QVERIFY(consumer->consumeObject(QStringLiteral("one")));
+    QVERIFY(consumer->bindInterface(QStringLiteral("one"), *provider, QStringLiteral("b")));
+    consumer->unbindInterface(QStringLiteral("one"), *provider, QStringLiteral("a"));
+    QCOMPARE(consumer->consumed(QStringLiteral("one")), &second);
+    consumer->unbindInterface(QStringLiteral("one"), *provider, QStringLiteral("b"));
+    QCOMPARE(consumer->binding(QStringLiteral("one")).provider, nullptr);
+    QCOMPARE(consumer->consumed(QStringLiteral("one")), nullptr);
+}
+
+void TestComponent::unbindAList()
+{
+    QObject first;
+    QObject second;
+    first.setObjectName(QStringLiteral("first"));
+    second.setObjectName(QStringLiteral("second"));
+    const std::unique_ptr<Probe> consumer = createProbe();
+    const std::unique_ptr<Probe> provider = createProbe();
+    QVERIFY(consumer->consumeObjects(QStringLiteral("in")));
+    QVERIFY(provider->provideObject(QStringLiteral("a"), &first));
+    QVERIFY(provider->provideObject(QStringLiteral("b"), &second));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("a")));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("b")));
+    consumer->clearEvents();
+
+    // The last one first.
+    consumer->unbindInterface(QStringLiteral("in"));
+    QVERIFY(consumer->bindings(QStringLiteral("in")).isEmpty());
+    QVERIFY(consumer->consumedList(QStringLiteral("in")).isEmpty());
+    QVERIFY(!consumer->consumedInterfaces().first().available);
+    QCOMPARE(consumer->events(), (QStringList{"removed in second (set)", "removed in first (set)"}));
+}
+
+void TestComponent::destroyedProviderLeavesAList()
+{
+    QObject first;
+    QObject second;
+    QObject third;
+    first.setObjectName(QStringLiteral("first"));
+    second.setObjectName(QStringLiteral("second"));
+    third.setObjectName(QStringLiteral("third"));
+    const std::unique_ptr<Probe> consumer = createProbe();
+    std::unique_ptr<Probe> provider = createProbe();
+    const std::unique_ptr<Probe> other = createProbe();
+    QVERIFY(consumer->consumeObjects(QStringLiteral("in")));
+    QVERIFY(provider->provideObject(QStringLiteral("a"), &first));
+    QVERIFY(provider->provideObject(QStringLiteral("b"), &second));
+    QVERIFY(other->provideObject(QStringLiteral("c"), &third));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("a")));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *other, QStringLiteral("c")));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("b")));
+    consumer->clearEvents();
+
+    // Each of what it provides is withdrawn, then unbound; the others stay.
+    provider.reset();
+    QCOMPARE(consumer->consumedList(QStringLiteral("in")), QList<QObject*>{&third});
+    QCOMPARE(consumer->bindings(QStringLiteral("in")).size(), 1);
+    QCOMPARE(consumer->binding(QStringLiteral("in")).provider, other.get());
+    QCOMPARE(consumer->events(), (QStringList{"removed in first (set)", "removed in second (set)"}));
+}
+
+void TestComponent::unboundMandatoryList()
+{
+    const std::unique_ptr<Probe> consumer = createProbe();
+    const std::unique_ptr<Probe> provider = createProbe();
+    QVERIFY(consumer->consumeObjects(QStringLiteral("in"), InterfaceRequirement::Mandatory));
+    QVERIFY(provider->provideObject(QStringLiteral("a")));
+    QVERIFY(provider->provideObject(QStringLiteral("b")));
+    QCOMPARE(consumer->unboundMandatoryInterfaces(), QStringList{"in"});
+
+    // One is enough, available or not.
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("a")));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("b")));
+    consumer->unbindInterface(QStringLiteral("in"), *provider, QStringLiteral("a"));
+    QVERIFY(consumer->unboundMandatoryInterfaces().isEmpty());
+    consumer->unbindInterface(QStringLiteral("in"), *provider, QStringLiteral("b"));
+    QCOMPARE(consumer->unboundMandatoryInterfaces(), QStringList{"in"});
 }
 
 void TestComponent::addPropertiesForQObject()

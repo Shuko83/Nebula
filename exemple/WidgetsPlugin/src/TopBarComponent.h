@@ -3,11 +3,10 @@
 
 #pragma once
 
+#include <QHash>
+#include <QList>
 #include <QString>
 #include <QToolBar>
-#include <array>
-#include <cstddef>
-#include <optional>
 
 #include "Nebula/Component/Component.h"
 
@@ -16,9 +15,9 @@ class QMainWindow;
 class QWidget;
 
 // A bar at the top of the main window it consumes as "mainWindow", which it cannot do without: a QToolBar it creates,
-// in that window for as long as it has it. The bar shows the actions it consumes as "action1" to "action4", then the
-// widgets it consumes as "widget1" and "widget2", each in the place of its interface and for as long as it has it, the
-// other places closing up. It needs a QApplication.
+// in that window for as long as it has it. The bar shows the actions it consumes as the list "actions", then the
+// widgets it consumes as the list "widgets", each in the order of their bindings and for as long as it has it. It needs
+// a QApplication.
 class TopBarComponent : public Nebula::Component
 {
     Q_OBJECT
@@ -28,10 +27,6 @@ class TopBarComponent : public Nebula::Component
     Q_PROPERTY(bool movable READ isMovable WRITE setMovable NOTIFY movableChanged)
 
   public:
-    // How many actions, and how many widgets, it consumes.
-    static constexpr std::size_t ActionCount = 4;
-    static constexpr std::size_t WidgetCount = 2;
-
     TopBarComponent();
 
     // Its name in the context menu of the window, which shows or hides it.
@@ -46,17 +41,21 @@ class TopBarComponent : public Nebula::Component
     void movableChanged(bool movable);
 
   private:
-    // Shows the actions it has, in the order of their interfaces, before the widgets: all of them but the one of the
-    // interface leaving, which is about to go.
-    void showActions(std::optional<std::size_t> leaving = std::nullopt);
-    void showWidget(std::size_t slot);
-    // Gives the widget of slot back as it was provided: without a parent, which would delete it.
-    void hideWidget(std::size_t slot);
+    // Shows the actions of shown, in their order, before the widgets: those it has, or all of them but one about to go.
+    // An action it has twice is shown once, in the place of the first.
+    void showActions(const QList<QAction*>& shown);
+    // Shows widget in its place, among those it has, after the actions; once, when it has it twice.
+    void showWidget(QWidget* widget);
+    // Gives widget back as it was provided, without a parent, which would delete it, unless it has it twice.
+    void hideWidget(QWidget* widget);
+    // The holder in the bar of the first widget after index in m_widgets that it shows; nullptr when there is none.
+    [[nodiscard]] QAction* holderAfter(qsizetype index) const;
 
     QToolBar m_bar;
-    QMainWindow* m_mainWindow = nullptr;                 // Consumed
-    std::array<QAction*, ActionCount> m_actions{};       // Consumed
-    std::array<QWidget*, WidgetCount> m_widgets{};       // Consumed
-    std::array<QWidget*, WidgetCount> m_holders{};       // In the bar, each holding the widget of its slot
-    std::array<QAction*, WidgetCount> m_holderActions{}; // Of the holders in the bar, hidden while they hold nothing
+    QMainWindow* m_mainWindow = nullptr; // Consumed
+    QList<QAction*> m_actions;           // Consumed
+    QList<QWidget*> m_widgets;           // Consumed
+    // The action of the holder in the bar of each widget it shows: a widget of the bar is owned by the action the bar
+    // makes of it, the holder, not the widget consumed.
+    QHash<QWidget*, QAction*> m_holders;
 };
