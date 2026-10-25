@@ -49,8 +49,15 @@ class Probe : public Nebula::Component
                        Nebula::InterfaceRequirement requirement = Nebula::InterfaceRequirement::Optional);
     bool consumeTimer(const QString& name,
                       Nebula::InterfaceRequirement requirement = Nebula::InterfaceRequirement::Optional);
+    // consumeInterfaceList() of QObjects, which consumedList() returns: its callbacks log "inserted <name> <object>"
+    // and "removed <name> <object>", <object> being its objectName(), the latter with " (set)" while the member still
+    // has the pointer, as it should.
+    bool consumeObjects(const QString& name,
+                        Nebula::InterfaceRequirement requirement = Nebula::InterfaceRequirement::Optional);
     // The member of name, which it consumes; nullptr while it has no pointer, or when it does not consume name.
     [[nodiscard]] QObject* consumed(const QString& name) const;
+    // The member of name, which it consumes as a list; empty when it does not.
+    [[nodiscard]] QList<QObject*> consumedList(const QString& name) const;
     // addPropertiesForQObject().
     void addObject(QObject* object, const QString& name = {});
 
@@ -93,4 +100,5 @@ class Probe : public Nebula::Component
     // By name; std::map, whose elements do not move: Component writes them through a reference.
     std::map<QString, QObject*> m_objects;
     std::map<QString, QTimer*> m_timers;
+    std::map<QString, QList<QObject*>> m_lists;
 };

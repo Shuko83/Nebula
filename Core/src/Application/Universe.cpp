@@ -702,27 +702,29 @@ QStringList Universe::reloadGalaxy(Galaxy& galaxy)
     const QList<InterfaceInfo> consumedInterfaces = galaxy.consumedInterfaces();
     for(const InterfaceInfo& consumed : consumedInterfaces)
     {
-        const InterfaceBinding bound = galaxy.binding(consumed.name);
-        if(bound.provider != nullptr)
+        const QList<InterfaceBinding> bound = galaxy.bindings(consumed.name);
+        for(const InterfaceBinding& to : bound)
         {
-            bindings.append({.consumer = &galaxy,
-                             .consumed = consumed.name,
-                             .provider = bound.provider,
-                             .provided = bound.providedName});
+            bindings.append(
+                {.consumer = &galaxy, .consumed = consumed.name, .provider = to.provider, .provided = to.providedName});
         }
     }
+    // A list bound to it is bound again after what else it is bound to.
     for(const std::unique_ptr<Component>& component : scopeComponents(parent))
     {
         const QList<InterfaceInfo> consumed = component->consumedInterfaces();
         for(const InterfaceInfo& info : consumed)
         {
-            const InterfaceBinding bound = component->binding(info.name);
-            if(bound.provider == &galaxy)
+            const QList<InterfaceBinding> bound = component->bindings(info.name);
+            for(const InterfaceBinding& to : bound)
             {
-                bindings.append({.consumer = component.get(),
-                                 .consumed = info.name,
-                                 .provider = &galaxy,
-                                 .provided = bound.providedName});
+                if(to.provider == &galaxy)
+                {
+                    bindings.append({.consumer = component.get(),
+                                     .consumed = info.name,
+                                     .provider = &galaxy,
+                                     .provided = to.providedName});
+                }
             }
         }
     }
@@ -871,14 +873,15 @@ QJsonObject Universe::saveProject(const std::vector<std::unique_ptr<Component>>&
         const QList<InterfaceInfo> consumedInterfaces = instance->consumedInterfaces();
         for(const InterfaceInfo& consumed : consumedInterfaces)
         {
-            const InterfaceBinding bound = instance->binding(consumed.name);
-            if(bound.provider != nullptr)
+            // One for each of what a list is bound to, in its order, which binding them again keeps.
+            const QList<InterfaceBinding> bound = instance->bindings(consumed.name);
+            for(const InterfaceBinding& to : bound)
             {
                 QJsonObject binding;
                 binding.insert(u"consumer", instance->objectName());
                 binding.insert(u"consumed", consumed.name);
-                binding.insert(u"provider", bound.provider->objectName());
-                binding.insert(u"provided", bound.providedName);
+                binding.insert(u"provider", to.provider->objectName());
+                binding.insert(u"provided", to.providedName);
                 bindings.append(binding);
             }
         }

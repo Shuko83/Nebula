@@ -88,8 +88,8 @@ class TestWidgetsPlugin : public QObject
     void mainWindowShowsWhileItRuns();
     void centralWidget();
     void topBarNeedsTheMainWindow();
-    void actionsInTheOrderOfTheirInterfaces();
-    void widgetsInTheirPlaces();
+    void actionsInTheOrderOfTheirBindings();
+    void widgetsInTheOrderOfTheirBindings();
     void actionShortcut_data();
     void actionShortcut();
     void counterCountsWhileItRuns();
@@ -211,7 +211,7 @@ void TestWidgetsPlugin::topBarNeedsTheMainWindow()
     QCOMPARE(barIn(*windowOf(*mainWindow)), nullptr);
 }
 
-void TestWidgetsPlugin::actionsInTheOrderOfTheirInterfaces()
+void TestWidgetsPlugin::actionsInTheOrderOfTheirBindings()
 {
     Component* mainWindow = instantiate(u"MainWindowComponent"_s);
     Component* topBar = instantiate(u"TopBarComponent"_s);
@@ -224,31 +224,41 @@ void TestWidgetsPlugin::actionsInTheOrderOfTheirInterfaces()
         QVERIFY(actions.last()->setProperty("text", text));
     }
     QCOMPARE(actionTexts(*bar), QStringList{});
+    QVERIFY(topBar->consumedInterfaces().at(1).list);
 
-    QVERIFY(topBar->bindInterface(u"action3"_s, *actions.at(0), u"action"_s));
-    QVERIFY(topBar->bindInterface(u"action1"_s, *actions.at(1), u"action"_s));
+    QVERIFY(topBar->bindInterface(u"actions"_s, *actions.at(1), u"action"_s));
+    QVERIFY(topBar->bindInterface(u"actions"_s, *actions.at(0), u"action"_s));
     QCOMPARE(actionTexts(*bar), (QStringList{u"B"_s, u"A"_s}));
-    QVERIFY(topBar->bindInterface(u"action2"_s, *actions.at(2), u"action"_s));
-    QCOMPARE(actionTexts(*bar), (QStringList{u"B"_s, u"C"_s, u"A"_s}));
-    topBar->unbindInterface(u"action1"_s);
-    QCOMPARE(actionTexts(*bar), (QStringList{u"C"_s, u"A"_s}));
-
-    // Shown once, in the place of the last of its interfaces, while one of them has it.
-    QVERIFY(topBar->bindInterface(u"action4"_s, *actions.at(2), u"action"_s));
+    QVERIFY(topBar->bindInterface(u"actions"_s, *actions.at(2), u"action"_s));
+    QCOMPARE(actionTexts(*bar), (QStringList{u"B"_s, u"A"_s, u"C"_s}));
+    topBar->unbindInterface(u"actions"_s, *actions.at(1), u"action"_s);
     QCOMPARE(actionTexts(*bar), (QStringList{u"A"_s, u"C"_s}));
-    topBar->unbindInterface(u"action4"_s);
-    QCOMPARE(actionTexts(*bar), (QStringList{u"C"_s, u"A"_s}));
+    // Bound again, it comes last.
+    QVERIFY(topBar->bindInterface(u"actions"_s, *actions.at(1), u"action"_s));
+    QCOMPARE(actionTexts(*bar), (QStringList{u"A"_s, u"C"_s, u"B"_s}));
+    // Not twice to the same one.
+    QVERIFY(!topBar->bindInterface(u"actions"_s, *actions.at(1), u"action"_s));
+    QCOMPARE(actionTexts(*bar), (QStringList{u"A"_s, u"C"_s, u"B"_s}));
 
-    // Before the widgets.
+    // Before the widgets, those bound before them as those bound after.
     Component* counter = instantiate(u"CounterComponent"_s);
-    QVERIFY(topBar->bindInterface(u"widget1"_s, *counter, u"display"_s));
-    QCOMPARE(placeIn(*bar, *counter->providedInterface<QWidget>(u"display"_s)), 2);
+    QVERIFY(topBar->bindInterface(u"widgets"_s, *counter, u"display"_s));
+    QCOMPARE(placeIn(*bar, *counter->providedInterface<QWidget>(u"display"_s)), 3);
+    Component* late = instantiate(u"ActionComponent"_s);
+    QVERIFY(late->setProperty("text", u"D"_s));
+    QVERIFY(topBar->bindInterface(u"actions"_s, *late, u"action"_s));
+    QCOMPARE(actionTexts(*bar), (QStringList{u"A"_s, u"C"_s, u"B"_s, u"D"_s}));
+    QCOMPARE(placeIn(*bar, *counter->providedInterface<QWidget>(u"display"_s)), 4);
 
+    QVERIFY(m_universe->remove(*late));
     QVERIFY(m_universe->remove(*actions.at(0)));
-    QCOMPARE(actionTexts(*bar), QStringList{u"C"_s});
+    QCOMPARE(actionTexts(*bar), (QStringList{u"C"_s, u"B"_s}));
+    topBar->unbindInterface(u"actions"_s);
+    QCOMPARE(actionTexts(*bar), QStringList{});
+    QCOMPARE(placeIn(*bar, *counter->providedInterface<QWidget>(u"display"_s)), 0);
 }
 
-void TestWidgetsPlugin::widgetsInTheirPlaces()
+void TestWidgetsPlugin::widgetsInTheOrderOfTheirBindings()
 {
     Component* mainWindow = instantiate(u"MainWindowComponent"_s);
     Component* topBar = instantiate(u"TopBarComponent"_s);
@@ -259,21 +269,25 @@ void TestWidgetsPlugin::widgetsInTheirPlaces()
     const QPointer<QWidget> firstDisplay = first->providedInterface<QWidget>(u"display"_s);
     const QPointer<QWidget> secondDisplay = second->providedInterface<QWidget>(u"display"_s);
 
-    QVERIFY(topBar->bindInterface(u"widget2"_s, *second, u"display"_s));
-    QVERIFY(topBar->bindInterface(u"widget1"_s, *first, u"display"_s));
-    const qsizetype firstPlace = placeIn(*bar, *firstDisplay);
-    const qsizetype secondPlace = placeIn(*bar, *secondDisplay);
-    QVERIFY(firstPlace >= 0);
-    QVERIFY(firstPlace < secondPlace);
+    QVERIFY(topBar->bindInterface(u"widgets"_s, *second, u"display"_s));
+    QVERIFY(topBar->bindInterface(u"widgets"_s, *first, u"display"_s));
+    QCOMPARE(placeIn(*bar, *secondDisplay), 0);
+    QCOMPARE(placeIn(*bar, *firstDisplay), 1);
     // Shown with the bar, its place being visible: not shown here, as the platform of the tests has no font to show it.
     QVERIFY(firstDisplay->isVisibleTo(firstDisplay->parentWidget()));
 
-    // Given back as it was provided, its place hidden.
-    topBar->unbindInterface(u"widget1"_s);
-    QCOMPARE(firstDisplay->parent(), nullptr);
-    QCOMPARE(placeIn(*bar, *firstDisplay), -1);
-    QCOMPARE(placeIn(*bar, *secondDisplay), secondPlace);
+    // Given back as it was provided, its place gone.
+    topBar->unbindInterface(u"widgets"_s, *second, u"display"_s);
+    QCOMPARE(secondDisplay->parent(), nullptr);
+    QCOMPARE(placeIn(*bar, *secondDisplay), -1);
+    QCOMPARE(placeIn(*bar, *firstDisplay), 0);
+    // Bound again, in its place among the others: after them.
+    QVERIFY(topBar->bindInterface(u"widgets"_s, *second, u"display"_s));
+    QCOMPARE(placeIn(*bar, *firstDisplay), 0);
+    QCOMPARE(placeIn(*bar, *secondDisplay), 1);
     QVERIFY(m_universe->remove(*topBar));
+    QVERIFY(firstDisplay != nullptr);
+    QCOMPARE(firstDisplay->parent(), nullptr);
     QVERIFY(secondDisplay != nullptr);
     QCOMPARE(secondDisplay->parent(), nullptr);
 }
@@ -360,7 +374,7 @@ void TestWidgetsPlugin::projectRoundTrip()
     QVERIFY(action->setProperty("text", u"Add one"_s));
     QVERIFY(action->setProperty("shortcut", u"Ctrl+N"_s));
     QVERIFY(topBar->bindInterface(u"mainWindow"_s, *mainWindow, u"mainWindow"_s));
-    QVERIFY(topBar->bindInterface(u"action1"_s, *action, u"action"_s));
+    QVERIFY(topBar->bindInterface(u"actions"_s, *action, u"action"_s));
     QVERIFY(counter->bindInterface(u"action"_s, *action, u"action"_s));
     QVERIFY(mainWindow->bindInterface(u"centralWidget"_s, *counter, u"display"_s));
     const QJsonObject project = m_universe->save();

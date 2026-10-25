@@ -8,6 +8,8 @@
 #include <QLayout>
 #include <QMainWindow>
 #include <QWidget>
+#include <QWidgetAction>
+#include <utility>
 
 #include "WidgetsPlugin.h"
 
@@ -29,25 +31,17 @@ TopBarComponent::TopBarComponent()
             m_mainWindow->removeToolBar(&m_bar);
             m_bar.setParent(nullptr); // The window would delete it
         });
-    for(std::size_t slot = 0; slot < ActionCount; ++slot)
-    {
-        consumeInterface<QAction>(
-            QStringLiteral("action%1").arg(slot + 1), m_actions.at(slot), [this] { showActions(); },
-            [this, slot] { showActions(slot); });
-    }
-    for(std::size_t slot = 0; slot < WidgetCount; ++slot)
-    {
-        // A widget of the bar is owned by the action the bar makes of it: the holder, not the widget consumed.
-        auto* holder = new QWidget;
-        auto* layout = new QHBoxLayout(holder);
-        layout->setContentsMargins({});
-        m_holders.at(slot) = holder;
-        m_holderActions.at(slot) = m_bar.addWidget(holder);
-        m_holderActions.at(slot)->setVisible(false);
-        consumeInterface<QWidget>(
-            QStringLiteral("widget%1").arg(slot + 1), m_widgets.at(slot), [this, slot] { showWidget(slot); },
-            [this, slot] { hideWidget(slot); });
-    }
+    consumeInterfaceList<QAction>(
+        QStringLiteral("actions"), m_actions, [this](QAction* /*action*/) { showActions(m_actions); },
+        [this](QAction* action)
+        {
+            QList<QAction*> shown = m_actions; // Which still has it
+            shown.removeOne(action);
+            showActions(shown);
+        });
+    consumeInterfaceList<QWidget>(
+        QStringLiteral("widgets"), m_widgets, [this](QWidget* widget) { showWidget(widget); },
+        [this](QWidget* widget) { hideWidget(widget); });
 }
 
 QString TopBarComponent::title() const
@@ -80,35 +74,61 @@ void TopBarComponent::setMovable(bool movable)
     emit movableChanged(movable);
 }
 
-void TopBarComponent::showActions(std::optional<std::size_t> leaving)
+void TopBarComponent::showActions(const QList<QAction*>& shown)
 {
-    for(QAction* action : m_actions)
+    for(QAction* action : std::as_const(m_actions))
     {
-        if(action != nullptr)
-        {
-            m_bar.removeAction(action);
-        }
+        m_bar.removeAction(action);
     }
-    for(std::size_t slot = 0; slot < ActionCount; ++slot)
+    QAction* widgets = holderAfter(-1);
+    for(QAction* action : shown)
     {
-        if(m_actions.at(slot) != nullptr && slot != leaving)
+        if(!m_bar.actions().contains(action))
         {
-            // An action consumed twice is shown once, in the place of the last of its interfaces.
-            m_bar.insertAction(m_holderActions.front(), m_actions.at(slot));
+            m_bar.insertAction(widgets, action);
         }
     }
 }
 
-void TopBarComponent::showWidget(std::size_t slot)
+void TopBarComponent::showWidget(QWidget* widget)
 {
-    m_holders.at(slot)->layout()->addWidget(m_widgets.at(slot));
-    m_widgets.at(slot)->show(); // Hidden when it was taken from where it was shown
-    m_holderActions.at(slot)->setVisible(true);
+    if(m_holders.contains(widget))
+    {
+        return;
+    }
+    auto* holder = new QWidget;
+    auto* layout = new QHBoxLayout(holder);
+    layout->setContentsMargins({});
+    layout->addWidget(widget);
+    widget->show(); // Hidden when it was taken from where it was shown
+    m_holders.insert(widget, m_bar.insertWidget(holderAfter(m_widgets.indexOf(widget)), holder));
 }
 
-void TopBarComponent::hideWidget(std::size_t slot)
+void TopBarComponent::hideWidget(QWidget* widget)
 {
-    m_holderActions.at(slot)->setVisible(false);
-    m_holders.at(slot)->layout()->removeWidget(m_widgets.at(slot));
-    m_widgets.at(slot)->setParent(nullptr);
+    if(m_widgets.count(widget) > 1)
+    {
+        return;
+    }
+    // Deleted with its action, once it no longer holds the widget.
+    QAction* action = m_holders.take(widget);
+    if(auto* holder = qobject_cast<QWidgetAction*>(action); holder != nullptr && holder->defaultWidget() != nullptr)
+    {
+        holder->defaultWidget()->layout()->removeWidget(widget);
+    }
+    widget->setParent(nullptr);
+    m_bar.removeAction(action);
+    delete action;
+}
+
+QAction* TopBarComponent::holderAfter(qsizetype index) const
+{
+    for(qsizetype next = index + 1; next < m_widgets.size(); ++next)
+    {
+        if(QAction* holder = m_holders.value(m_widgets.at(next)))
+        {
+            return holder;
+        }
+    }
+    return nullptr;
 }

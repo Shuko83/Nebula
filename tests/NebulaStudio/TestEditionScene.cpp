@@ -122,6 +122,7 @@ class TestEditionScene : public QObject
     void deleteKeyWhileRunning();
     void contextMenu_data();
     void contextMenu();
+    void linksOfAList();
 
   private:
     // Source1, which provides "object", and Sink1, whose "object" is bound to it.
@@ -351,6 +352,42 @@ void TestEditionScene::contextMenu()
     QCOMPARE(m_application->component(QStringLiteral("Sink1"))->binding(QStringLiteral("object")).provider == nullptr,
              removable);
     QCOMPARE(names(*m_application), (QStringList{QStringLiteral("Source1"), QStringLiteral("Sink1")}));
+}
+
+// A list a component consumes has a link for each of what it is bound to; removing one leaves the others.
+void TestEditionScene::linksOfAList()
+{
+    Nebula::Component* other = m_application->instantiate(testComponentId(QStringLiteral("Source")));
+    Nebula::Component* source = m_application->component(QStringLiteral("Source1"));
+    Nebula::Component* sink = m_application->component(QStringLiteral("Sink1"));
+    QVERIFY(sink->bindInterface(QStringLiteral("objects"), *source, QStringLiteral("object")));
+    QVERIFY(sink->bindInterface(QStringLiteral("objects"), *other, QStringLiteral("object")));
+    QCOMPARE(m_scene->load(m_application->save()), QStringList());
+    sink = m_application->component(QStringLiteral("Sink1"));
+
+    QList<LinkItem*> toList;
+    const QList<LinkItem*> shown = links(*m_scene);
+    for(LinkItem* link : shown)
+    {
+        if(link->consumed().name() == QStringLiteral("objects"))
+        {
+            QVERIFY(link->consumed().isList());
+            toList.append(link);
+        }
+    }
+    QCOMPARE(shown.size(), 3);
+    QCOMPARE(toList.size(), 2);
+
+    const auto toFirst = std::ranges::find(toList, QStringLiteral("Source1"), [](const LinkItem* link)
+                                           { return link->provided().component().objectName(); });
+    QVERIFY(toFirst != toList.end());
+    (*toFirst)->setSelected(true);
+    QTest::keyClick(m_view.get(), Qt::Key_Delete);
+    QCOMPARE(links(*m_scene).size(), 2);
+    const QList<Nebula::InterfaceBinding> bound = sink->bindings(QStringLiteral("objects"));
+    QCOMPARE(bound.size(), 1);
+    QCOMPARE(bound.constFirst().provider, m_application->component(QStringLiteral("Source2")));
+    QVERIFY(sink->binding(QStringLiteral("object")).provider != nullptr); // The other interface keeps its own
 }
 
 QTEST_MAIN(TestEditionScene)

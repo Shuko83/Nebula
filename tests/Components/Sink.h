@@ -7,12 +7,12 @@
 
 class QTimer;
 
-// Consumes the interface "object", a QObject it needs, and "timer", a QTimer it can do without: both declared as it is
-// built, as a project needs them to bind them.
+// Consumes the interface "object", a QObject it needs, "timer", a QTimer it can do without, and "objects", a list of
+// QObjects: declared as it is built, as a project needs them to bind them.
 class Sink : public Nebula::Component
 {
     Q_OBJECT
-    Q_CLASSINFO("description", "Consumes an object and a timer")
+    Q_CLASSINFO("description", "Consumes an object, a timer and a list of objects")
     Q_CLASSINFO("category", "Test")
 
   public:
@@ -20,8 +20,11 @@ class Sink : public Nebula::Component
 
     // What it has of "object"; nullptr while it is unavailable.
     [[nodiscard]] QObject* object() const;
+    // What it has of "objects", in the order they were bound.
+    [[nodiscard]] QList<QObject*> objects() const;
 
   private:
     QObject* m_object = nullptr;
     QTimer* m_timer = nullptr;
+    QList<QObject*> m_objects;
 };

@@ -5,6 +5,21 @@ What changes in Nebula, formerly AppForge, from one version to the next, the lat
 French, in its notes in [docs/release-notes](docs/release-notes/), the text of its GitHub release, with how to upgrade
 to it.
 
+## [Unreleased]
+
+### Added
+
+- Lists of interfaces (#67): `Component::consumeInterfaceList<T>()` consumes a `QList<T*>` to which several provided
+  interfaces are bound, in their order, each one telling `onInserted` and `onRemoved`; `bindings(name)`,
+  `unbindInterface(name, provider, providedName)` and `InterfaceInfo::list`. NebulaStudio draws a list as two stacked
+  circles, with a link for each of its bindings, removed one by one.
+
+### Changed
+
+- `TopBarComponent` of `WidgetsPlugin` consumes the lists `actions` and `widgets` in place of `action1` to `action4`,
+  `widget1` and `widget2`.
+- `Component.h` changes: plugins built against 1.0.0 must be built again.
+
 ## [1.0.0] - 2026-10-20
 
 ### Added

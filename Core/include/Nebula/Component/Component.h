@@ -46,16 +46,26 @@ class CORE_EXPORT Component : public QObject, public IComponent
     [[nodiscard]] QList<InterfaceInfo> consumedInterfaces() const override;
 
     // Binds name, which it consumes, to providedName, which provider provides: it has its pointer whenever provider
-    // makes it available, until unbindInterface() or the destruction of one of them. Replaces what name was bound to.
-    // Returns false, changing nothing, when it does not consume name, provider does not provide providedName, or
-    // they are not of the same type.
+    // makes it available, until unbindInterface() or the destruction of one of them. Replaces what name was bound to;
+    // for a list, see consumeInterfaceList(), adds to what it is bound to, after them.
+    // Returns false, changing nothing, when it does not consume name, provider does not provide providedName, they
+    // are not of the same type, or name is a list already bound to providedName of provider.
     bool bindInterface(const QString& name, Component& provider, const QString& providedName);
-    // name, which it consumes, becomes unavailable and is bound to nothing.
+    // name, which it consumes, becomes unavailable and is bound to nothing; for a list, to none of what it was bound
+    // to.
     void unbindInterface(const QString& name);
-    // What name is bound to: nothing when it is unbound, or not an interface it consumes.
+    // name, which it consumes, is no longer bound to providedName of provider: for a list, it keeps what else it is
+    // bound to. Does nothing when it is not.
+    void unbindInterface(const QString& name, const Component& provider, const QString& providedName);
+    // What name is bound to: nothing when it is unbound, or not an interface it consumes. For a list, the first of
+    // bindings().
     [[nodiscard]] InterfaceBinding binding(const QString& name) const;
+    // What name is bound to, in the order it was bound: one binding at most, unless it is a list. None when it is
+    // unbound, or not an interface it consumes.
+    [[nodiscard]] QList<InterfaceBinding> bindings(const QString& name) const;
     // The interfaces it consumes as InterfaceRequirement::Mandatory that are bound to nothing, in the order they were
-    // declared: it does not work until each of them is bound. None when it is operational.
+    // declared: it does not work until each of them is bound, a list to one interface at least. None when it is
+    // operational.
     [[nodiscard]] QStringList unboundMandatoryInterfaces() const;
 
     // The objects added with addPropertiesForQObject() that still live, in the order they were added.
@@ -119,6 +129,47 @@ class CORE_EXPORT Component : public QObject, public IComponent
             { member = static_cast<T*>(pointer); }, std::move(onAvailable), std::move(onUnavailable));
     }
 
+    // Declares that it consumes the interface name as a list of T, through member, one of its members: several
+    // interfaces other components provide can be bound to it (see bindInterface()), and member holds the pointers of
+    // those that are available, in the order they were bound. onInserted is called with a pointer once it is in member;
+    // onRemoved with one before it leaves member, the last time it can be used: when its provider withdraws or replaces
+    // it, when what provides it is unbound, and when one of the two components is destroyed. The observers of a
+    // subject, say, register and unregister there.
+    // Returns false, with a warning, when name is already consumed.
+    template <typename T>
+    bool consumeInterfaceList(const QString& name, QList<T*>& member, std::function<void(T*)> onInserted = {},
+                              std::function<void(T*)> onRemoved = {})
+    {
+        return consumeInterfaceList<T>(name, member, InterfaceRequirement::Optional, std::move(onInserted),
+                                       std::move(onRemoved));
+    }
+
+    // The same, telling whether the component needs one of them at least to work, as consumeInterface() does.
+    template <typename T>
+    bool consumeInterfaceList(const QString& name, QList<T*>& member, InterfaceRequirement requirement,
+                              std::function<void(T*)> onInserted = {}, std::function<void(T*)> onRemoved = {})
+    {
+        const auto cast = [](std::function<void(T*)> callback) -> std::function<void(void*)>
+        {
+            if(!callback)
+            {
+                return {};
+            }
+            return [callback = std::move(callback)](void* pointer) { callback(static_cast<T*>(pointer)); };
+        };
+        return consumeList(
+            name, QMetaType::fromType<T*>(), requirement,
+            [&member](const QList<void*>& pointers)
+            {
+                member.clear();
+                for(void* pointer : pointers)
+                {
+                    member.append(static_cast<T*>(pointer));
+                }
+            },
+            cast(std::move(onInserted)), cast(std::move(onRemoved)));
+    }
+
     // Has the properties of object, see PropertyObject::properties(), edited and saved with its own: NebulaStudio edits
     // them under those of the component, and a project holds their values. Under name when it is not empty, as a group
     // of their own; the objects added with the same name share a group. For as long as object lives: it need not
@@ -149,18 +200,27 @@ class CORE_EXPORT Component : public QObject, public IComponent
         void* pointer = nullptr; // nullptr while unavailable
     };
 
+    // What an interface it consumes is bound to.
+    struct Bound
+    {
+        Component* provider = nullptr;
+        QString providedName;                       // What it is bound to in provider
+        QList<QMetaObject::Connection> connections; // To provider
+        void* pointer = nullptr;                    // What it was given of provider; nullptr while unavailable
+    };
+
     struct ConsumedInterface
     {
         QString name;
         QMetaType type;
         InterfaceRequirement requirement = InterfaceRequirement::Optional;
-        std::function<void(void*)> setMember; // Writes the member given to consumeInterface()
-        std::function<void()> onAvailable;
-        std::function<void()> onUnavailable;
-        bool available = false;                     // Whether the member is set
-        Component* provider = nullptr;              // nullptr while unbound
-        QString providedName;                       // What it is bound to in provider
-        QList<QMetaObject::Connection> connections; // To provider, while bound
+        bool list = false;
+        // Writes the member given to consumeInterface() or consumeInterfaceList(): the pointers given, in the order
+        // of bindings.
+        std::function<void(const QList<void*>&)> setMember;
+        std::function<void(void*)> onAvailable;   // With the pointer given
+        std::function<void(void*)> onUnavailable; // With the pointer taken back
+        QList<Bound> bindings;                    // In the order they were bound; one at most, unless it is a list
     };
 
     [[nodiscard]] void* providedPointer(const QString& name, QMetaType type) const override;
@@ -170,6 +230,12 @@ class CORE_EXPORT Component : public QObject, public IComponent
     bool consume(const QString& name, QMetaType type, InterfaceRequirement requirement,
                  std::function<void(void*)> setMember, std::function<void()> onAvailable,
                  std::function<void()> onUnavailable);
+    // consumeInterfaceList(), type being the one of the pointers setMember writes.
+    bool consumeList(const QString& name, QMetaType type, InterfaceRequirement requirement,
+                     std::function<void(const QList<void*>&)> setMember, std::function<void(void*)> onInserted,
+                     std::function<void(void*)> onRemoved);
+    // Declares name, see consume() and consumeList().
+    bool declareConsumed(ConsumedInterface consumed);
     // Names name, which it provides, newName: what is bound to it is still, see interfaceRenamed(). Returns false,
     // changing nothing, when it provides no name, or provides newName already.
     bool renameProvidedInterface(const QString& name, const QString& newName);
@@ -181,12 +247,14 @@ class CORE_EXPORT Component : public QObject, public IComponent
     void removeProvidedInterface(const QString& name);
     // Unbinds name, which it consumes, and forgets it. Does nothing when it consumes no name.
     void removeConsumedInterface(const QString& name);
-    // Follows, for name, which it consumes and is bound, what its provider does with the interface it is bound to.
-    void followProvider(const QString& name);
-    // Gives name, which it consumes, the pointer of what it is bound to, when there is one.
-    void deliverInterface(const QString& name);
-    // Takes its pointer back from name, which it consumes, when it has one.
-    void withdrawInterface(const QString& name);
+    // Follows, for name, which it consumes and is bound to providedName of provider, what provider does with it.
+    void followProvider(const QString& name, Component& provider, const QString& providedName);
+    // Gives name, which it consumes, the pointer of providedName of provider, when it is bound to it and has none.
+    void deliverInterface(const QString& name, const Component& provider, const QString& providedName);
+    // Takes back from name, which it consumes, the pointer of providedName of provider, when it has one.
+    void withdrawInterface(const QString& name, const Component& provider, const QString& providedName);
+    // Writes the member of consumed with the pointers it is given.
+    static void writeMember(const ConsumedInterface& consumed);
     // Ends what it consumes and provides while it is still whole: Plugin calls it before destroying the component, as
     // the callbacks of what it consumes, and what it provides, may be gone once its destructors run.
     void releaseInterfaces();

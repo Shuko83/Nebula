@@ -82,9 +82,9 @@ d'un plugin, et le test les récupère par `qobject_cast`.
 
 | Composant | Rôle |
 | --- | --- |
-| `Probe` | Rend publics `provideInterface()`, `consumeInterface()` et `addPropertiesForQObject()`, journalise ce que Core appelle (`events()`), refuse de démarrer si `refusesToStart` ; une propriété par type qu'un projet enregistre, plus `point` (que JSON ne tient pas) et `starts` (en lecture seule) |
+| `Probe` | Rend publics `provideInterface()`, `consumeInterface()`, `consumeInterfaceList()` (`consumeObjects()`, `consumedList()`) et `addPropertiesForQObject()`, journalise ce que Core appelle (`events()`), refuse de démarrer si `refusesToStart` ; une propriété par type qu'un projet enregistre, plus `point` (que JSON ne tient pas) et `starts` (en lecture seule) |
 | `Source` | Fournit `object` (`QObject`) pendant l'exécution, déclaré à la construction |
-| `Sink` | Consomme `object` (obligatoire) et `timer` (`QTimer`, facultatif), déclarés à la construction |
+| `Sink` | Consomme `object` (obligatoire), `timer` (`QTimer`, facultatif) et la liste `objects` (`objects()`), déclarés à la construction |
 | `Panel` | Ajoute les propriétés de trois `Options` : une sans nom, deux dans le groupe `page` |
 
 Un composant ajouté ici doit être enregistré dans `TestComponents.cpp`, à côté des autres : c'est le seul fichier de

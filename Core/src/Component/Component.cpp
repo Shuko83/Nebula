@@ -15,6 +15,23 @@ namespace
 
 Q_LOGGING_CATEGORY(lcComponents, "nebula.components")
 
+// The binding, among bindings, to providedName of provider; end() when there is none.
+template <typename Bindings> auto findBound(Bindings& bindings, const Component* provider, const QString& providedName)
+{
+    return std::ranges::find_if(bindings, [provider, &providedName](const auto& bound)
+                                { return bound.provider == provider && bound.providedName == providedName; });
+}
+
+// callback, told nothing of the pointer it is called for.
+std::function<void(void*)> withoutPointer(std::function<void()> callback)
+{
+    if(!callback)
+    {
+        return {};
+    }
+    return [callback = std::move(callback)](void* /*pointer*/) { callback(); };
+}
+
 } // namespace
 
 Component::Component() = default;
@@ -78,8 +95,10 @@ QList<InterfaceInfo> Component::consumedInterfaces() const
     {
         interfaces.append(InterfaceInfo{.name = consumed.name,
                                         .type = consumed.type,
-                                        .available = consumed.available,
-                                        .requirement = consumed.requirement});
+                                        .available = std::ranges::any_of(consumed.bindings, [](const Bound& bound)
+                                                                         { return bound.pointer != nullptr; }),
+                                        .requirement = consumed.requirement,
+                                        .list = consumed.list});
     }
     return interfaces;
 }
@@ -91,94 +110,140 @@ bool Component::bindInterface(const QString& name, Component& provider, const QS
         std::ranges::find(std::as_const(provider.m_providedInterfaces), providedName, &ProvidedInterface::name);
     // Not to itself either: it would be told of its own destruction once its interfaces are gone.
     if(&provider == this || consumed == m_consumedInterfaces.cend() ||
-       provided == provider.m_providedInterfaces.cend() || consumed->type != provided->type)
+       provided == provider.m_providedInterfaces.cend() || consumed->type != provided->type ||
+       (consumed->list && findBound(consumed->bindings, &provider, providedName) != consumed->bindings.cend()))
     {
         return false;
     }
-    unbindInterface(name);
+    if(!consumed->list)
+    {
+        unbindInterface(name);
+    }
 
     // Found again: the callback unbindInterface() called can have the component declare another interface.
-    ConsumedInterface& bound = *std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name);
-    bound.provider = &provider;
-    bound.providedName = providedName;
-    followProvider(name);
+    std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name)
+        ->bindings.append(Bound{.provider = &provider, .providedName = providedName});
+    followProvider(name, provider, providedName);
     emit interfacesChanged(); // Bound, before it is told again when it becomes available
-    deliverInterface(name);
+    deliverInterface(name, provider, providedName);
     return true;
 }
 
-void Component::followProvider(const QString& name)
+void Component::followProvider(const QString& name, Component& provider, const QString& providedName)
 {
-    ConsumedInterface& bound = *std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name);
-    // Whether provided is what name is bound to: read when the provider tells it, as a stargate can rename it.
-    const auto isBound = [this, name](const QString& provided)
-    {
-        const auto consumed = std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name);
-        return consumed != m_consumedInterfaces.end() && consumed->providedName == provided;
+    // What the provider tells of is found when it tells it, as a stargate can rename what it provides. A list bound
+    // twice to the same provider is told twice: the second time, there is nothing left to do.
+    Component* const from = &provider;
+    QList<QMetaObject::Connection> connections = {
+        connect(from, &Component::interfaceAvailable, this,
+                [this, name, from](const QString& available) { deliverInterface(name, *from, available); }),
+        connect(from, &Component::interfaceUnavailable, this,
+                [this, name, from](const QString& unavailable) { withdrawInterface(name, *from, unavailable); }),
+        connect(from, &Component::interfaceRenamed, this,
+                [this, name, from](const QString& former, const QString& renamed)
+                {
+                    const auto consumed = std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name);
+                    if(consumed == m_consumedInterfaces.end())
+                    {
+                        return;
+                    }
+                    if(const auto bound = findBound(consumed->bindings, from, former);
+                       bound != consumed->bindings.end())
+                    {
+                        bound->providedName = renamed;
+                    }
+                }),
+        connect(from, &Component::interfaceRemoved, this,
+                [this, name, from](const QString& removed) { unbindInterface(name, *from, removed); }),
+        connect(from, &QObject::destroyed, this,
+                [this, name, from]
+                {
+                    const auto consumed = std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name);
+                    if(consumed == m_consumedInterfaces.end())
+                    {
+                        return;
+                    }
+                    // Each of its bindings to the provider; from copies of the names, as each unbinding changes them.
+                    QStringList provided;
+                    for(const Bound& bound : std::as_const(consumed->bindings))
+                    {
+                        if(bound.provider == from)
+                        {
+                            provided.append(bound.providedName);
+                        }
+                    }
+                    for(const QString& providedName : std::as_const(provided))
+                    {
+                        unbindInterface(name, *from, providedName);
+                    }
+                }),
     };
-    bound.connections = {
-        connect(bound.provider, &Component::interfaceAvailable, this,
-                [this, name, isBound](const QString& available)
-                {
-                    if(isBound(available))
-                    {
-                        deliverInterface(name);
-                    }
-                }),
-        connect(bound.provider, &Component::interfaceUnavailable, this,
-                [this, name, isBound](const QString& unavailable)
-                {
-                    if(isBound(unavailable))
-                    {
-                        withdrawInterface(name);
-                    }
-                }),
-        connect(bound.provider, &Component::interfaceRenamed, this,
-                [this, name, isBound](const QString& former, const QString& renamed)
-                {
-                    if(isBound(former))
-                    {
-                        std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name)->providedName = renamed;
-                    }
-                }),
-        connect(bound.provider, &Component::interfaceRemoved, this,
-                [this, name, isBound](const QString& removed)
-                {
-                    if(isBound(removed))
-                    {
-                        unbindInterface(name);
-                    }
-                }),
-        connect(bound.provider, &QObject::destroyed, this, [this, name] { unbindInterface(name); }),
-    };
+    ConsumedInterface& consumed = *std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name);
+    findBound(consumed.bindings, from, providedName)->connections = std::move(connections);
 }
 
 void Component::unbindInterface(const QString& name)
 {
-    withdrawInterface(name);
     const auto consumed = std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name);
-    if(consumed == m_consumedInterfaces.end() || consumed->provider == nullptr)
+    if(consumed == m_consumedInterfaces.end())
     {
         return;
     }
-    for(const QMetaObject::Connection& connection : std::as_const(consumed->connections))
+    // The last one first, each found again, and no more than there are: what an unbinding calls can change them.
+    for(qsizetype count = consumed->bindings.size(); count > 0; --count)
+    {
+        const auto unbound = std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name);
+        if(unbound == m_consumedInterfaces.end() || unbound->bindings.isEmpty())
+        {
+            return;
+        }
+        const Bound last = unbound->bindings.constLast();
+        unbindInterface(name, *last.provider, last.providedName);
+    }
+}
+
+void Component::unbindInterface(const QString& name, const Component& provider, const QString& providedName)
+{
+    withdrawInterface(name, provider, providedName);
+    // Found again: what withdrawing calls can have the component declare another interface.
+    const auto consumed = std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name);
+    if(consumed == m_consumedInterfaces.end())
+    {
+        return;
+    }
+    const auto bound = findBound(consumed->bindings, &provider, providedName);
+    if(bound == consumed->bindings.end())
+    {
+        return;
+    }
+    for(const QMetaObject::Connection& connection : std::as_const(bound->connections))
     {
         disconnect(connection);
     }
-    consumed->connections.clear();
-    consumed->provider = nullptr;
-    consumed->providedName.clear();
+    consumed->bindings.erase(bound);
     emit interfacesChanged();
 }
 
 InterfaceBinding Component::binding(const QString& name) const
+{
+    const QList<InterfaceBinding> bound = bindings(name);
+    return bound.isEmpty() ? InterfaceBinding{} : bound.constFirst();
+}
+
+QList<InterfaceBinding> Component::bindings(const QString& name) const
 {
     const auto consumed = std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name);
     if(consumed == m_consumedInterfaces.end())
     {
         return {};
     }
-    return {.provider = consumed->provider, .providedName = consumed->providedName};
+    QList<InterfaceBinding> bound;
+    bound.reserve(consumed->bindings.size());
+    for(const Bound& binding : consumed->bindings)
+    {
+        bound.append({.provider = binding.provider, .providedName = binding.providedName});
+    }
+    return bound;
 }
 
 QStringList Component::unboundMandatoryInterfaces() const
@@ -186,7 +251,7 @@ QStringList Component::unboundMandatoryInterfaces() const
     QStringList unbound;
     for(const ConsumedInterface& consumed : m_consumedInterfaces)
     {
-        if(consumed.requirement == InterfaceRequirement::Mandatory && consumed.provider == nullptr)
+        if(consumed.requirement == InterfaceRequirement::Mandatory && consumed.bindings.isEmpty())
         {
             unbound.append(consumed.name);
         }
@@ -262,18 +327,38 @@ bool Component::consume(const QString& name, QMetaType type, InterfaceRequiremen
                         std::function<void(void*)> setMember, std::function<void()> onAvailable,
                         std::function<void()> onUnavailable)
 {
-    if(std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name) != m_consumedInterfaces.end())
+    return declareConsumed(
+        ConsumedInterface{.name = name,
+                          .type = type,
+                          .requirement = requirement,
+                          .setMember = [setMember = std::move(setMember)](const QList<void*>& pointers)
+                          { setMember(pointers.isEmpty() ? nullptr : pointers.constFirst()); },
+                          .onAvailable = withoutPointer(std::move(onAvailable)),
+                          .onUnavailable = withoutPointer(std::move(onUnavailable))});
+}
+
+bool Component::consumeList(const QString& name, QMetaType type, InterfaceRequirement requirement,
+                            std::function<void(const QList<void*>&)> setMember, std::function<void(void*)> onInserted,
+                            std::function<void(void*)> onRemoved)
+{
+    return declareConsumed(ConsumedInterface{.name = name,
+                                             .type = type,
+                                             .requirement = requirement,
+                                             .list = true,
+                                             .setMember = std::move(setMember),
+                                             .onAvailable = std::move(onInserted),
+                                             .onUnavailable = std::move(onRemoved)});
+}
+
+bool Component::declareConsumed(ConsumedInterface consumed)
+{
+    if(std::ranges::find(m_consumedInterfaces, consumed.name, &ConsumedInterface::name) != m_consumedInterfaces.end())
     {
-        qCWarning(lcComponents).noquote() << "Interface" << name << "is already consumed";
+        qCWarning(lcComponents).noquote() << "Interface" << consumed.name << "is already consumed";
         return false;
     }
-    setMember(nullptr);
-    m_consumedInterfaces.append(ConsumedInterface{.name = name,
-                                                  .type = type,
-                                                  .requirement = requirement,
-                                                  .setMember = std::move(setMember),
-                                                  .onAvailable = std::move(onAvailable),
-                                                  .onUnavailable = std::move(onUnavailable)});
+    writeMember(consumed);
+    m_consumedInterfaces.append(std::move(consumed));
     emit interfacesChanged();
     return true;
 }
@@ -300,16 +385,20 @@ bool Component::renameConsumedInterface(const QString& name, const QString& newN
     {
         return false;
     }
-    // Its connections to its provider know it by its name.
-    for(const QMetaObject::Connection& connection : std::as_const(consumed->connections))
+    // Its connections to its providers know it by its name.
+    for(Bound& bound : consumed->bindings)
     {
-        disconnect(connection);
+        for(const QMetaObject::Connection& connection : std::as_const(bound.connections))
+        {
+            disconnect(connection);
+        }
+        bound.connections.clear();
     }
-    consumed->connections.clear();
     consumed->name = newName;
-    if(consumed->provider != nullptr)
+    const QList<Bound> bindings = consumed->bindings;
+    for(const Bound& bound : bindings)
     {
-        followProvider(newName);
+        followProvider(newName, *bound.provider, bound.providedName);
     }
     emit interfacesChanged();
     return true;
@@ -346,45 +435,73 @@ void Component::removeConsumedInterface(const QString& name)
     emit interfacesChanged();
 }
 
-void Component::deliverInterface(const QString& name)
+void Component::deliverInterface(const QString& name, const Component& provider, const QString& providedName)
 {
     const auto consumed = std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name);
-    if(consumed == m_consumedInterfaces.end() || consumed->available || consumed->provider == nullptr)
+    if(consumed == m_consumedInterfaces.end())
     {
         return;
     }
-    void* pointer = consumed->provider->providedPointer(consumed->providedName, consumed->type);
+    const auto bound = findBound(consumed->bindings, &provider, providedName);
+    if(bound == consumed->bindings.end() || bound->pointer != nullptr)
+    {
+        return;
+    }
+    void* pointer = provider.providedPointer(providedName, consumed->type);
     if(pointer == nullptr)
     {
         return;
     }
-    consumed->available = true;
-    consumed->setMember(pointer);
+    bound->pointer = pointer;
+    writeMember(*consumed);
     // A copy: it can have the component declare another interface.
-    if(const std::function<void()> onAvailable = consumed->onAvailable)
+    if(const std::function<void(void*)> onAvailable = consumed->onAvailable)
     {
-        onAvailable();
+        onAvailable(pointer);
     }
     emit interfacesChanged();
 }
 
-void Component::withdrawInterface(const QString& name)
+void Component::withdrawInterface(const QString& name, const Component& provider, const QString& providedName)
 {
-    // An index and a copy: onUnavailable can have the component declare another interface.
-    const qsizetype index =
-        std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name) - m_consumedInterfaces.begin();
-    if(index == m_consumedInterfaces.size() || !m_consumedInterfaces.at(index).available)
+    const auto consumed = std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name);
+    if(consumed == m_consumedInterfaces.end())
     {
         return;
     }
-    // Unavailable from now on, should onUnavailable unbind it; the member still points to what it has to let go of.
-    m_consumedInterfaces[index].available = false;
-    if(const std::function<void()> onUnavailable = m_consumedInterfaces.at(index).onUnavailable)
+    const auto bound = findBound(consumed->bindings, &provider, providedName);
+    if(bound == consumed->bindings.end() || bound->pointer == nullptr)
     {
-        onUnavailable();
+        return;
     }
-    m_consumedInterfaces.at(index).setMember(nullptr);
+    // Unavailable from now on, should onUnavailable unbind it; the member still has what it has to let go of, until it
+    // is written again once it is told.
+    void* const pointer = std::exchange(bound->pointer, nullptr);
+    // A copy: it can have the component declare another interface.
+    if(const std::function<void(void*)> onUnavailable = consumed->onUnavailable)
+    {
+        onUnavailable(pointer);
+    }
+    // Found again, for the same reason.
+    if(const auto withdrawn = std::ranges::find(m_consumedInterfaces, name, &ConsumedInterface::name);
+       withdrawn != m_consumedInterfaces.end())
+    {
+        writeMember(*withdrawn);
+    }
     emit interfacesChanged();
+}
+
+void Component::writeMember(const ConsumedInterface& consumed)
+{
+    QList<void*> pointers;
+    for(const Bound& bound : consumed.bindings)
+    {
+        if(bound.pointer != nullptr)
+        {
+            pointers.append(bound.pointer);
+        }
+    }
+    consumed.setMember(pointers);
 }
 
 void Component::releaseInterfaces()

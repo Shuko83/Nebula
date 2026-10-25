@@ -830,7 +830,7 @@ void EditionScene::link(InterfaceItem& source, InterfaceItem& target)
     const bool sourceProvided = source.kind() == InterfaceItem::Kind::Provided;
     InterfaceItem& provided = sourceProvided ? source : target;
     InterfaceItem& consumed = sourceProvided ? target : source;
-    // What a component consumes is bound to one interface: the new one, which the links show.
+    // What a component consumes is bound to one interface: the new one, which the links show. A list keeps the others.
     if(consumed.component().bindInterface(consumed.name(), provided.component(), provided.name()))
     {
         refreshLinks();
@@ -849,14 +849,25 @@ void EditionScene::unlink(const QList<LinkItem*>& links)
         return;
     }
     // Read before any is unbound: a component shows its interfaces again, without their links, as they change.
-    QList<std::pair<Nebula::Component*, QString>> bound;
+    // Each one alone: a list keeps what else it is bound to.
+    struct Bound
+    {
+        Nebula::Component* consumer;
+        QString consumed;
+        const Nebula::Component* provider;
+        QString provided;
+    };
+    QList<Bound> bound;
     for(const LinkItem* link : links)
     {
-        bound.append({&link->consumed().component(), link->consumed().name()});
+        bound.append({.consumer = &link->consumed().component(),
+                      .consumed = link->consumed().name(),
+                      .provider = &link->provided().component(),
+                      .provided = link->provided().name()});
     }
-    for(const auto& [consumer, name] : std::as_const(bound))
+    for(const Bound& link : std::as_const(bound))
     {
-        consumer->unbindInterface(name);
+        link.consumer->unbindInterface(link.consumed, *link.provider, link.provided);
     }
     refreshLinks(); // Which no longer draws them
 }
@@ -943,27 +954,31 @@ void EditionScene::refreshLinks()
     {
         for(InterfaceItem* consumed : item->consumedInterfaces())
         {
-            const Nebula::InterfaceBinding bound = item->component().binding(consumed->name());
-            const ComponentItem* provider = shown.value(bound.provider);
-            InterfaceItem* provided =
-                provider != nullptr ? interfaceNamed(provider->providedInterfaces(), bound.providedName) : nullptr;
-            // The one of its binding stays; the others go, and so does the copy of its list.
-            bool linked = false;
+            // What it is bound to that is shown: one interface, or several for a list.
+            QList<InterfaceItem*> provided;
+            const QList<Nebula::InterfaceBinding> bindings = item->component().bindings(consumed->name());
+            for(const Nebula::InterfaceBinding& bound : bindings)
+            {
+                const ComponentItem* provider = shown.value(bound.provider);
+                if(InterfaceItem* providedItem =
+                       provider != nullptr ? interfaceNamed(provider->providedInterfaces(), bound.providedName)
+                                           : nullptr)
+                {
+                    provided.append(providedItem);
+                }
+            }
+            // The one of each binding stays; the others go, and so does the copy of its list.
             const QList<LinkItem*> links = consumed->links();
             for(LinkItem* link : links)
             {
-                if(&link->provided() == provided && !linked)
-                {
-                    linked = true;
-                }
-                else
+                if(!provided.removeOne(&link->provided()))
                 {
                     delete link;
                 }
             }
-            if(provided != nullptr && !linked)
+            for(InterfaceItem* providedItem : std::as_const(provided))
             {
-                addItem(new LinkItem(*provided, *consumed));
+                addItem(new LinkItem(*providedItem, *consumed));
             }
         }
     }
