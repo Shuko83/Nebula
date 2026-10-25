@@ -19,6 +19,9 @@ to it.
 - `TopBarComponent` of `WidgetsPlugin` consumes the lists `actions` and `widgets` in place of `action1` to `action4`,
   `widget1` and `widget2`.
 - `Component.h` changes: plugins built against 1.0.0 must be built again.
+- `nebula_add_plugin()` generates the class of the plugin (#85), `<NAME>` in `<NAME>.h`, which its components include
+  to register in it: a plugin no longer writes it, and `NEBULA_PLUGIN` no longer compiles, telling to remove the
+  class written for 1.0.0.
 
 ## [1.0.0] - 2026-10-20
 

@@ -9,7 +9,7 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | Dossier | Cible | Rôle |
 | --- | --- | --- |
 | `Core/` | `Nebula::Core` (DLL) | Composants, plugins, fabrique, application, galaxies. En-têtes publics dans `include/Nebula/{Application,Component,Galaxy,Plugin,Settings}/`, sources dans `src/` (module `Galaxy` : `Galaxy`, `GalaxyInfo`, `Stargate` ; ce qu'`Universe` en fait reste dans `Universe.cpp`) |
-| `Core/cmake/` | — | `nebula_add_plugin()` et les gabarits `plugin.h.in` / `plugin.json.in`, livrés avec `Core` dans le paquet |
+| `Core/cmake/` | — | `nebula_add_plugin()` et les gabarits `pluginclass.h.in` / `plugin.h.in` / `plugin.json.in`, livrés avec `Core` dans le paquet |
 | `NebulaStudio/` | `NebulaStudio` (exe Widgets) | L'éditeur graphique ; le code est dans `NebulaStudio/src/`, sans namespace, celui des fichiers de réglages dans `NebulaStudio/src/Settings/`, celui des galaxies (`GalaxyModel`, `GalaxyViewer`) dans `NebulaStudio/src/Galaxy/`, le logo de Nebula, les icônes du glossaire et la police des titres dans `NebulaStudio/resources/` |
 | `exemple/ExamplePlugin` | `.nbdl` dans `bin/plugins` | Composant `Greeter` (fournit `greeter` : `IGreeter`) |
 | `exemple/WidgetsPlugin` | `.nbdl` dans `bin/plugins` | L'exemple de la bonne pratique (issue #79) : des composants nommés `<Nom>Component`, chacun créant ses objets (membres) dans son constructeur. `MainWindowComponent` (fournit `mainWindow` : la `QMainWindow`, montrée pendant l'exécution ; consomme `centralWidget` : `QWidget`), `TopBarComponent` (une `QToolBar` ; consomme `mainWindow`, `Mandatory`, les listes `actions` : `QAction` et `widgets` : `QWidget`, montrés dans l'ordre de leurs liaisons, issue #67), `ActionComponent` (fournit `action` : `QAction`) et `CounterComponent` (consomme `action`, `Mandatory`, compte pendant l'exécution ; fournit `display` : son `QLabel`) |
@@ -55,10 +55,13 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 - `nebula_add_plugin(NAME …)` crée une bibliothèque MODULE et génère l'objet racine
   `Nebula::Generated::<Nom>Plugin` (QObject + `IPlugin`, `Q_PLUGIN_METADATA` avec le JSON id / name / description /
   version / coreVersion).
-- Le plugin écrit une classe dérivant de `Nebula::Plugin`, vide, et `NEBULA_PLUGIN(Classe);` une fois. Elle ne connaît
-  pas les objets de ses composants : un composant les crée lui-même dans son constructeur (issue #79). Elle n'a plus de
-  `build(<Composant>&)`, que Core n'appelle plus : `Plugin::add()` refuse de compiler s'il en trouve un, pour que ce
-  qu'il créait ne manque pas sans un mot.
+- La classe du plugin est générée aussi (issue #85) : `<Nom>` dans `<NAME>.h` (gabarit `pluginclass.h.in`), dérivant
+  de `Nebula::Plugin`, vide, dans `<build>/…/<NAME>_nebula/`, dossier ajouté aux includes du plugin ; l'objet racine
+  l'instancie directement (`Plugin::instantiate<<Nom>>()`). Le plugin n'écrit que ses composants, qui l'incluent pour
+  s'y enregistrer. `NEBULA_PLUGIN` n'est plus qu'un `static_assert(false, …)` qui dit à un plugin écrit pour 1.0.0 de
+  retirer sa classe. Elle ne connaît pas les objets de ses composants : un composant les crée lui-même dans son
+  constructeur (issue #79). `Plugin::add()` refuse de compiler si la classe a un `build(<Composant>&)`, que Core
+  n'appelle plus.
 - `NEBULA_REGISTER_COMPONENT(ClassePlugin, Composant);` : initialisation statique qui appelle `Plugin::add<P, T>()`
   (série de `static_assert`), stocké dans `registered<P>()` puis copié dans `m_componentTypes` par `instantiate<P>()`.
   `ComponentFactory::create()` appelle le `Builder` du type, `create<T>()`, sans argument.
