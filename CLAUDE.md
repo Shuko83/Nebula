@@ -30,7 +30,7 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   lister dans les `CMakeLists.txt`. Il génère `<NAME>_export.h` (`CORE_EXPORT`) et `<NAME>_info.h`
   (`CoreInfo::version`, `<Nom>Info::buildDate`).
 - `cmu_organization` vaut `FabienDG`, défini avant l'inclusion de CMakeUtils : les ids sont
-  `FabienDG.Nebula.<Plugin>.<Composant>` et l'IID `FabienDG.Nebula.IPlugin/3.0`. `cmu_copyright`, défini au même
+  `FabienDG.Nebula.<Plugin>.<Composant>` et l'IID `FabienDG.Nebula.IPlugin/2.0`. `cmu_copyright`, défini au même
   endroit, vaut `Copyright (C) 2026 Fabien Di Grande`, celui de la licence, à la place de celui que CMakeUtils
   tirerait de l'organisation : il est écrit dans les fichiers d'infos (`<NAME>_info.h`, ressources Windows) et
   affiché par le splash de NebulaStudio. `Shuko83` reste le compte GitHub : adresse du dépôt, du sous-module

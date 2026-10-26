@@ -25,8 +25,7 @@ to it.
 - A plugin is the factory of its components (#94): `IPlugin` lists them, `components()`, and creates them,
   `create(name)`, the name being `Nebula::componentName()` of their class. The generated class of the plugin is its
   root object, deriving from `Nebula::Plugin<itself>`, and `ComponentFactory` has the plugin of a component create
-  it (`add(pluginId, IPlugin&)`). The IID becomes `FabienDG.Nebula.IPlugin/3.0`: plugins built against 1.0.0 are
-  skipped, build them again.
+  it (`add(pluginId, IPlugin&)`). Plugins built against 1.0.0 must be built again.
 
 ### Removed
 
