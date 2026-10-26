@@ -35,6 +35,6 @@ class IPlugin
 } // namespace Nebula
 
 // Versioned: PluginManager skips a plugin built against another version of IPlugin.
-#define NEBULA_PLUGIN_IID "FabienDG.Nebula.IPlugin/3.0"
+#define NEBULA_PLUGIN_IID "FabienDG.Nebula.IPlugin/2.0"
 
 Q_DECLARE_INTERFACE(Nebula::IPlugin, NEBULA_PLUGIN_IID)
