@@ -186,8 +186,6 @@ bool Stargate::isChangeable() const
     return state() != ComponentState::Running;
 }
 
-void Stargate::builtByPlugin() {}
-
 const std::vector<std::unique_ptr<Component>>& Stargate::galaxyComponents() const
 {
     return m_application.components(m_galaxy);

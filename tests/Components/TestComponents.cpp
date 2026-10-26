@@ -3,8 +3,6 @@
 
 #include "TestComponents.h"
 
-#include <memory>
-
 #include "Nebula/Component/ComponentFactory.h"
 #include "Panel.h"
 #include "Probe.h"
@@ -18,16 +16,18 @@ NEBULA_REGISTER_COMPONENT(TestComponents, Source);
 NEBULA_REGISTER_COMPONENT(TestComponents, Sink);
 NEBULA_REGISTER_COMPONENT(TestComponents, Panel);
 
-Nebula::Plugin& registerTestComponents()
+std::string_view TestComponents::buildDate() const
 {
-    // After the factory, which is created first: destroyed before it.
-    static const std::unique_ptr<Nebula::Plugin> plugin = []
-    {
-        std::unique_ptr<Nebula::Plugin> created = Nebula::Plugin::instantiate<TestComponents>();
-        Nebula::ComponentFactory::instance().add(TestComponents::Id, *created);
-        return created;
-    }();
-    return *plugin;
+    return __DATE__ " " __TIME__;
+}
+
+TestComponents& registerTestComponents()
+{
+    Nebula::ComponentFactory& factory = Nebula::ComponentFactory::instance();
+    // After the factory, created above: destroyed before it.
+    static TestComponents plugin;
+    factory.add(TestComponents::Id, plugin); // Does nothing once its components are registered
+    return plugin;
 }
 
 QString testComponentId(const QString& name)

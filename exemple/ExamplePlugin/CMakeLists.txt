@@ -1,7 +1,7 @@
 # Copyright (C) 2026 Fabien Di Grande
 # SPDX-License-Identifier: MPL-2.0
 
-# Its root object, its metadata and its class, ExamplePlugin.h, are generated.
+# Its class, ExamplePlugin.h, which is its root object, and its metadata are generated.
 # Its components, each registered in it with NEBULA_REGISTER_COMPONENT, are in src/.
 nebula_add_plugin(
     NAME ExamplePlugin

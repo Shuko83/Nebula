@@ -127,12 +127,12 @@ void TestComponentModel::dragged()
 
 void TestComponentModel::refreshFollowsTheFactory()
 {
-    const std::unique_ptr<Nebula::Plugin> other = Nebula::Plugin::instantiate<TestComponents>();
+    TestComponents other;
     const QSignalSpy inserted(m_model.get(), &QAbstractItemModel::rowsInserted);
     const QSignalSpy removed(m_model.get(), &QAbstractItemModel::rowsRemoved);
 
     // Those of a plugin just loaded, where they belong by id: before Test.
-    Nebula::ComponentFactory::instance().add(QStringLiteral("Another"), *other);
+    Nebula::ComponentFactory::instance().add(QStringLiteral("Another"), other);
     m_model->refresh();
     QCOMPARE(m_model->rowCount(), 8);
     QCOMPARE(inserted.count(), 4);

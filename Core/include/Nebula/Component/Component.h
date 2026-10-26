@@ -21,12 +21,12 @@ namespace Nebula
 {
 
 class ComponentFactory;
-class Plugin;
+template <typename P> class Plugin;
 
 // Base of every component: declare its properties with Q_PROPERTY, the interfaces it provides and consumes with
 // provideInterface() and consumeInterface(), and override the on*() hooks.
-// Only its plugin builds a component, when ComponentFactory creates it (see NEBULA_REGISTER_COMPONENT): elsewhere, a
-// class deriving from Component is abstract.
+// Only its plugin creates a component (see NEBULA_REGISTER_COMPONENT and IPlugin::create()): one created otherwise
+// would release its interfaces once its own members are destroyed, see releaseInterfaces().
 class CORE_EXPORT Component : public QObject, public IComponent
 {
     Q_OBJECT
@@ -183,15 +183,11 @@ class CORE_EXPORT Component : public QObject, public IComponent
 
   private:
     friend class ComponentFactory;
-    friend class Plugin; // Calls releaseInterfaces()
+    template <typename P> friend class Plugin; // Calls releaseInterfaces()
     // Provide and consume interfaces of a type they are told when they run only, the interfaces a galaxy exposes
     // through its stargates, rename and remove those of a stargate, and release theirs before they go.
     friend class Galaxy;
     friend class Stargate;
-
-    // Only implemented by Plugin, which keeps a component from being instantiated anywhere else, and by Galaxy and
-    // Stargate, the components Core builds itself.
-    virtual void builtByPlugin() = 0;
 
     struct ProvidedInterface
     {

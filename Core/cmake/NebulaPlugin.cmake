@@ -79,13 +79,13 @@ function(nebula_add_plugin)
 
     # Outside <target>_autogen, which the clean target deletes: these files are only written at configure time.
     # moc embeds the JSON (Q_PLUGIN_METADATA) and AUTOMOC runs it again when the file changes.
-    # <NAME>.h is the class of the plugin, which its components include to register in it: nothing to write in it.
+    # <NAME>.h is the class of the plugin, its root object, which its components include to register in it: nothing
+    # to write in it.
     get_property(_cmake_dir GLOBAL PROPERTY NEBULA_PLUGIN_CMAKE_DIR)
     set(_dir "${CMAKE_CURRENT_BINARY_DIR}/${ARG_NAME}_nebula")
-    configure_file("${_cmake_dir}/Template/pluginclass.h.in" "${_dir}/${ARG_NAME}.h" @ONLY)
-    configure_file("${_cmake_dir}/Template/plugin.h.in" "${_dir}/${ARG_NAME}_plugin.h" @ONLY)
+    configure_file("${_cmake_dir}/Template/plugin.h.in" "${_dir}/${ARG_NAME}.h" @ONLY)
     configure_file("${_cmake_dir}/Template/plugin.json.in" "${_dir}/${ARG_NAME}_plugin.json" @ONLY)
-    set(_generated "${_dir}/${ARG_NAME}.h" "${_dir}/${ARG_NAME}_plugin.h")
+    set(_generated "${_dir}/${ARG_NAME}.h")
     target_sources(${ARG_NAME} PRIVATE ${_generated})
     target_include_directories(${ARG_NAME} PRIVATE "${_dir}")
     source_group("autogen\\nebula" FILES ${_generated})

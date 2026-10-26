@@ -4,12 +4,15 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QPluginLoader>
 #include <QRegularExpression>
 #include <QTemporaryDir>
 #include <QTest>
+#include <memory>
 #include <optional>
 
 #include "Nebula/Component/ComponentFactory.h"
+#include "Nebula/Plugin/IPlugin.h"
 #include "Nebula/Plugin/PluginManager.h"
 
 using Nebula::PluginInfo;
@@ -53,6 +56,8 @@ class TestPluginManager : public QObject
     void addFile();
     void loadAndUnload_data();
     void loadAndUnload();
+    void rootObjectCreatesItsComponents_data();
+    void rootObjectCreatesItsComponents();
     void unknownPlugin();
     void unloadWhatIsNotLoaded();
     void pluginLoadedByTwoManagers();
@@ -246,6 +251,42 @@ void TestPluginManager::loadAndUnload()
             QVERIFY2(!isRegistered(id + u'.' + component), qPrintable(component));
         }
     }
+}
+
+void TestPluginManager::rootObjectCreatesItsComponents_data()
+{
+    loadAndUnload_data();
+}
+
+// What nebula_add_plugin generates, loaded without a PluginManager: the root object of the plugin, which lists and
+// creates its components.
+void TestPluginManager::rootObjectCreatesItsComponents()
+{
+    QFETCH(QString, directory);
+    QFETCH(QString, id);
+    QFETCH(QStringList, components);
+
+    QPluginLoader loader(directory + u'/' + id.section(u'.', -1) + QStringLiteral(".nbdl"));
+    auto* plugin = qobject_cast<Nebula::IPlugin*>(loader.instance());
+    QVERIFY2(plugin != nullptr, qPrintable(loader.errorString()));
+    QStringList names;
+    for(const QMetaObject* metaObject : plugin->components())
+    {
+        names.append(Nebula::componentName(*metaObject));
+    }
+    // In the order the linker initializes their source files.
+    names.sort();
+    components.sort();
+    QCOMPARE(names, components);
+    for(const QString& name : components)
+    {
+        const std::unique_ptr<Nebula::Component> component = plugin->create(name);
+        QVERIFY2(component != nullptr, qPrintable(name));
+        QCOMPARE(Nebula::componentName(*component->metaObject()), name);
+    }
+    QVERIFY(plugin->create(QStringLiteral("Unknown")) == nullptr);
+    QVERIFY(plugin->create(id + QStringLiteral(".") + components.first()) == nullptr);
+    QVERIFY(loader.unload());
 }
 
 void TestPluginManager::unknownPlugin()

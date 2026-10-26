@@ -128,8 +128,6 @@ class CORE_EXPORT Stargate : public Component
 
     // Of the galaxy galaxy, one of application, or of the application itself when galaxy is nullptr.
     Stargate(Universe& application, Galaxy* galaxy);
-    // Core builds it, not a plugin.
-    void builtByPlugin() override;
 
     // The components of its galaxy, itself among them.
     [[nodiscard]] const std::vector<std::unique_ptr<Component>>& galaxyComponents() const;

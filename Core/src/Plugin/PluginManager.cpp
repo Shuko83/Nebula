@@ -204,7 +204,7 @@ bool PluginManager::load(const QString& pluginId)
     }
     entry->loaded = true;
     entry->info.buildDate = fromCompilerDate(root->buildDate());
-    ComponentFactory::instance().add(pluginId, root->plugin());
+    ComponentFactory::instance().add(pluginId, *root);
     return true;
 }
 
@@ -306,7 +306,7 @@ bool PluginManager::unloadLoaded(const QString& pluginId, Entry& entry)
         return refuse(QStringLiteral("%1 was loaded by another plugin manager").arg(pluginId));
     }
     entry.loaded = false;
-    // Before its root object, which owns what builds them, is destroyed.
+    // Before its root object, which creates them, is destroyed.
     ComponentFactory::instance().remove(pluginId);
     return entry.loader->unload() || keptByAnother(pluginId, *entry.loader);
 }
@@ -315,7 +315,7 @@ bool PluginManager::keptByAnother(const QString& pluginId, QPluginLoader& loader
 {
     if(IPlugin* root = qobject_cast<IPlugin*>(loader.instance()))
     {
-        ComponentFactory::instance().add(pluginId, root->plugin());
+        ComponentFactory::instance().add(pluginId, *root);
     }
     return refuse(QStringLiteral("%1 is still loaded by another plugin manager").arg(pluginId));
 }
