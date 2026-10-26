@@ -77,8 +77,9 @@ Une classe de NebulaStudio n'est pas dans une bibliothèque : son test recompile
 
 `tests/Components/` contient des composants que les tests pilotent directement, sans passer par un fichier de plugin :
 `registerTestComponents()` les enregistre dans `ComponentFactory::instance()` sous l'id de plugin `Test` (ids
-`Test.Probe`, `Test.Source`…). Ils passent par `NEBULA_REGISTER_COMPONENT` et `Plugin::instantiate()`, comme ceux
-d'un plugin, et le test les récupère par `qobject_cast`.
+`Test.Probe`, `Test.Source`…). Ils passent par `NEBULA_REGISTER_COMPONENT`, dans `TestComponents`, un
+`Nebula::Plugin` sans fichier ni objet Qt, comme ceux d'un plugin dans sa classe générée, et le test les récupère par
+`qobject_cast`.
 
 | Composant | Rôle |
 | --- | --- |

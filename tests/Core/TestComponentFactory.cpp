@@ -6,6 +6,8 @@
 #include <memory>
 
 #include "Nebula/Component/ComponentFactory.h"
+#include "Nebula/Galaxy/Galaxy.h"
+#include "Probe.h"
 #include "TestComponents.h"
 
 using Nebula::ComponentFactory;
@@ -44,6 +46,10 @@ class TestComponentFactory : public QObject
     void addingTheSamePluginAgainDoesNothing();
     void addingAKnownIdIsSkipped();
     void remove();
+    void componentNameHasNoNamespace();
+    void pluginComponents();
+    void pluginCreate_data();
+    void pluginCreate();
 };
 
 void TestComponentFactory::initTestCase()
@@ -133,22 +139,22 @@ void TestComponentFactory::addingTheSamePluginAgainDoesNothing()
 
 void TestComponentFactory::addingAKnownIdIsSkipped()
 {
-    const std::unique_ptr<Nebula::Plugin> other = Nebula::Plugin::instantiate<TestComponents>();
+    TestComponents other;
     for(const char* name : {"Probe", "Source", "Sink", "Panel"})
     {
         QTest::ignoreMessage(
             QtWarningMsg,
             qPrintable(QStringLiteral("Ignoring Test.%1 - already registered").arg(QLatin1StringView(name))));
     }
-    ComponentFactory::instance().add(TestComponents::Id, *other);
+    ComponentFactory::instance().add(TestComponents::Id, other);
     QCOMPARE(ComponentFactory::instance().components().size(), 4);
 }
 
 void TestComponentFactory::remove()
 {
     const QString otherId = QStringLiteral("Other");
-    const std::unique_ptr<Nebula::Plugin> other = Nebula::Plugin::instantiate<TestComponents>();
-    ComponentFactory::instance().add(otherId, *other);
+    TestComponents other;
+    ComponentFactory::instance().add(otherId, other);
     QCOMPARE(ComponentFactory::instance().components().size(), 8);
     QVERIFY(ComponentFactory::instance().create(QStringLiteral("Other.Probe")) != nullptr);
 
@@ -157,6 +163,52 @@ void TestComponentFactory::remove()
     QVERIFY(!ComponentFactory::instance().component(QStringLiteral("Other.Probe")));
     QVERIFY(ComponentFactory::instance().create(QStringLiteral("Other.Probe")) == nullptr);
     QVERIFY(ComponentFactory::instance().component(testComponentId(QStringLiteral("Probe"))));
+}
+
+void TestComponentFactory::componentNameHasNoNamespace()
+{
+    QCOMPARE(Nebula::componentName(Probe::staticMetaObject), QStringLiteral("Probe"));
+    QCOMPARE(Nebula::componentName(Nebula::Galaxy::staticMetaObject), QStringLiteral("Galaxy"));
+}
+
+// The plugin itself, which the factory has create its components.
+void TestComponentFactory::pluginComponents()
+{
+    QStringList names;
+    for(const QMetaObject* metaObject : registerTestComponents().components())
+    {
+        names.append(Nebula::componentName(*metaObject));
+    }
+    // In the order of NEBULA_REGISTER_COMPONENT, in a single source file.
+    QCOMPARE(names, (QStringList{"Probe", "Source", "Sink", "Panel"}));
+}
+
+void TestComponentFactory::pluginCreate_data()
+{
+    QTest::addColumn<QString>("name");
+    QTest::addColumn<bool>("created");
+
+    QTest::newRow("registered") << "Probe" << true;
+    QTest::newRow("another one") << "Panel" << true;
+    QTest::newRow("unknown") << "Unknown" << false;
+    QTest::newRow("id") << testComponentId(QStringLiteral("Probe")) << false;
+    QTest::newRow("empty") << "" << false;
+}
+
+void TestComponentFactory::pluginCreate()
+{
+    QFETCH(QString, name);
+    QFETCH(bool, created);
+
+    const std::unique_ptr<Nebula::Component> component = registerTestComponents().create(name);
+    QCOMPARE(component != nullptr, created);
+    if(created)
+    {
+        QCOMPARE(Nebula::componentName(*component->metaObject()), name);
+        // Given by the factory, which knows the id of the plugin.
+        QVERIFY(component->componentId().isEmpty());
+        QCOMPARE(component->state(), Nebula::ComponentState::Editing);
+    }
 }
 
 QTEST_GUILESS_MAIN(TestComponentFactory)

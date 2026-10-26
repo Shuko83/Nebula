@@ -125,8 +125,6 @@ void Galaxy::onStop()
     stopInReverse(m_components);
 }
 
-void Galaxy::builtByPlugin() {}
-
 void Galaxy::empty()
 {
     detachStargates(); // As when it is destroyed

@@ -22,6 +22,17 @@ to it.
 - `nebula_add_plugin()` generates the class of the plugin (#85), `<NAME>` in `<NAME>.h`, which its components include
   to register in it: a plugin no longer writes it, and `NEBULA_PLUGIN` no longer compiles, telling to remove the
   class written for 1.0.0.
+- A plugin is the factory of its components (#94): `IPlugin` lists them, `components()`, and creates them,
+  `create(name)`, the name being `Nebula::componentName()` of their class. The generated class of the plugin is its
+  root object, deriving from `Nebula::Plugin<itself>`, and `ComponentFactory` has the plugin of a component create
+  it (`add(pluginId, IPlugin&)`). The IID becomes `FabienDG.Nebula.IPlugin/3.0`: plugins built against 1.0.0 are
+  skipped, build them again.
+
+### Removed
+
+- `IPlugin::plugin()` and `Plugin::instantiate()`: the root object is the plugin.
+- `Component::builtByPlugin()`: a class deriving from `Component` is no longer abstract. A component is still created
+  by its plugin only, which ends what it provides and consumes before its members are destroyed.
 
 ## [1.0.0] - 2026-10-20
 

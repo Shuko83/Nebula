@@ -87,8 +87,6 @@ class CORE_EXPORT Galaxy : public Component
     friend class Universe; // Creates it, and fills it from its file
 
     Galaxy();
-    // Core builds it, not a plugin.
-    void builtByPlugin() override;
     // Destroys its components and its settings files, once its own interfaces are gone: what was bound to them is
     // unbound, after it let go of what they passed.
     void empty();

@@ -4,8 +4,11 @@
 #pragma once
 
 #include <QList>
+#include <QMetaObject>
 #include <QMetaProperty>
 #include <QString>
+
+#include "Core_export.h"
 
 namespace Nebula
 {
@@ -20,5 +23,9 @@ struct ComponentInfo
     QString pluginId;                // Plugin that registered it
     QList<QMetaProperty> properties; // Its Q_PROPERTY, not those of QObject and Component
 };
+
+// The name of the component whose class is metaObject: its class name, without its namespace. What IPlugin::create()
+// is given, and the end of its id.
+[[nodiscard]] CORE_EXPORT QString componentName(const QMetaObject& metaObject);
 
 } // namespace Nebula

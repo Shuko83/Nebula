@@ -25,18 +25,10 @@ QString classInfo(const QMetaObject& metaObject, const char* name)
     return index < 0 ? QString() : QString::fromUtf8(metaObject.classInfo(index).value());
 }
 
-// The name of the class of metaObject, without its namespaces.
-QString shortClassName(const QMetaObject& metaObject)
-{
-    const QString className = QString::fromLatin1(metaObject.className());
-    const qsizetype separator = className.lastIndexOf(u"::");
-    return separator < 0 ? className : className.mid(separator + 2);
-}
-
 ComponentInfo readInfo(const QMetaObject& metaObject, const QString& pluginId)
 {
     ComponentInfo info;
-    info.name = shortClassName(metaObject);
+    info.name = componentName(metaObject);
     info.pluginId = pluginId;
     info.id = info.pluginId + u'.' + info.name;
     info.description = classInfo(metaObject, "description");
@@ -58,19 +50,19 @@ ComponentFactory& ComponentFactory::instance()
     return factory;
 }
 
-void ComponentFactory::add(const QString& pluginId, Plugin& plugin)
+void ComponentFactory::add(const QString& pluginId, IPlugin& plugin)
 {
     if(std::ranges::any_of(m_types | std::views::values, [&](const Type& type) { return type.plugin == &plugin; }))
     {
         return;
     }
-    for(const Plugin::ComponentType& componentType : plugin.m_componentTypes)
+    for(const QMetaObject* metaObject : plugin.components())
     {
-        addType(readInfo(*componentType.metaObject, pluginId), plugin, componentType.builder);
+        addType(readInfo(*metaObject, pluginId), plugin);
     }
 }
 
-void ComponentFactory::addType(ComponentInfo info, Plugin& plugin, Plugin::Builder builder)
+void ComponentFactory::addType(ComponentInfo info, IPlugin& plugin)
 {
     if(m_types.contains(info.id))
     {
@@ -78,7 +70,7 @@ void ComponentFactory::addType(ComponentInfo info, Plugin& plugin, Plugin::Build
         return;
     }
     const QString componentId = info.id;
-    m_types.emplace(componentId, Type{.info = std::move(info), .plugin = &plugin, .builder = builder});
+    m_types.emplace(componentId, Type{.info = std::move(info), .plugin = &plugin});
 }
 
 void ComponentFactory::remove(const QString& pluginId)
@@ -114,7 +106,8 @@ std::unique_ptr<Component> ComponentFactory::create(const QString& componentId) 
     {
         return nullptr;
     }
-    std::unique_ptr<Component> component = type->second.builder();
+    // Never nullptr: the name is one of those its plugin listed.
+    std::unique_ptr<Component> component = type->second.plugin->create(type->second.info.name);
     component->m_componentId = componentId;
     return component;
 }

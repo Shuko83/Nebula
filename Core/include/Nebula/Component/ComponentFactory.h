@@ -12,12 +12,12 @@
 #include "Core_export.h"
 #include "Nebula/Component/Component.h"
 #include "Nebula/Component/ComponentInfo.h"
-#include "Nebula/Plugin/Plugin.h"
+#include "Nebula/Plugin/IPlugin.h"
 
 namespace Nebula
 {
 
-// Knows the components of the loaded plugins and is the only way to instantiate them.
+// Knows the components of the loaded plugins, by id, and has the plugin of each create it.
 class CORE_EXPORT ComponentFactory
 {
   public:
@@ -32,7 +32,7 @@ class CORE_EXPORT ComponentFactory
 
     // Registers the components of plugin, whose id is pluginId; does nothing when they are already registered.
     // Skips, with a warning, a component whose id is already registered.
-    void add(const QString& pluginId, Plugin& plugin);
+    void add(const QString& pluginId, IPlugin& plugin);
     // Forgets the components of the plugin pluginId, as PluginManager::unload() does before the plugin goes: none of
     // them can be instantiated any longer, and those that were must not outlive it.
     void remove(const QString& pluginId);
@@ -40,19 +40,19 @@ class CORE_EXPORT ComponentFactory
     [[nodiscard]] QList<ComponentInfo> components() const;
     [[nodiscard]] std::optional<ComponentInfo> component(const QString& componentId) const;
 
-    // Creates a component, in the Editing state; nullptr when componentId is not registered.
+    // Has its plugin create a component, in the Editing state; nullptr when componentId is not registered.
     [[nodiscard]] std::unique_ptr<Component> create(const QString& componentId) const;
 
   private:
     struct Type
     {
         ComponentInfo info;
-        Plugin* plugin = nullptr; // Removed before it is destroyed, see PluginManager::unload()
-        Plugin::Builder builder = nullptr;
+        IPlugin* plugin = nullptr; // Removed before it is destroyed, see PluginManager::unload()
     };
 
-    // Registers the component of info, built by builder; skips it, with a warning, when its id is already registered.
-    void addType(ComponentInfo info, Plugin& plugin, Plugin::Builder builder);
+    // Registers the component of info, which plugin creates; skips it, with a warning, when its id is already
+    // registered.
+    void addType(ComponentInfo info, IPlugin& plugin);
 
     std::map<QString, Type> m_types; // By id
 };
