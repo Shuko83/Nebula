@@ -96,6 +96,23 @@ que ce dont il a besoin entier.
 - La propriété s'exprime par `std::unique_ptr` ; les objets Qt appartiennent à leur parent.
 - Les algorithmes de `std::ranges` plutôt qu'une boucle écrite à la main quand ils disent la même chose.
 
+## Découpage
+
+Pour le code de Core, de NebulaStudio et des exemples ; les tests n'y sont pas tenus.
+
+- Une fonction fait une dizaine de lignes au plus, son corps compté entre ses accolades, constructeurs et lambdas
+  compris. Au-delà, chaque étape qu'on sait nommer devient une fonction. `.clang-tidy` le signale
+  (`readability-function-size`, au-delà de dix lignes de corps) ; `tests/.clang-tidy` lève ce seuil.
+- Une fonction fait une chose, et son nom le dit. Un commentaire qui annonce un bloc à l'intérieur d'une fonction est
+  le nom d'une fonction à extraire ; une lambda de plus de quelques lignes devient une fonction nommée.
+- Ce qu'on extrait va :
+  - dans l'espace de noms anonyme de la source, si cela ne dépend que de ses arguments ;
+  - en méthode privée, si cela lit ou change l'état de la classe ;
+  - dans un en-tête partagé dès que deux classes en ont besoin, comme `Colors.h` ou `ProjectJson`.
+- Ce qui se répète se factorise dès la deuxième fois, plutôt que d'être copié puis adapté.
+- Le code existant n'est pas réécrit d'un coup : une fonction trop longue qu'une PR modifie est découpée dans cette
+  PR, par un commit `refactor:` à part.
+
 ## Qt
 
 - Connexions par pointeurs de fonction ou lambda, avec un objet de contexte : jamais `SIGNAL()` / `SLOT()`.
@@ -135,6 +152,7 @@ Décrits dans [docs/testing.md](docs/testing.md). L'essentiel :
 - Piloté par les données dès qu'un comportement se vérifie sur plusieurs entrées : `<fonction>_data()`, une ligne
   nommée par cas, cas limites compris.
 - `QTest::failOnWarning()` dans `init()`, `QTest::ignoreMessage()` pour un avertissement attendu.
+- Une fonction de test n'est pas tenue à la dizaine de lignes de « Découpage ».
 - Une classe ajoutée ou un comportement changé l'est avec ses tests, dans la même PR.
 
 ## Commits, branches et PR

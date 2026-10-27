@@ -349,6 +349,9 @@ de NebulaStudio (`SpaceGrotesk-OFL.txt`). Seule la graisse Bold sert : en ajoute
 - Fichiers de réglages : pas de fenêtre « Préférences » générique où l'utilisateur final éditerait tout un fichier
   (chaque composant montre les siens), pas de partage d'une même valeur entre deux instances, et le cas de plusieurs
   objets de même nom dans un composant (`index` d'une entrée) n'est exercé que par les tests (`Panel`).
+- Découpage : 189 des 601 fonctions de Core, NebulaStudio et des exemples dépassent la dizaine de lignes de
+  CONVENTIONS.md (les plus longues : le constructeur de `MainWindow`, `StargateDialog`, `EditionScene`, le chargement
+  d'`Universe`, `PropertyEditor`) ; elles se découpent quand une PR les modifie.
 
 ## Pièges
 
@@ -443,6 +446,10 @@ règle change. L'essentiel :
 - `.clang-format` : base LLVM, 4 espaces, 120 colonnes, accolades Allman, `if(` sans espace, `T* p`. `.clang-tidy`
   actif (bugprone, performance, readability, modernize…).
 - Membres `m_camelCase`, `[[nodiscard]]` sur les accesseurs, `#pragma once`, `QStringLiteral` / `u"…"`.
+- Découpage (hors tests) : une fonction fait une dizaine de lignes au plus (`readability-function-size` dans
+  `.clang-tidy`, levé par `tests/.clang-tidy`) ; chaque étape nommable est extraite (espace de noms anonyme, méthode
+  privée, ou en-tête partagé dès que deux classes en ont besoin), ce qui se répète est factorisé dès la deuxième fois.
+  Une fonction trop longue qu'une PR modifie y est découpée, par un commit `refactor:` à part.
 - Licence MPL-2.0 ([LICENSE](LICENSE)) : tout nouveau fichier source, en-tête, gabarit ou CMake commence par
   `// Copyright (C) <année> Fabien Di Grande` puis `// SPDX-License-Identifier: MPL-2.0` (`#` en CMake), et une
   ligne vide.
