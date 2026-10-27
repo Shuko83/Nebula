@@ -1,0 +1,7 @@
+# The root configuration, without its limit on the length of a function: tests are not held to the ten lines of
+# CONVENTIONS.md (Découpage).
+InheritParentConfig: true
+
+CheckOptions:
+  - key: readability-function-size.LineThreshold
+    value: '-1'

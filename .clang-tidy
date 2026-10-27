@@ -23,3 +23,7 @@ FormatStyle: file
 CheckOptions:
   - key: modernize-use-nullptr.NullMacros
     value: 'NULL'
+  # Ten lines of body at most (CONVENTIONS.md, Découpage): the check counts from the opening brace's line to the
+  # closing one's, so 11 here.
+  - key: readability-function-size.LineThreshold
+    value: '11'
