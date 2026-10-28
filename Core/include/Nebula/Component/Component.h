@@ -198,6 +198,8 @@ class CORE_EXPORT Component : public QObject, public IComponent
         QString name;
         QMetaType type;
         void* pointer = nullptr; // nullptr while unavailable
+
+        [[nodiscard]] InterfaceInfo info() const;
     };
 
     // What an interface it consumes is bound to.
@@ -207,6 +209,9 @@ class CORE_EXPORT Component : public QObject, public IComponent
         QString providedName;                       // What it is bound to in provider
         QList<QMetaObject::Connection> connections; // To provider
         void* pointer = nullptr;                    // What it was given of provider; nullptr while unavailable
+
+        // Disconnects it from what provider tells.
+        void disconnect();
     };
 
     struct ConsumedInterface
@@ -221,6 +226,20 @@ class CORE_EXPORT Component : public QObject, public IComponent
         std::function<void(void*)> onAvailable;   // With the pointer given
         std::function<void(void*)> onUnavailable; // With the pointer taken back
         QList<Bound> bindings;                    // In the order they were bound; one at most, unless it is a list
+
+        [[nodiscard]] InterfaceInfo info() const;
+        [[nodiscard]] QList<InterfaceBinding> interfaceBindings() const;
+        // The pointers it is given, in the order of its bindings.
+        [[nodiscard]] QList<void*> pointers() const;
+        // The names of the interfaces of provider it is bound to, in the order of its bindings.
+        [[nodiscard]] QStringList providedNames(const Component* provider) const;
+        // Its binding to providedName of provider; nullptr when it has none.
+        Bound* bound(const Component* provider, const QString& providedName);
+        [[nodiscard]] const Bound* bound(const Component* provider, const QString& providedName) const;
+        // Disconnects its bindings from their providers.
+        void disconnect();
+        // Disconnects and forgets its binding to providedName of provider; false when it has none.
+        bool unbind(const Component* provider, const QString& providedName);
     };
 
     [[nodiscard]] void* providedPointer(const QString& name, QMetaType type) const override;
@@ -247,14 +266,55 @@ class CORE_EXPORT Component : public QObject, public IComponent
     void removeProvidedInterface(const QString& name);
     // Unbinds name, which it consumes, and forgets it. Does nothing when it consumes no name.
     void removeConsumedInterface(const QString& name);
+    // Whether name, which it consumes, can be bound to providedName of provider: of the same type, another
+    // component, and not bound to it yet when name is a list.
+    [[nodiscard]] bool canBind(const QString& name, const Component& provider, const QString& providedName) const;
+    // Binds name, which it consumes, after its other bindings, to providedName of provider, and gives it its pointer.
+    void addBinding(const QString& name, Component& provider, const QString& providedName);
+    // The binding of name, which it consumes, to providedName of provider, and name; nullptrs when there is none.
+    std::pair<ConsumedInterface*, Bound*> findBinding(const QString& name, const Component* provider,
+                                                      const QString& providedName);
+    // Unbinds the last binding of name, which it consumes; false when it has none.
+    bool unbindLast(const QString& name);
+    // Unbinds name, which it consumes, from each interface of provider it is bound to.
+    void unbindProvider(const QString& name, const Component* provider);
     // Follows, for name, which it consumes and is bound to providedName of provider, what provider does with it.
     void followProvider(const QString& name, Component& provider, const QString& providedName);
+    // followProvider() for each binding of name, which it consumes.
+    void followProviders(const QString& name);
+    // Connects name, which it consumes, to what provider tells of the pointers of its interfaces.
+    QList<QMetaObject::Connection> followPointers(const QString& name, Component* provider);
+    // Connects name, which it consumes, to what provider tells of its interfaces and of itself: renamed, removed or
+    // destroyed.
+    QList<QMetaObject::Connection> followBindings(const QString& name, Component* provider);
+    // former of provider, which name, consumed, is bound to, is now named renamed.
+    void followRename(const QString& name, const Component* provider, const QString& former, const QString& renamed);
     // Gives name, which it consumes, the pointer of providedName of provider, when it is bound to it and has none.
     void deliverInterface(const QString& name, const Component& provider, const QString& providedName);
     // Takes back from name, which it consumes, the pointer of providedName of provider, when it has one.
     void withdrawInterface(const QString& name, const Component& provider, const QString& providedName);
+    // Writes the member of consumed, given pointer, then tells it.
+    void tellAvailable(const ConsumedInterface& consumed, void* pointer);
+    // Tells name, which it consumes, that pointer is taken back, then writes its member without it. onUnavailable is
+    // a copy: it can have the component declare another interface.
+    void tellUnavailable(const QString& name, std::function<void(void*)> onUnavailable, void* pointer);
     // Writes the member of consumed with the pointers it is given.
     static void writeMember(const ConsumedInterface& consumed);
+    // Whether name can be provided as type: it is not provided as another type yet, which is warned of.
+    [[nodiscard]] bool canProvide(const QString& name, QMetaType type) const;
+    // Declares name, provided as type, when it is not yet; returns whether it was not.
+    bool declareProvided(const QString& name, QMetaType type);
+    // Gives the interface it provides at index pointer, telling it becomes unavailable, then available again; returns
+    // whether it changed. By index: a slot of the signals it emits can have the component declare another interface.
+    bool replacePointer(qsizetype index, void* pointer);
+    // Makes the interface it provides at index unavailable, when it is available, and tells it.
+    void makeUnavailable(qsizetype index);
+    // Makes the interface it provides at index available with pointer, unless it is nullptr, and tells it.
+    void makeAvailable(qsizetype index, void* pointer);
+    // Whether the properties of object can be added: another object, not added yet; warns when they cannot.
+    [[nodiscard]] bool canAddProperties(const QObject* object) const;
+    // Forgets object, whose properties were added, as it is destroyed.
+    void forgetPropertyObject(const QObject* object);
     // Ends what it consumes and provides while it is still whole: Plugin calls it before destroying the component, as
     // the callbacks of what it consumes, and what it provides, may be gone once its destructors run.
     void releaseInterfaces();
