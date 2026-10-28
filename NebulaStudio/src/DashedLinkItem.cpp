@@ -4,6 +4,8 @@
 #include "DashedLinkItem.h"
 
 #include <QApplication>
+#include <QGraphicsObject>
+#include <QGraphicsScene>
 #include <QPainter>
 #include <QPalette>
 #include <QWidget>
@@ -57,4 +59,56 @@ void DashedLinkItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* /*
     painter->setRenderHint(QPainter::Antialiasing);
     painter->setPen(QPen(palette.color(QPalette::Mid), LineWidth, Qt::DashLine));
     painter->drawLine(m_line);
+}
+
+DashedLinks::DashedLinks(QGraphicsObject& from) : m_from(from)
+{
+    connect(&m_from, &QGraphicsObject::xChanged, this, &DashedLinks::follow);
+    connect(&m_from, &QGraphicsObject::yChanged, this, &DashedLinks::follow);
+}
+
+DashedLinks::~DashedLinks()
+{
+    clear();
+}
+
+void DashedLinks::refresh(const QList<const Nebula::Component*>& components)
+{
+    clear();
+    const QList<ComponentItem*> items =
+        m_from.scene() != nullptr ? componentItems(*m_from.scene()) : QList<ComponentItem*>();
+    for(ComponentItem* item : items)
+    {
+        if(components.contains(&item->component()))
+        {
+            join(*item);
+        }
+    }
+}
+
+void DashedLinks::follow()
+{
+    for(DashedLinkItem* link : std::as_const(m_links))
+    {
+        link->follow();
+    }
+}
+
+void DashedLinks::clear()
+{
+    while(!m_links.isEmpty())
+    {
+        delete m_links.constFirst(); // Which removes it
+    }
+}
+
+void DashedLinks::join(ComponentItem& component)
+{
+    // As it moves, as its item does too.
+    connect(&component, &QGraphicsObject::xChanged, this, &DashedLinks::follow, Qt::UniqueConnection);
+    connect(&component, &QGraphicsObject::yChanged, this, &DashedLinks::follow, Qt::UniqueConnection);
+    auto* link =
+        new DashedLinkItem(m_from, component, [this](DashedLinkItem& removed) { m_links.removeOne(&removed); });
+    m_links.append(link);
+    m_from.scene()->addItem(link);
 }

@@ -6,13 +6,9 @@
 #include <QList>
 
 #include "ComponentItem.h"
+#include "DashedLinkItem.h"
+#include "Nebula/Galaxy/Stargate.h"
 
-class DashedLinkItem;
-
-namespace Nebula
-{
-class Stargate;
-}
 
 // A stargate in the edition zone, see Nebula::Stargate: a component, the icon of the Stargate before "Stargate", whose
 // interfaces are those it exposes, the other way round: on its left edge those its galaxy provides, which it consumes
@@ -28,8 +24,6 @@ class StargateItem : public ComponentItem
   public:
     // stargate, owned by the application, outlives the item.
     explicit StargateItem(Nebula::Stargate& stargate);
-    // With its links.
-    ~StargateItem() override;
 
     [[nodiscard]] Nebula::Stargate& stargate() const;
     // Joins it to the components of its scene whose properties its stargate exposes now: those shown after it are only
@@ -43,9 +37,15 @@ class StargateItem : public ComponentItem
   private:
     // Shows the properties its stargate exposes, and tells what its galaxy has through it.
     void refresh();
-    // Draws its links again, where it and their components are now.
-    void followLinks();
+    // A row per property its stargate exposes: the name it exposes it as and where it is.
+    QList<Row> propertyRows();
+    // What its galaxy has through it, the other way round from its own interfaces.
+    [[nodiscard]] QString aboutText() const;
+    // The interfaces its stargate exposes as exposure tells: their name and their type.
+    [[nodiscard]] QStringList interfacesText(Nebula::Exposure exposure) const;
+    // The properties its stargate exposes: their name and where they are.
+    [[nodiscard]] QStringList propertiesText() const;
 
     Nebula::Stargate& m_stargate;
-    QList<DashedLinkItem*> m_links; // In its scene rather than its children: under the components
+    DashedLinks m_links{*this};
 };

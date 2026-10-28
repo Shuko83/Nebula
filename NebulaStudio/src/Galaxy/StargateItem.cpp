@@ -29,6 +29,15 @@ QString placeOf(const Nebula::ExposedProperty& property)
     return place + property.property;
 }
 
+// Appends to about format, with items, unless there is none.
+void appendList(QStringList& about, const QString& format, const QStringList& items)
+{
+    if(!items.isEmpty())
+    {
+        about.append(format.arg(items.join(QStringLiteral(", "))));
+    }
+}
+
 } // namespace
 
 StargateItem::StargateItem(Nebula::Stargate& stargate) : ComponentItem(stargate, tr("Stargate")), m_stargate(stargate)
@@ -41,17 +50,7 @@ StargateItem::StargateItem(Nebula::Stargate& stargate) : ComponentItem(stargate,
                 refresh();
                 refreshLinks();
             });
-    connect(this, &QGraphicsObject::xChanged, this, &StargateItem::followLinks);
-    connect(this, &QGraphicsObject::yChanged, this, &StargateItem::followLinks);
     refresh();
-}
-
-StargateItem::~StargateItem()
-{
-    while(!m_links.isEmpty())
-    {
-        delete m_links.constFirst(); // Which removes it
-    }
 }
 
 Nebula::Stargate& StargateItem::stargate() const
@@ -61,35 +60,12 @@ Nebula::Stargate& StargateItem::stargate() const
 
 void StargateItem::refreshLinks()
 {
-    while(!m_links.isEmpty())
-    {
-        delete m_links.constFirst();
-    }
-    if(scene() == nullptr)
-    {
-        return;
-    }
     QList<const Nebula::Component*> exposed; // The components it exposes properties of
     for(const Nebula::ExposedProperty& property : m_stargate.properties())
     {
         exposed.append(property.component);
     }
-    const QList<QGraphicsItem*> items = scene()->items();
-    for(QGraphicsItem* item : items)
-    {
-        auto* component = qobject_cast<ComponentItem*>(item->toGraphicsObject());
-        if(component == nullptr || !exposed.contains(&component->component()))
-        {
-            continue;
-        }
-        // As it moves, as it does too.
-        connect(component, &QGraphicsObject::xChanged, this, &StargateItem::followLinks, Qt::UniqueConnection);
-        connect(component, &QGraphicsObject::yChanged, this, &StargateItem::followLinks, Qt::UniqueConnection);
-        auto* link =
-            new DashedLinkItem(*this, *component, [this](DashedLinkItem& removed) { m_links.removeOne(&removed); });
-        m_links.append(link);
-        scene()->addItem(link);
-    }
+    m_links.refresh(exposed);
 }
 
 QVariant StargateItem::itemChange(GraphicsItemChange change, const QVariant& value)
@@ -103,49 +79,54 @@ QVariant StargateItem::itemChange(GraphicsItemChange change, const QVariant& val
 
 void StargateItem::refresh()
 {
+    setRows(propertyRows());
+    setOpenable(aboutText(), tr("Double-click below its name to choose what it exposes"));
+}
+
+QList<ComponentItem::Row> StargateItem::propertyRows()
+{
     QList<Row> rows;
-    QStringList exposes;
     for(const Nebula::ExposedProperty& property : m_stargate.properties())
     {
         rows.append({property.name, placeOf(property)});
-        exposes.append(tr("%1 (%2)").arg(property.name, placeOf(property)));
         // Where it is, should its component be renamed.
         connect(property.component, &QObject::objectNameChanged, this, &StargateItem::refresh, Qt::UniqueConnection);
     }
-    setRows(rows);
+    return rows;
+}
 
-    // What its galaxy has through it, the other way round from its own interfaces.
-    QStringList provides;
-    QStringList consumes;
-    for(const Nebula::ExposedInterface& exposed : m_stargate.interfaces())
-    {
-        (exposed.exposure == Nebula::Exposure::Provided ? provides : consumes)
-            .append(tr("%1 (%2)").arg(exposed.name, InterfaceItem::typeName(exposed.type)));
-    }
+QString StargateItem::aboutText() const
+{
     QStringList about{tr("Stargate: what the galaxy of its file has once placed")};
-    if(!provides.isEmpty())
-    {
-        about.append(tr("Provides %1").arg(provides.join(QStringLiteral(", "))));
-    }
-    if(!consumes.isEmpty())
-    {
-        about.append(tr("Consumes %1").arg(consumes.join(QStringLiteral(", "))));
-    }
-    if(!exposes.isEmpty())
-    {
-        about.append(tr("Exposes %1").arg(exposes.join(QStringLiteral(", "))));
-    }
-    if(provides.isEmpty() && consumes.isEmpty() && exposes.isEmpty())
+    appendList(about, tr("Provides %1"), interfacesText(Nebula::Exposure::Provided));
+    appendList(about, tr("Consumes %1"), interfacesText(Nebula::Exposure::Consumed));
+    appendList(about, tr("Exposes %1"), propertiesText());
+    if(about.size() == 1)
     {
         about.append(tr("Exposes nothing yet"));
     }
-    setOpenable(about.join(u'\n'), tr("Double-click below its name to choose what it exposes"));
+    return about.join(u'\n');
 }
 
-void StargateItem::followLinks()
+QStringList StargateItem::interfacesText(Nebula::Exposure exposure) const
 {
-    for(DashedLinkItem* link : std::as_const(m_links))
+    QStringList interfaces;
+    for(const Nebula::ExposedInterface& exposed : m_stargate.interfaces())
     {
-        link->follow();
+        if(exposed.exposure == exposure)
+        {
+            interfaces.append(tr("%1 (%2)").arg(exposed.name, InterfaceItem::typeName(exposed.type)));
+        }
     }
+    return interfaces;
+}
+
+QStringList StargateItem::propertiesText() const
+{
+    QStringList properties;
+    for(const Nebula::ExposedProperty& property : m_stargate.properties())
+    {
+        properties.append(tr("%1 (%2)").arg(property.name, placeOf(property)));
+    }
+    return properties;
 }
