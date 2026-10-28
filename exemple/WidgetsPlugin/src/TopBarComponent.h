@@ -41,13 +41,26 @@ class TopBarComponent : public Nebula::Component
     void movableChanged(bool movable);
 
   private:
+    // Declares what it consumes: the window, the actions and the widgets the bar shows.
+    void consumeInterfaces();
+    // Shows the bar at the top of the window it consumes.
+    void addToWindow();
+    // Gives the bar back to itself, without a parent: the window would delete it.
+    void removeFromWindow();
     // Shows the actions of shown, in their order, before the widgets: those it has, or all of them but one about to go.
     // An action it has twice is shown once, in the place of the first.
     void showActions(const QList<QAction*>& shown);
+    // Shows the actions it has but action, about to go.
+    void showActionsBut(QAction* action);
+    // Inserts those of shown the bar does not show yet, in their order, before the widgets.
+    void insertActions(const QList<QAction*>& shown);
     // Shows widget in its place, among those it has, after the actions; once, when it has it twice.
     void showWidget(QWidget* widget);
     // Gives widget back as it was provided, without a parent, which would delete it, unless it has it twice.
     void hideWidget(QWidget* widget);
+    // Takes widget out of holder, the action of the holder of the bar that shows it, for the bar not to delete it with
+    // holder, and gives it no parent.
+    static void release(QAction* holder, QWidget* widget);
     // The holder in the bar of the first widget after index in m_widgets that it shows; nullptr when there is none.
     [[nodiscard]] QAction* holderAfter(qsizetype index) const;
 

@@ -15,17 +15,20 @@ MainWindowComponent::MainWindowComponent()
     // Available at once: what fills it is in place before it shows.
     provideInterface<QMainWindow>(QStringLiteral("mainWindow"), &m_window);
     consumeInterface<QWidget>(
-        QStringLiteral("centralWidget"), m_centralWidget,
-        [this]
-        {
-            m_window.setCentralWidget(m_centralWidget);
-            m_centralWidget->show(); // Hidden when it was taken from a window
-        },
-        [this]
-        {
-            m_window.takeCentralWidget();
-            m_centralWidget->setParent(nullptr); // Given back as it was provided: its parent would delete it
-        });
+        QStringLiteral("centralWidget"), m_centralWidget, [this] { showCentralWidget(); },
+        [this] { giveBackCentralWidget(); });
+}
+
+void MainWindowComponent::showCentralWidget()
+{
+    m_window.setCentralWidget(m_centralWidget);
+    m_centralWidget->show(); // Hidden when it was taken from a window
+}
+
+void MainWindowComponent::giveBackCentralWidget()
+{
+    m_window.takeCentralWidget();
+    m_centralWidget->setParent(nullptr); // Given back as it was provided: its parent would delete it
 }
 
 QString MainWindowComponent::title() const
