@@ -33,20 +33,6 @@ enum Column : std::uint8_t
     ByColumn,
 };
 
-// The stargates among components.
-QList<const Nebula::Stargate*> stargatesOf(const std::vector<std::unique_ptr<Nebula::Component>>& components)
-{
-    QList<const Nebula::Stargate*> stargates;
-    for(const std::unique_ptr<Nebula::Component>& component : components)
-    {
-        if(const auto* stargate = qobject_cast<const Nebula::Stargate*>(component.get()))
-        {
-            stargates.append(stargate);
-        }
-    }
-    return stargates;
-}
-
 // What name, which component consumes, is bound to in stargate; nothing when it is not bound to it. A list can be
 // bound to it besides what else it is bound to.
 std::optional<QString> boundTo(const Nebula::Component& component, const QString& name,
@@ -97,27 +83,10 @@ std::optional<QString> passOf(const Nebula::Stargate& stargate, const Nebula::Co
     return found != lastFirst.end() ? std::optional(found->name) : std::nullopt;
 }
 
-// The name stargate exposes target as, whatever the name of target, the last one when there are several; nullopt
-// when it does not expose it.
-std::optional<QString> exposedNameOf(const Nebula::Stargate& stargate, const Nebula::ExposedProperty& target)
-{
-    const QList<Nebula::ExposedProperty>& exposed = stargate.properties();
-    const auto isTarget = [&target](const Nebula::ExposedProperty& property)
-    {
-        return property.component == target.component && property.object == target.object &&
-               property.property == target.property;
-    };
-    const auto lastFirst = exposed | std::views::reverse;
-    const auto found = std::ranges::find_if(lastFirst, isTarget);
-    return found != lastFirst.end() ? std::optional(found->name) : std::nullopt;
-}
-
 // The type of exposed, a property a galaxy exposes.
 QString typeNameOf(const Nebula::ExposedProperty& exposed)
 {
-    const QMetaObject* metaObject = exposed.object->metaObject();
-    return QString::fromLatin1(
-        metaObject->property(metaObject->indexOfProperty(exposed.property.toLatin1().constData())).typeName());
+    return QString::fromLatin1(metaPropertyOf(*exposed.object, exposed.property).typeName());
 }
 
 // Whether stargate exposes name, the way exposure tells; a property when it is nullopt.
@@ -682,5 +651,5 @@ QList<Nebula::Component*> StargateDialog::exposable() const
 
 QList<const Nebula::Stargate*> StargateDialog::stargates() const
 {
-    return stargatesOf(components());
+    return stargatesAmong(components());
 }

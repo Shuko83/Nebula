@@ -8,6 +8,9 @@
 #include <QString>
 #include <QStringList>
 #include <functional>
+#include <memory>
+#include <optional>
+#include <vector>
 
 class QObject;
 class QTreeWidget;
@@ -17,11 +20,14 @@ namespace Nebula
 {
 class Component;
 class ComponentFactory;
+class Stargate;
+struct ExposedProperty;
+struct PropertyObject;
 } // namespace Nebula
 
-// How the dialogs of settings files and of stargates list the properties of components to choose among: a row per
-// component, its properties, then those of its objects, as the property editor shows them, and the groups of objects
-// only open when one of their properties is chosen.
+// How NebulaStudio lists the properties of components, to edit them or to choose among them. The dialogs of settings
+// files and of stargates list a row per component, its properties, then those of its objects, as the property editor
+// shows them, and the groups of objects only open when one of their properties is chosen.
 
 // What lists the properties of object, among properties, under parent.
 using ListProperties =
@@ -49,3 +55,15 @@ void addIfFilled(QTreeWidget& tree, QTreeWidgetItem* row);
 void openAbove(QTreeWidget& tree, const std::function<bool(const QTreeWidgetItem&)>& isChosen);
 // Makes row checkable in column, checked or not, with flags besides.
 void makeCheckable(QTreeWidgetItem& row, int column, bool checked, Qt::ItemFlags flags = {});
+
+// The names of the objects among objects that have one, each once, in the order they were added: the groups their
+// properties are shown in, after those of the objects without a name.
+[[nodiscard]] QStringList groupNames(const QList<Nebula::PropertyObject>& objects);
+// The property name of object; not valid when it has none of that name.
+[[nodiscard]] QMetaProperty metaPropertyOf(const QObject& object, const QString& name);
+// The stargates among components.
+[[nodiscard]] QList<const Nebula::Stargate*>
+stargatesAmong(const std::vector<std::unique_ptr<Nebula::Component>>& components);
+// The name stargate exposes target as, whatever the name of target; nullopt when it does not expose it.
+[[nodiscard]] std::optional<QString> exposedNameOf(const Nebula::Stargate& stargate,
+                                                   const Nebula::ExposedProperty& target);
