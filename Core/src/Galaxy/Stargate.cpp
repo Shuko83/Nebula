@@ -190,7 +190,7 @@ void Stargate::builtByPlugin() {}
 
 const std::vector<std::unique_ptr<Component>>& Stargate::galaxyComponents() const
 {
-    return m_galaxy != nullptr ? m_galaxy->components() : m_application.components();
+    return m_application.components(m_galaxy);
 }
 
 QList<const Stargate*> Stargate::galaxyStargates() const
@@ -217,9 +217,8 @@ bool Stargate::canRename(const QString& name, const QString& newName, bool isFre
 
 bool Stargate::isOfGalaxy(const Component* component) const
 {
-    const auto isIt = [component](const std::unique_ptr<Component>& known) { return known.get() == component; };
     return component != nullptr && qobject_cast<const Stargate*>(component) == nullptr &&
-           std::ranges::any_of(galaxyComponents(), isIt);
+           isAmong(component, galaxyComponents());
 }
 
 bool Stargate::canExpose(const ExposedProperty& property) const

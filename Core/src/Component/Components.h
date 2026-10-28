@@ -30,6 +30,9 @@ template <typename T> [[nodiscard]] QList<T*> componentsOfType(ComponentSpan com
     return found;
 }
 
+// Whether component is one of components.
+[[nodiscard]] bool isAmong(const Component* component, ComponentSpan components);
+
 // Starts components in their order. At the first that refuses, stops those started before it and returns it; nullptr
 // when they all run.
 Component* startInOrder(ComponentSpan components);

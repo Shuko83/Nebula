@@ -3,10 +3,17 @@
 
 #include "Components.h"
 
+#include <algorithm>
 #include <ranges>
 
 namespace Nebula
 {
+
+bool isAmong(const Component* component, ComponentSpan components)
+{
+    return std::ranges::any_of(components, [component](const std::unique_ptr<Component>& known)
+                               { return known.get() == component; });
+}
 
 Component* startInOrder(ComponentSpan components)
 {

@@ -209,9 +209,6 @@ class CORE_EXPORT Component : public QObject, public IComponent
         QString providedName;                       // What it is bound to in provider
         QList<QMetaObject::Connection> connections; // To provider
         void* pointer = nullptr;                    // What it was given of provider; nullptr while unavailable
-
-        // Disconnects it from what provider tells.
-        void disconnect();
     };
 
     struct ConsumedInterface

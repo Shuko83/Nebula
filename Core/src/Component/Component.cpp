@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <utility>
 
+#include "Component/Connections.h"
+
 namespace Nebula
 {
 
@@ -203,15 +205,6 @@ InterfaceInfo Component::ProvidedInterface::info() const
     return {.name = name, .type = type, .available = pointer != nullptr};
 }
 
-void Component::Bound::disconnect()
-{
-    for(const QMetaObject::Connection& connection : std::as_const(connections))
-    {
-        QObject::disconnect(connection);
-    }
-    connections.clear();
-}
-
 InterfaceInfo Component::ConsumedInterface::info() const
 {
     const bool available = std::ranges::any_of(bindings, [](const Bound& bound) { return bound.pointer != nullptr; });
@@ -272,7 +265,7 @@ void Component::ConsumedInterface::disconnect()
 {
     for(Bound& binding : bindings)
     {
-        binding.disconnect();
+        disconnectAll(binding.connections);
     }
 }
 
@@ -283,7 +276,7 @@ bool Component::ConsumedInterface::unbind(const Component* provider, const QStri
     {
         return false;
     }
-    found->disconnect();
+    disconnectAll(found->connections);
     bindings.erase(found);
     return true;
 }
