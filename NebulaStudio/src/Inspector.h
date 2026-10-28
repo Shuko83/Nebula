@@ -11,7 +11,7 @@
 class QFormLayout;
 class QLabel;
 class QPushButton;
-class QStackedWidget;
+class PlaceholderStack;
 class QVBoxLayout;
 
 // A sheet that shows what is selected on a page, a form with what is below it, or a placeholder that tells why there
@@ -45,9 +45,8 @@ class Inspector : public QWidget
     void showPlaceholder(const QString& text);
 
   private:
-    QStackedWidget* m_stack = nullptr;
-    QLabel* m_placeholder = nullptr; // Shown when there is nothing to show
-    QWidget* m_page = nullptr;       // Shown otherwise
+    QWidget* m_page = nullptr; // Shown when there is something to show
     QVBoxLayout* m_pageLayout = nullptr;
-    QFormLayout* m_form = nullptr; // At the top of the page
+    QFormLayout* m_form = nullptr;       // At the top of the page
+    PlaceholderStack* m_stack = nullptr; // Of the page and of its placeholder
 };

@@ -9,6 +9,7 @@
 
 class QLabel;
 class QPushButton;
+class WarningLabel;
 class GalaxyModel;
 struct ListedGalaxy;
 
@@ -32,28 +33,18 @@ class GalaxyViewer : public Inspector
     // The Open button was clicked: GalaxyViewer does not open the galaxy itself.
     void openRequested(const QString& filePath);
 
-  protected:
-    // The error takes the warning color of the scheme the system has now.
-    void changeEvent(QEvent* event) override;
-
   private:
     // Reads the galaxy shown from the model again when the model changes its rows: the galaxy shown changes with its
     // file, and with the plugins the application knows.
     void followModel();
     void addFields();
-    // The error, below the form, with the warning icon of the style: see colorError().
-    QWidget* newError();
     // Reads the galaxy shown from the model again.
     void refresh();
     // What the placeholder tells when there is no galaxy to show.
     [[nodiscard]] QString placeholderText() const;
     void showGalaxy(const ListedGalaxy& galaxy);
-    // Shows error, unless it is empty.
-    void showError(const QString& error);
     // Enables the Open button when a galaxy that can be loaded can be opened now.
     void showOpenButton(bool loadable);
-    // Gives the error the warning color of the current scheme: the palette has no role for it.
-    void colorError();
 
     const GalaxyModel& m_model;
     QString m_filePath;
@@ -64,7 +55,6 @@ class GalaxyViewer : public Inspector
     QLabel* m_file = nullptr;
     QLabel* m_plugins = nullptr;
     QLabel* m_state = nullptr;
-    QWidget* m_error = nullptr; // Shown when it cannot be loaded
-    QLabel* m_errorText = nullptr;
+    WarningLabel* m_error = nullptr; // Why it cannot be loaded
     QPushButton* m_openButton = nullptr;
 };
