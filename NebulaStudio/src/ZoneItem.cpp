@@ -15,6 +15,7 @@
 
 #include "Colors.h"
 #include "ComponentItem.h"
+#include "ItemShapes.h"
 #include "NameEditor.h"
 #include "Settings/SettingsItem.h"
 #include "Theme.h"
@@ -24,7 +25,6 @@ namespace
 
 constexpr qreal TitleHeight = 28;
 constexpr qreal Padding = 8;
-constexpr qreal CornerRadius = 6;
 // How far inside its bounds a zone is resized by an edge, and how far from a corner by both edges of it.
 constexpr qreal EdgeWidth = 6;
 constexpr qreal CornerSize = 16;
@@ -44,6 +44,31 @@ Qt::CursorShape resizeCursor(Qt::Edges edges)
         return edges.testFlag(Qt::LeftEdge) == edges.testFlag(Qt::TopEdge) ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor;
     }
     return horizontal ? Qt::SizeHorCursor : Qt::SizeVerCursor;
+}
+
+// lowEdge when value is near low, highEdge when it is near high, as near as a corner; none between them.
+Qt::Edges edgeNear(qreal value, qreal low, qreal high, Qt::Edge lowEdge, Qt::Edge highEdge)
+{
+    if(value < low + CornerSize)
+    {
+        return lowEdge;
+    }
+    return value > high - CornerSize ? Qt::Edges(highEdge) : Qt::Edges();
+}
+
+// Whether item is moved with a zone it is in by its center: a component, or a settings file.
+bool isComponentLike(const QGraphicsItem& item)
+{
+    const QGraphicsObject* object = item.toGraphicsObject();
+    return qobject_cast<const ComponentItem*>(object) != nullptr ||
+           qobject_cast<const SettingsItem*>(object) != nullptr;
+}
+
+// What a zone of color is filled with under its title, where the components are.
+QColor fillColor(QColor color)
+{
+    color.setAlphaF(FillOpacity);
+    return color;
 }
 
 } // namespace
@@ -115,30 +140,31 @@ QPainterPath ZoneItem::shape() const
 
 void ZoneItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* /*option*/, QWidget* /*widget*/)
 {
-    // Its outline one pixel inside its bounds, as the one of a component.
-    QPainterPath outline;
-    outline.addRoundedRect(boundingRect().adjusted(1, 1, -1, -1), CornerRadius, CornerRadius);
-    QPainterPath titleBar;
-    titleBar.addRect(QRectF(0, 0, m_size.width(), TitleHeight));
-    QColor fill = m_color;
-    fill.setAlphaF(FillOpacity);
-
     painter->setRenderHint(QPainter::Antialiasing);
-    painter->setPen(QPen(m_color, 1));
-    painter->setBrush(fill);
-    painter->drawPath(outline);
-    painter->fillPath(outline.intersected(titleBar), m_color);
-
-    if(m_titleEditor != nullptr && m_titleEditor->isVisible())
+    paintBody(*painter);
+    if(m_titleEditor == nullptr || !m_titleEditor->isVisible()) // Its title is the text being edited otherwise
     {
-        return; // Its title is the text being edited
+        paintTitle(*painter);
     }
-    const QFont font = titleFont(painter->font());
-    painter->setFont(font);
-    painter->setPen(textColorOver(m_color));
+}
+
+void ZoneItem::paintBody(QPainter& painter) const
+{
+    const QPainterPath outline = roundedOutline(boundingRect());
+    painter.setPen(QPen(m_color, 1));
+    painter.setBrush(fillColor(m_color));
+    painter.drawPath(outline);
+    fillWithin(painter, outline, QRectF(0, 0, m_size.width(), TitleHeight), m_color);
+}
+
+void ZoneItem::paintTitle(QPainter& painter) const
+{
+    const QFont font = titleFont(painter.font());
+    painter.setFont(font);
+    painter.setPen(textColorOver(m_color));
     const QRectF title = titleRect();
-    painter->drawText(title, Qt::AlignLeft | Qt::AlignVCenter,
-                      QFontMetricsF(font).elidedText(m_title, Qt::ElideRight, title.width()));
+    painter.drawText(title, Qt::AlignLeft | Qt::AlignVCenter,
+                     QFontMetricsF(font).elidedText(m_title, Qt::ElideRight, title.width()));
 }
 
 void ZoneItem::hoverMoveEvent(QGraphicsSceneHoverEvent* event)
@@ -163,23 +189,15 @@ void ZoneItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
     }
     m_resizedEdges = edgesAt(event->pos());
     m_moving = !m_resizedEdges;
-    // What is in it now, not what it is then moved over.
-    m_followers = m_moving ? content() : QList<QGraphicsItem*>();
-    const QRectF bounds = sceneBoundingRect();
-    m_grabOffset = event->scenePos() - QPointF(m_resizedEdges.testFlag(Qt::LeftEdge) ? bounds.left() : bounds.right(),
-                                               m_resizedEdges.testFlag(Qt::TopEdge) ? bounds.top() : bounds.bottom());
+    m_followers = m_moving ? content() : QList<QGraphicsItem*>(); // What is in it now, not what it is then moved over
+    m_grabOffset = event->scenePos() - grabbedCorner();
 }
 
 void ZoneItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 {
     if(m_moving)
     {
-        const QPointF offset = event->scenePos() - event->lastScenePos();
-        moveBy(offset.x(), offset.y());
-        for(QGraphicsItem* follower : std::as_const(m_followers))
-        {
-            follower->moveBy(offset.x(), offset.y());
-        }
+        moveWithContent(event->scenePos() - event->lastScenePos());
     }
     else if(m_resizedEdges != Qt::Edges())
     {
@@ -217,69 +235,48 @@ QRectF ZoneItem::titleRect() const
 Qt::Edges ZoneItem::edgesAt(const QPointF& position) const
 {
     const QRectF bounds = boundingRect();
-    Qt::Edges edges;
     if(bounds.adjusted(EdgeWidth, EdgeWidth, -EdgeWidth, -EdgeWidth).contains(position))
     {
-        return edges;
+        return {};
     }
-    if(position.x() < bounds.left() + CornerSize)
+    return edgeNear(position.x(), bounds.left(), bounds.right(), Qt::LeftEdge, Qt::RightEdge) |
+           edgeNear(position.y(), bounds.top(), bounds.bottom(), Qt::TopEdge, Qt::BottomEdge);
+}
+
+QPointF ZoneItem::grabbedCorner() const
+{
+    const QRectF bounds = sceneBoundingRect();
+    return {m_resizedEdges.testFlag(Qt::LeftEdge) ? bounds.left() : bounds.right(),
+            m_resizedEdges.testFlag(Qt::TopEdge) ? bounds.top() : bounds.bottom()};
+}
+
+void ZoneItem::moveWithContent(const QPointF& offset)
+{
+    moveBy(offset.x(), offset.y());
+    for(QGraphicsItem* follower : std::as_const(m_followers))
     {
-        edges |= Qt::LeftEdge;
+        follower->moveBy(offset.x(), offset.y());
     }
-    else if(position.x() > bounds.right() - CornerSize)
-    {
-        edges |= Qt::RightEdge;
-    }
-    if(position.y() < bounds.top() + CornerSize)
-    {
-        edges |= Qt::TopEdge;
-    }
-    else if(position.y() > bounds.bottom() - CornerSize)
-    {
-        edges |= Qt::BottomEdge;
-    }
-    return edges;
+}
+
+bool ZoneItem::holds(const QRectF& bounds, const QGraphicsItem& item) const
+{
+    const QRectF itemBounds = item.sceneBoundingRect();
+    const bool zone = &item != this && item.type() == Type;
+    return (isComponentLike(item) && bounds.contains(itemBounds.center())) || (zone && bounds.contains(itemBounds));
 }
 
 QList<QGraphicsItem*> ZoneItem::content() const
 {
     const QRectF bounds = sceneBoundingRect();
-    QList<QGraphicsItem*> content;
-    for(QGraphicsItem* item : scene()->items(bounds, Qt::IntersectsItemBoundingRect))
-    {
-        const QRectF itemBounds = item->sceneBoundingRect();
-        // A settings file as a component.
-        const bool component = qobject_cast<const ComponentItem*>(item->toGraphicsObject()) != nullptr ||
-                               qobject_cast<const SettingsItem*>(item->toGraphicsObject()) != nullptr;
-        const bool zone = item != this && item->type() == Type;
-        if((component && bounds.contains(itemBounds.center())) || (zone && bounds.contains(itemBounds)))
-        {
-            content.append(item);
-        }
-    }
+    QList<QGraphicsItem*> content = scene()->items(bounds, Qt::IntersectsItemBoundingRect);
+    content.removeIf([this, &bounds](const QGraphicsItem* item) { return !holds(bounds, *item); });
     return content;
 }
 
 void ZoneItem::resize(const QPointF& scenePosition)
 {
-    const QPointF edges = scenePosition - m_grabOffset;
-    QRectF bounds = sceneBoundingRect();
-    if(m_resizedEdges.testFlag(Qt::LeftEdge))
-    {
-        bounds.setLeft(std::min(edges.x(), bounds.right() - MinimumSize.width()));
-    }
-    else if(m_resizedEdges.testFlag(Qt::RightEdge))
-    {
-        bounds.setRight(std::max(edges.x(), bounds.left() + MinimumSize.width()));
-    }
-    if(m_resizedEdges.testFlag(Qt::TopEdge))
-    {
-        bounds.setTop(std::min(edges.y(), bounds.bottom() - MinimumSize.height()));
-    }
-    else if(m_resizedEdges.testFlag(Qt::BottomEdge))
-    {
-        bounds.setBottom(std::max(edges.y(), bounds.top() + MinimumSize.height()));
-    }
+    const QRectF bounds = resizedBounds(scenePosition - m_grabOffset);
     prepareGeometryChange();
     setPos(bounds.topLeft()); // What is in it stays where it is: only dragging its title moves it
     m_size = bounds.size();
@@ -289,4 +286,36 @@ void ZoneItem::resize(const QPointF& scenePosition)
 void ZoneItem::stack()
 {
     setZValue(-m_size.width() * m_size.height());
+}
+
+QRectF ZoneItem::resizedBounds(const QPointF& edges) const
+{
+    QRectF bounds = sceneBoundingRect();
+    resizeHorizontally(bounds, edges.x());
+    resizeVertically(bounds, edges.y());
+    return bounds;
+}
+
+void ZoneItem::resizeHorizontally(QRectF& bounds, qreal x) const
+{
+    if(m_resizedEdges.testFlag(Qt::LeftEdge))
+    {
+        bounds.setLeft(std::min(x, bounds.right() - MinimumSize.width()));
+    }
+    else if(m_resizedEdges.testFlag(Qt::RightEdge))
+    {
+        bounds.setRight(std::max(x, bounds.left() + MinimumSize.width()));
+    }
+}
+
+void ZoneItem::resizeVertically(QRectF& bounds, qreal y) const
+{
+    if(m_resizedEdges.testFlag(Qt::TopEdge))
+    {
+        bounds.setTop(std::min(y, bounds.bottom() - MinimumSize.height()));
+    }
+    else if(m_resizedEdges.testFlag(Qt::BottomEdge))
+    {
+        bounds.setBottom(std::max(y, bounds.top() + MinimumSize.height()));
+    }
 }

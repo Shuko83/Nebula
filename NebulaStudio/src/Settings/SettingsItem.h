@@ -5,6 +5,7 @@
 
 #include <QGraphicsObject>
 #include <QList>
+#include <QPalette>
 
 #include "DashedLinkItem.h"
 
@@ -40,6 +41,8 @@ class SettingsItem : public QGraphicsObject
     void refreshLinks();
     // Tells where its file is and which properties it holds.
     void refreshToolTip();
+    // The name of its file, and what it is under it.
+    void paintNames(QPainter& painter, const QPalette& palette) const;
 
     Nebula::SettingsFile& m_file;
     DashedLinks m_links{*this};

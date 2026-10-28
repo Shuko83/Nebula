@@ -58,6 +58,20 @@ class ZoneItem : public QGraphicsItem
     [[nodiscard]] Qt::Edges edgesAt(const QPointF& position) const;
     // What is in it: the components and the settings files whose center is, and the zones that entirely are.
     [[nodiscard]] QList<QGraphicsItem*> content() const;
+    // Its background, in its color, and its title bar.
+    void paintBody(QPainter& painter) const;
+    void paintTitle(QPainter& painter) const;
+    // The corner of the edges being dragged, in the scene: its bottom right one when it is moved.
+    [[nodiscard]] QPointF grabbedCorner() const;
+    // Moves it by offset, with what was in it when it started to move.
+    void moveWithContent(const QPointF& offset);
+    // Whether bounds, its own in the scene, hold item: a component or a settings file whose center they do, a zone they
+    // entirely do.
+    [[nodiscard]] bool holds(const QRectF& bounds, const QGraphicsItem& item) const;
+    // Its bounds in the scene once the edges being dragged are at edges, as far as its minimum size lets them.
+    [[nodiscard]] QRectF resizedBounds(const QPointF& edges) const;
+    void resizeHorizontally(QRectF& bounds, qreal x) const;
+    void resizeVertically(QRectF& bounds, qreal y) const;
     // Moves the edges being dragged to scenePosition, as far as its minimum size lets them.
     void resize(const QPointF& scenePosition);
     // Under the links, and under the zones smaller than it, which can be in it.
