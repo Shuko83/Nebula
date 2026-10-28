@@ -16,6 +16,7 @@
 
 #include "ComponentItem.h"
 #include "DashedLinkItem.h"
+#include "ItemShapes.h"
 #include "Nebula/Component/Component.h"
 #include "Nebula/Settings/SettingsFile.h"
 #include "Theme.h"
@@ -32,6 +33,33 @@ constexpr qreal Fold = 12;
 constexpr QRectF Names = Sheet.adjusted(Padding, Padding, -Padding, -Padding);
 constexpr QRectF NameRect(Names.left() + Fold, Names.top(), Names.width() - 2 * Fold, Names.height() / 2);
 constexpr QRectF KindRect(Names.left(), NameRect.bottom(), Names.width(), Names.height() / 2);
+// The sheet drawn, one pixel inside its bounds, as a component, and the ends of its fold.
+constexpr QRectF Paper = Sheet.adjusted(1, 1, -1, -1);
+constexpr QPointF FoldStart(Paper.right() - Fold, Paper.top());
+constexpr QPointF FoldEnd(Paper.right(), Paper.top() + Fold);
+
+// The outline of the sheet, its top right corner folded.
+QPainterPath sheetOutline()
+{
+    QPainterPath outline(Paper.topLeft());
+    outline.lineTo(FoldStart);
+    outline.lineTo(FoldEnd);
+    outline.lineTo(Paper.bottomRight());
+    outline.lineTo(Paper.bottomLeft());
+    outline.closeSubpath();
+    return outline;
+}
+
+// The sheet of a settings file, highlighted when it is selected.
+void paintSheet(QPainter& painter, const QPalette& palette, bool selected)
+{
+    const QPainterPath outline = sheetOutline();
+    painter.fillPath(outline, palette.color(QPalette::Base));
+    painter.setPen(outlinePen(palette, selected));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawPath(outline);
+    painter.drawPolyline(QPolygonF({FoldStart, QPointF(FoldStart.x(), FoldEnd.y()), FoldEnd}));
+}
 
 // The property of entry as its tooltip lists it: <component>.<property>, with the name of its object between them
 // when it is of a named one.
@@ -75,34 +103,22 @@ QRectF SettingsItem::boundingRect() const
 void SettingsItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
 {
     const QPalette palette = widget != nullptr ? widget->palette() : QApplication::palette();
-    const bool selected = option->state.testFlag(QStyle::State_Selected);
-    // One pixel inside its bounds, as a component.
-    const QRectF sheet = Sheet.adjusted(1, 1, -1, -1);
-    const QPointF foldStart(sheet.right() - Fold, sheet.top());
-    const QPointF foldEnd(sheet.right(), sheet.top() + Fold);
-    QPainterPath outline(sheet.topLeft());
-    outline.lineTo(foldStart);
-    outline.lineTo(foldEnd);
-    outline.lineTo(sheet.bottomRight());
-    outline.lineTo(sheet.bottomLeft());
-    outline.closeSubpath();
-
     painter->setRenderHint(QPainter::Antialiasing);
-    painter->fillPath(outline, palette.color(QPalette::Base));
-    painter->setPen(selected ? QPen(palette.color(QPalette::Highlight), 2) : QPen(palette.color(QPalette::Mid), 1));
-    painter->setBrush(Qt::NoBrush);
-    painter->drawPath(outline);
-    painter->drawPolyline(QPolygonF({foldStart, QPointF(foldStart.x(), foldEnd.y()), foldEnd}));
+    paintSheet(*painter, palette, option->state.testFlag(QStyle::State_Selected));
+    paintNames(*painter, palette);
+}
 
-    const QFont font = painter->font();
+void SettingsItem::paintNames(QPainter& painter, const QPalette& palette) const
+{
+    const QFont font = painter.font();
     const QFont title = titleFont(font);
-    painter->setFont(title);
-    painter->setPen(palette.color(QPalette::Text));
-    painter->drawText(NameRect, Qt::AlignCenter,
-                      QFontMetricsF(title).elidedText(m_file.fileName(), Qt::ElideMiddle, NameRect.width()));
-    painter->setFont(font);
-    painter->setPen(palette.color(QPalette::PlaceholderText));
-    painter->drawText(KindRect, Qt::AlignCenter, tr("Settings file"));
+    painter.setFont(title);
+    painter.setPen(palette.color(QPalette::Text));
+    painter.drawText(NameRect, Qt::AlignCenter,
+                     QFontMetricsF(title).elidedText(m_file.fileName(), Qt::ElideMiddle, NameRect.width()));
+    painter.setFont(font);
+    painter.setPen(palette.color(QPalette::PlaceholderText));
+    painter.drawText(KindRect, Qt::AlignCenter, tr("Settings file"));
 }
 
 QVariant SettingsItem::itemChange(GraphicsItemChange change, const QVariant& value)

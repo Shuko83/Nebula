@@ -16,6 +16,7 @@
 
 #include "Colors.h"
 #include "InterfaceItem.h"
+#include "ItemShapes.h"
 #include "NameEditor.h"
 #include "Nebula/Component/Component.h"
 #include "Theme.h"
@@ -26,7 +27,6 @@ namespace
 // The names, centered on the position of the item, where the component was dropped; its interfaces are below.
 constexpr QRectF Header(-80, -28, 160, 56);
 constexpr qreal Padding = 8;
-constexpr qreal CornerRadius = 6;
 // The mark of its state, in the top right corner of its names.
 constexpr qreal StateMark = 8;
 // Where the names are written, one above the other.
@@ -244,26 +244,21 @@ void ComponentItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* opt
 
 void ComponentItem::paintBody(QPainter& painter, const QPalette& palette, bool selected) const
 {
-    // One pixel inside its bounds.
-    QPainterPath outline;
-    outline.addRoundedRect(boundingRect().adjusted(1, 1, -1, -1), CornerRadius, CornerRadius);
+    const QPainterPath outline = roundedOutline(boundingRect());
     painter.fillPath(outline, palette.color(QPalette::Button));
     paintColor(painter, outline);
     // Once it is filled, for its color not to cover the half of its outline that is inside.
-    painter.setPen(selected ? QPen(palette.color(QPalette::Highlight), 2) : QPen(palette.color(QPalette::Mid), 1));
+    painter.setPen(outlinePen(palette, selected));
     painter.setBrush(Qt::NoBrush);
     painter.drawPath(outline);
 }
 
 void ComponentItem::paintColor(QPainter& painter, const QPainterPath& outline) const
 {
-    if(!m_color.isValid())
+    if(m_color.isValid())
     {
-        return;
+        fillWithin(painter, outline, Header, m_color);
     }
-    QPainterPath header;
-    header.addRect(Header);
-    painter.fillPath(outline.intersected(header), m_color);
 }
 
 void ComponentItem::paintStateMark(QPainter& painter, const QColor& ink) const
