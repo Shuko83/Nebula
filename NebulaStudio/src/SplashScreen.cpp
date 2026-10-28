@@ -41,67 +41,118 @@ QString buildDateText()
     return buildDate.isValid() ? QLocale().toString(buildDate, QLocale::ShortFormat) : text;
 }
 
+// The fonts the picture is written in, and the sizes they give it.
+struct Layout
+{
+    QFont font;
+    QFont nameFont; // Of the name of the framework
+    int titleHeight = 0;
+    int lineHeight = 0;
+
+    // The height of the band, with the logo, the name and the tagline.
+    [[nodiscard]] int bandHeight() const
+    {
+        return 2 * Margin + titleHeight + lineHeight;
+    }
+    // The logo is as high as the name and the tagline beside it.
+    [[nodiscard]] int logoSize() const
+    {
+        return titleHeight + lineHeight;
+    }
+    // The size of the picture with lineCount lines under the band.
+    [[nodiscard]] QSize size(qsizetype lineCount) const
+    {
+        return {Width, bandHeight() + 2 * Margin + static_cast<int>(lineCount) * lineHeight};
+    }
+};
+
+Layout layoutOf(const QFont& font)
+{
+    QFont nameFont = titleFont(font);
+    nameFont.setPointSizeF(font.pointSizeF() * TitleScale);
+    return {.font = font,
+            .nameFont = nameFont,
+            .titleHeight = QFontMetrics(nameFont).height(),
+            .lineHeight = QFontMetrics(font).lineSpacing()};
+}
+
+// What it says under the band, one per line; an empty one leaves a line's space.
+QStringList lines()
+{
+    return {SplashScreen::tr("Version %1").arg(fromInfo(NebulaStudioInfo::version)),
+            SplashScreen::tr("Built with Qt %1 and %2")
+                .arg(fromInfo(NebulaStudioInfo::qtVersion), fromInfo(NebulaStudioInfo::compiler)),
+            SplashScreen::tr("Built on %1").arg(buildDateText()),
+            QString(),
+            fromInfo(NebulaStudioInfo::copyright),
+            SplashScreen::tr("Licensed under the Mozilla Public License 2.0")};
+}
+
+// A picture of size, at the resolution of the screens, filled with color.
+QPixmap emptyPicture(QSize size, const QColor& color)
+{
+    const qreal ratio = qApp->devicePixelRatio();
+    QPixmap pixmap(size * ratio);
+    pixmap.setDevicePixelRatio(ratio);
+    pixmap.fill(color);
+    return pixmap;
+}
+
+// Draws text in the current font and pen of painter, on the line of height whose top is top, from left to the margin
+// on the right; returns the top of the next one.
+int drawLine(QPainter& painter, int left, int top, int height, const QString& text)
+{
+    const int width = Width - Margin - left;
+    painter.drawText(QRect(left, top, width, height), Qt::AlignLeft | Qt::AlignVCenter,
+                     painter.fontMetrics().elidedText(text, Qt::ElideRight, width));
+    return top + height;
+}
+
+// The band, in the highlight color, and the edges of a picture of size, whatever is behind it.
+void paintFrame(QPainter& painter, const QPalette& palette, const Layout& layout, QSize size)
+{
+    painter.fillRect(0, 0, Width, layout.bandHeight(), palette.color(QPalette::Highlight));
+    painter.setPen(palette.color(QPalette::Mid));
+    painter.drawRect(QRect(QPoint(), size).adjusted(0, 0, -1, -1));
+}
+
+// The logo, then the name of the framework and its tagline beside it, on the band.
+void paintTitle(QPainter& painter, const QPalette& palette, const Layout& layout)
+{
+    QSvgRenderer(logoPath()).render(&painter, QRectF(Margin, Margin, layout.logoSize(), layout.logoSize()));
+    const int left = Margin + layout.logoSize() + Margin / 2;
+    painter.setPen(palette.color(QPalette::HighlightedText));
+    painter.setFont(layout.nameFont);
+    const int taglineTop = drawLine(painter, left, Margin, layout.titleHeight, fromInfo(NebulaStudioInfo::product));
+    painter.setFont(layout.font);
+    drawLine(painter, left, taglineTop, layout.lineHeight,
+             SplashScreen::tr("Build modular applications by assembling components"));
+}
+
+// texts, one per line, under the band.
+void paintLines(QPainter& painter, const QPalette& palette, const Layout& layout, const QStringList& texts)
+{
+    painter.setPen(palette.color(QPalette::WindowText));
+    int top = layout.bandHeight() + Margin;
+    for(const QString& text : texts)
+    {
+        top = drawLine(painter, Margin, top, layout.lineHeight, text);
+    }
+}
+
 // The logo and the name of the framework on a band of the highlight color, then the rest of what it says, under it,
 // at the resolution of the screens.
 QPixmap picture()
 {
     const QPalette palette = QApplication::palette();
-    const QFont font = QApplication::font();
-    QFont nameFont = titleFont(font);
-    nameFont.setPointSizeF(font.pointSizeF() * TitleScale);
-    const int titleHeight = QFontMetrics(nameFont).height();
-    const int lineHeight = QFontMetrics(font).lineSpacing();
-
-    // Under the band, one per line; an empty one leaves a line's space.
-    const QStringList lines = {
-        SplashScreen::tr("Version %1").arg(fromInfo(NebulaStudioInfo::version)),
-        SplashScreen::tr("Built with Qt %1 and %2")
-            .arg(fromInfo(NebulaStudioInfo::qtVersion), fromInfo(NebulaStudioInfo::compiler)),
-        SplashScreen::tr("Built on %1").arg(buildDateText()),
-        QString(),
-        fromInfo(NebulaStudioInfo::copyright),
-        SplashScreen::tr("Licensed under the Mozilla Public License 2.0"),
-    };
-
-    const int bandHeight = 2 * Margin + titleHeight + lineHeight;
-    const QSize size(Width, bandHeight + 2 * Margin + static_cast<int>(lines.size()) * lineHeight);
-    const qreal ratio = qApp->devicePixelRatio();
-    QPixmap pixmap(size * ratio);
-    pixmap.setDevicePixelRatio(ratio);
-    pixmap.fill(palette.color(QPalette::Window));
-
+    const Layout layout = layoutOf(QApplication::font());
+    const QSize size = layout.size(lines().size());
+    QPixmap pixmap = emptyPicture(size, palette.color(QPalette::Window));
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing);
-    painter.fillRect(0, 0, Width, bandHeight, palette.color(QPalette::Highlight));
-    painter.setPen(palette.color(QPalette::Mid));
-    painter.drawRect(QRect(QPoint(), size).adjusted(0, 0, -1, -1)); // Its edges, whatever is behind it
-
-    // The logo, as high as the name and the tagline beside it.
-    const int logoSize = titleHeight + lineHeight;
-    QSvgRenderer(logoPath()).render(&painter, QRectF(Margin, Margin, logoSize, logoSize));
-
-    // Draws text in the current font and pen, on the line of height whose top is y, from left to the margin on the
-    // right; returns the top of the next one.
-    const auto drawLine = [&painter](int left, int y, int height, const QString& text)
-    {
-        const int width = Width - Margin - left;
-        painter.drawText(QRect(left, y, width, height), Qt::AlignLeft | Qt::AlignVCenter,
-                         painter.fontMetrics().elidedText(text, Qt::ElideRight, width));
-        return y + height;
-    };
-    const int nameLeft = Margin + logoSize + Margin / 2;
-    painter.setPen(palette.color(QPalette::HighlightedText));
-    painter.setFont(nameFont);
-    const int taglineTop = drawLine(nameLeft, Margin, titleHeight, fromInfo(NebulaStudioInfo::product));
-    painter.setFont(font);
-    drawLine(nameLeft, taglineTop, lineHeight, SplashScreen::tr("Build modular applications by assembling components"));
-
-    painter.setPen(palette.color(QPalette::WindowText));
-    int top = bandHeight + Margin;
-    for(const QString& line : lines)
-    {
-        top = drawLine(Margin, top, lineHeight, line);
-    }
+    paintFrame(painter, palette, layout, size);
+    paintTitle(painter, palette, layout);
+    paintLines(painter, palette, layout, lines());
     return pixmap;
 }
 
