@@ -25,20 +25,30 @@ namespace
 
 Q_LOGGING_CATEGORY(lcPlugins, "nebula.plugins")
 
+QVersionNumber readVersion(const QJsonObject& metaData, QStringView key)
+{
+    return QVersionNumber::fromString(metaData.value(key).toString());
+}
+
+// The info of the plugin filePath, from the object nebula_add_plugin passes to Q_PLUGIN_METADATA.
+PluginInfo toInfo(const QJsonObject& metaData, const QString& filePath)
+{
+    return {.id = metaData.value(u"id").toString(),
+            .name = metaData.value(u"name").toString(),
+            .description = metaData.value(u"description").toString(),
+            .version = readVersion(metaData, u"version"),
+            .coreVersion = readVersion(metaData, u"coreVersion"),
+            .filePath = filePath};
+}
+
 // Reads the object nebula_add_plugin passes to Q_PLUGIN_METADATA; nullopt when its id or name is missing.
 std::optional<PluginInfo> readInfo(const QJsonObject& metaData, const QString& filePath)
 {
-    PluginInfo info;
-    info.id = metaData.value(u"id").toString();
-    info.name = metaData.value(u"name").toString();
+    PluginInfo info = toInfo(metaData, filePath);
     if(info.id.isEmpty() || info.name.isEmpty())
     {
         return std::nullopt;
     }
-    info.description = metaData.value(u"description").toString();
-    info.version = QVersionNumber::fromString(metaData.value(u"version").toString());
-    info.coreVersion = QVersionNumber::fromString(metaData.value(u"coreVersion").toString());
-    info.filePath = filePath;
     return info;
 }
 
@@ -57,34 +67,56 @@ bool isCompatibleCore(const QVersionNumber& pluginCoreVersion)
            pluginCoreVersion.normalized() <= coreVersion;
 }
 
-// Reads the metadata of filePath without loading it; nullopt, with error set, when the plugin cannot be used.
-std::optional<PluginInfo> readPlugin(const QPluginLoader& loader, const QString& filePath, QString& error)
+// Why the library of loader, whose metadata is metaData, is not a Nebula plugin; empty when it is one.
+QString metaDataError(const QPluginLoader& loader, const QJsonObject& metaData)
 {
-    const QJsonObject metaData = loader.metaData();
     if(metaData.isEmpty())
     {
-        error = loader.errorString();
-        return std::nullopt;
+        return loader.errorString();
     }
     const QString iid = metaData.value(u"IID").toString();
     if(iid != QLatin1StringView(NEBULA_PLUGIN_IID))
     {
-        error = QStringLiteral("Built against another plugin interface: %1").arg(iid);
+        return QStringLiteral("Built against another plugin interface: %1").arg(iid);
+    }
+    return {};
+}
+
+// Why the plugin of info cannot run on this Core; empty when it can.
+QString coreError(const PluginInfo& info)
+{
+    if(isCompatibleCore(info.coreVersion))
+    {
+        return {};
+    }
+    return QStringLiteral("Built against Core %1 instead of %2")
+        .arg(info.coreVersion.toString(), QLatin1StringView(CoreInfo::version));
+}
+
+// Reads the metadata of filePath without loading it; nullopt, with error set, when the plugin cannot be used.
+std::optional<PluginInfo> readPlugin(const QPluginLoader& loader, const QString& filePath, QString& error)
+{
+    const QJsonObject metaData = loader.metaData();
+    error = metaDataError(loader, metaData);
+    if(!error.isEmpty())
+    {
         return std::nullopt;
     }
     std::optional<PluginInfo> info = readInfo(metaData.value(u"MetaData").toObject(), filePath);
-    if(!info)
+    error = info ? coreError(*info) : QStringLiteral("No id or name in its metadata");
+    return error.isEmpty() ? info : std::nullopt;
+}
+
+// The canonical paths of the plugins in directory, by the extension nebula_add_plugin gives them
+// (Core/cmake/NebulaPlugin.cmake).
+QStringList pluginFiles(const QString& directory)
+{
+    QStringList filePaths;
+    for(const QFileInfo& file : QDir(directory).entryInfoList({QStringLiteral("*.nbdl")}, QDir::Files, QDir::Name))
     {
-        error = QStringLiteral("No id or name in its metadata");
-        return std::nullopt;
+        filePaths.append(file.canonicalFilePath());
     }
-    if(!isCompatibleCore(info->coreVersion))
-    {
-        error = QStringLiteral("Built against Core %1 instead of %2")
-                    .arg(info->coreVersion.toString(), QLatin1StringView(CoreInfo::version));
-        return std::nullopt;
-    }
-    return info;
+    return filePaths;
 }
 
 } // namespace
@@ -115,24 +147,13 @@ QString PluginManager::defaultDirectory()
 
 QList<PluginInfo> PluginManager::scan(const QString& directory)
 {
+    const auto isNew = [this](const QString& filePath) { return findFile(filePath) == nullptr; };
     QList<PluginInfo> found;
-    // The extension nebula_add_plugin gives to the plugins (Core/cmake/NebulaPlugin.cmake).
-    const QFileInfoList files = QDir(directory).entryInfoList({QStringLiteral("*.nbdl")}, QDir::Files, QDir::Name);
-    for(const QFileInfo& file : files)
+    for(const QString& filePath : pluginFiles(directory) | std::views::filter(isNew))
     {
-        const QString filePath = file.canonicalFilePath();
-        if(findFile(filePath) != nullptr)
-        {
-            continue;
-        }
-        QString error;
-        if(std::optional<PluginInfo> info = addNewFile(filePath, error))
+        if(std::optional<PluginInfo> info = scanFile(filePath))
         {
             found.append(*info);
-        }
-        else
-        {
-            qCWarning(lcPlugins).noquote() << "Skipping" << filePath << "-" << error;
         }
     }
     return found;
@@ -148,11 +169,8 @@ std::optional<PluginInfo> PluginManager::addFile(const QString& filePath)
     }
     m_errorString.clear();
     const QString canonicalPath = file.canonicalFilePath();
-    if(const Entry* known = findFile(canonicalPath))
-    {
-        return known->info;
-    }
-    return addNewFile(canonicalPath, m_errorString);
+    const Entry* known = findFile(canonicalPath);
+    return known != nullptr ? known->info : addNewFile(canonicalPath, m_errorString);
 }
 
 QList<PluginInfo> PluginManager::plugins() const
@@ -178,62 +196,26 @@ std::optional<PluginInfo> PluginManager::plugin(const QString& pluginId) const
 
 bool PluginManager::load(const QString& pluginId)
 {
-    const auto entry = m_entries.find(pluginId);
-    if(entry == m_entries.end())
-    {
-        m_errorString = QStringLiteral("Unknown plugin %1").arg(pluginId);
-        return false;
-    }
-    // load() takes the share of the library that unload() gives back, even when another manager loaded it first;
-    // instance() is its root object, generated by nebula_add_plugin.
-    QPluginLoader& loader = *entry->second.loader;
-    IPlugin* root = loader.load() ? qobject_cast<IPlugin*>(loader.instance()) : nullptr;
+    Entry* entry = knownEntry(pluginId);
+    IPlugin* root = entry != nullptr ? loadRoot(*entry->loader) : nullptr;
     if(root == nullptr)
     {
-        m_errorString = loader.errorString();
-        loader.unload(); // Not kept when its root object is not the one of a plugin
         return false;
     }
-    entry->second.loaded = true;
-    entry->second.info.buildDate = fromCompilerDate(root->buildDate());
+    entry->loaded = true;
+    entry->info.buildDate = fromCompilerDate(root->buildDate());
     ComponentFactory::instance().add(pluginId, root->plugin());
-    m_errorString.clear();
     return true;
 }
 
 bool PluginManager::unload(const QString& pluginId)
 {
-    const auto entry = m_entries.find(pluginId);
-    if(entry == m_entries.end())
+    Entry* entry = knownEntry(pluginId);
+    if(entry == nullptr)
     {
-        m_errorString = QStringLiteral("Unknown plugin %1").arg(pluginId);
         return false;
     }
-    QPluginLoader& loader = *entry->second.loader;
-    m_errorString.clear();
-    if(!loader.isLoaded())
-    {
-        return true;
-    }
-    if(!entry->second.loaded)
-    {
-        m_errorString = QStringLiteral("%1 was loaded by another plugin manager").arg(pluginId);
-        return false;
-    }
-    entry->second.loaded = false;
-    // Before its root object, which owns what builds them, is destroyed.
-    ComponentFactory::instance().remove(pluginId);
-    if(loader.unload())
-    {
-        return true;
-    }
-    // Another manager loaded it too, and keeps it: its components are registered again.
-    m_errorString = QStringLiteral("%1 is still loaded by another plugin manager").arg(pluginId);
-    if(IPlugin* root = qobject_cast<IPlugin*>(loader.instance()))
-    {
-        ComponentFactory::instance().add(pluginId, root->plugin());
-    }
-    return false;
+    return !entry->loader->isLoaded() || unloadLoaded(pluginId, *entry);
 }
 
 bool PluginManager::isLoaded(const QString& pluginId) const
@@ -247,6 +229,12 @@ QString PluginManager::errorString() const
     return m_errorString;
 }
 
+bool PluginManager::fail(const QString& error)
+{
+    m_errorString = error;
+    return false;
+}
+
 const PluginManager::Entry* PluginManager::findFile(const QString& filePath) const
 {
     const auto entries = m_entries | std::views::values;
@@ -254,23 +242,82 @@ const PluginManager::Entry* PluginManager::findFile(const QString& filePath) con
     return entry == entries.end() ? nullptr : &*entry;
 }
 
+PluginManager::Entry* PluginManager::knownEntry(const QString& pluginId)
+{
+    const auto entry = m_entries.find(pluginId);
+    const bool known = entry != m_entries.end();
+    m_errorString = known ? QString() : QStringLiteral("Unknown plugin %1").arg(pluginId);
+    return known ? &entry->second : nullptr;
+}
+
+std::optional<PluginInfo> PluginManager::scanFile(const QString& filePath)
+{
+    QString error;
+    std::optional<PluginInfo> info = addNewFile(filePath, error);
+    if(!info)
+    {
+        qCWarning(lcPlugins).noquote() << "Skipping" << filePath << "-" << error;
+    }
+    return info;
+}
+
 std::optional<PluginInfo> PluginManager::addNewFile(const QString& filePath, QString& error)
 {
     auto loader = std::make_unique<QPluginLoader>(filePath);
-    std::optional<PluginInfo> info = readPlugin(*loader, filePath, error);
-    if(!info)
+    std::optional<PluginInfo> info = readNewPlugin(*loader, filePath, error);
+    if(info)
     {
-        return std::nullopt;
+        m_entries.emplace(info->id, Entry{.info = *info, .loader = std::move(loader)});
     }
-    if(const auto known = m_entries.find(info->id); known != m_entries.end())
-    {
-        error = QStringLiteral("%1 is already provided by %2")
-                    .arg(info->id, QDir::toNativeSeparators(known->second.info.filePath));
-        return std::nullopt;
-    }
-    const QString pluginId = info->id;
-    m_entries.emplace(pluginId, Entry{.info = *info, .loader = std::move(loader)});
     return info;
+}
+
+std::optional<PluginInfo> PluginManager::readNewPlugin(const QPluginLoader& loader, const QString& filePath,
+                                                       QString& error) const
+{
+    std::optional<PluginInfo> info = readPlugin(loader, filePath, error);
+    const auto known = info ? m_entries.find(info->id) : m_entries.end();
+    if(known == m_entries.end())
+    {
+        return info;
+    }
+    error = QStringLiteral("%1 is already provided by %2")
+                .arg(info->id, QDir::toNativeSeparators(known->second.info.filePath));
+    return std::nullopt;
+}
+
+IPlugin* PluginManager::loadRoot(QPluginLoader& loader)
+{
+    // load() takes the share of the library that unload() gives back, even when another manager loaded it first;
+    // instance() is its root object, generated by nebula_add_plugin.
+    IPlugin* root = loader.load() ? qobject_cast<IPlugin*>(loader.instance()) : nullptr;
+    m_errorString = root != nullptr ? QString() : loader.errorString();
+    if(root == nullptr)
+    {
+        loader.unload(); // Not kept when its root object is not the one of a plugin
+    }
+    return root;
+}
+
+bool PluginManager::unloadLoaded(const QString& pluginId, Entry& entry)
+{
+    if(!entry.loaded)
+    {
+        return fail(QStringLiteral("%1 was loaded by another plugin manager").arg(pluginId));
+    }
+    entry.loaded = false;
+    // Before its root object, which owns what builds them, is destroyed.
+    ComponentFactory::instance().remove(pluginId);
+    return entry.loader->unload() || keptByAnother(pluginId, *entry.loader);
+}
+
+bool PluginManager::keptByAnother(const QString& pluginId, QPluginLoader& loader)
+{
+    if(IPlugin* root = qobject_cast<IPlugin*>(loader.instance()))
+    {
+        ComponentFactory::instance().add(pluginId, root->plugin());
+    }
+    return fail(QStringLiteral("%1 is still loaded by another plugin manager").arg(pluginId));
 }
 
 } // namespace Nebula

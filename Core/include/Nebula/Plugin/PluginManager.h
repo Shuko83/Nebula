@@ -17,6 +17,8 @@ class QPluginLoader;
 namespace Nebula
 {
 
+class IPlugin;
+
 // Finds the plugins built with nebula_add_plugin, loads them on demand and unloads them. It unloads those it loaded
 // when it is destroyed: it has to outlive the components of its plugins.
 // The library of a plugin stays in memory once loaded, until the application exits, even unloaded: Qt keeps what it
@@ -66,10 +68,27 @@ class CORE_EXPORT PluginManager
         bool loaded = false; // By this manager, which is then the one to unload it
     };
 
+    // Sets errorString() to error and returns false.
+    bool fail(const QString& error);
     // The entry of the plugin filePath, canonical; nullptr when it is not known.
     [[nodiscard]] const Entry* findFile(const QString& filePath) const;
+    // The entry of pluginId, with errorString() cleared; nullptr, with errorString() set, when it is unknown.
+    Entry* knownEntry(const QString& pluginId);
+    // Adds filePath, canonical and not known yet, found by scan(); nullopt, with a warning, when it cannot be used.
+    std::optional<PluginInfo> scanFile(const QString& filePath);
     // Adds filePath, canonical and not known yet; nullopt, with error set, when it cannot be used.
     std::optional<PluginInfo> addNewFile(const QString& filePath, QString& error);
+    // Reads the plugin of loader, at filePath; nullopt, with error set, when it cannot be used or its id is known.
+    std::optional<PluginInfo> readNewPlugin(const QPluginLoader& loader, const QString& filePath, QString& error) const;
+    // Loads the library of loader and returns its root object, with errorString() cleared; nullptr, with
+    // errorString() set, when it is not the one of a plugin, which is then not kept.
+    IPlugin* loadRoot(QPluginLoader& loader);
+    // Unloads the plugin pluginId of entry, loaded by some manager; false, with errorString() set, when it stays
+    // loaded.
+    bool unloadLoaded(const QString& pluginId, Entry& entry);
+    // Another manager loaded the plugin of loader too, and keeps it: its components are registered again. Returns
+    // false, with errorString() set.
+    bool keptByAnother(const QString& pluginId, QPluginLoader& loader);
 
     std::map<QString, Entry> m_entries; // By id
     QString m_errorString;
