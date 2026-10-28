@@ -3,19 +3,21 @@
 
 #pragma once
 
-#include <QAbstractTableModel>
 #include <QList>
 #include <cstdint>
 
 #include "Nebula/Plugin/PluginInfo.h"
+#include "RowsModel.h"
 
 namespace Nebula
 {
 class PluginManager;
 }
 
+using PluginRows = RowsModel<Nebula::PluginInfo, &Nebula::PluginInfo::id>;
+
 // The plugins found by a PluginManager, one row per plugin, sorted by id.
-class PluginModel : public QAbstractTableModel
+class PluginModel : public PluginRows
 {
     Q_OBJECT
 
@@ -33,11 +35,7 @@ class PluginModel : public QAbstractTableModel
 
     explicit PluginModel(const Nebula::PluginManager& plugins, QObject* parent = nullptr);
 
-    [[nodiscard]] int rowCount(const QModelIndex& parent = {}) const override;
-    [[nodiscard]] int columnCount(const QModelIndex& parent = {}) const override;
     [[nodiscard]] QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
-    [[nodiscard]] QVariant headerData(int section, Qt::Orientation orientation,
-                                      int role = Qt::DisplayRole) const override;
 
     // The first column of pluginId; invalid when it is not listed.
     [[nodiscard]] QModelIndex indexOf(const QString& pluginId) const;
@@ -45,7 +43,12 @@ class PluginModel : public QAbstractTableModel
     // Reads the plugins of the manager again: inserts the ones found since, and updates the others, e.g. once loaded.
     void refresh();
 
+  protected:
+    [[nodiscard]] QStringList headers() const override;
+
   private:
+    // What the cell of info in column shows.
+    [[nodiscard]] QVariant display(const Nebula::PluginInfo& info, int column) const;
+
     const Nebula::PluginManager& m_plugins;
-    QList<Nebula::PluginInfo> m_infos; // Sorted by id, as PluginManager::plugins()
 };
