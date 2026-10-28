@@ -9,21 +9,18 @@
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QHBoxLayout>
-#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
-#include <QMetaProperty>
 #include <QPushButton>
-#include <QStringList>
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
 #include <QVBoxLayout>
 #include <cstdint>
+#include <functional>
 #include <memory>
-#include <optional>
 
 #include "Nebula/Application/Universe.h"
-#include "Nebula/Component/ComponentFactory.h"
+#include "PropertyTree.h"
 #include "Theme.h"
 
 namespace
@@ -34,71 +31,107 @@ enum Column : std::uint8_t
     PropertyColumn,
     ValueColumn,
     FileColumn,
-    ColumnCount,
 };
+
+// The name of file, telling in its tooltip what it is in a galaxy.
+QLineEdit* newNameEdit(const Nebula::SettingsFile& file)
+{
+    auto* edit = new QLineEdit(file.name());
+    if(file.galaxy() != nullptr)
+    {
+        edit->setToolTip(SettingsDialog::tr("The name the file of the galaxy gives it: each instance of the galaxy "
+                                            "writes its own, named after it, %1 for this one")
+                             .arg(file.fileName()));
+    }
+    return edit;
+}
+
+// The directory of a file, directory, telling what an empty or a relative one is.
+QLineEdit* newDirectoryEdit(const QString& directory)
+{
+    auto* edit = new QLineEdit(directory);
+    edit->setPlaceholderText(SettingsDialog::tr("Configuration directory of the user"));
+    edit->setToolTip(
+        SettingsDialog::tr("Empty: the configuration directory of the user, for the application that runs\n"
+                           "Relative: from the directory of the application that runs"));
+    return edit;
+}
+
+// Where a file is written.
+QLabel* newPathLabel()
+{
+    auto* label = new QLabel;
+    label->setWordWrap(true);
+    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    label->setToolTip(SettingsDialog::tr("Where the application writes it when it runs here, in NebulaStudio"));
+    return label;
+}
+
+// Disables row, a property the file named holder holds, which it tells.
+void disableFor(QTreeWidgetItem& row, const QString& holder)
+{
+    row.setFlags(Qt::NoItemFlags);
+    row.setText(FileColumn, holder);
+}
+
+// Whether row is of a property a file holds: the one of the dialog, or another one.
+bool isHeld(const QTreeWidgetItem& row)
+{
+    return row.checkState(PropertyColumn) == Qt::Checked || !row.text(FileColumn).isEmpty();
+}
 
 } // namespace
 
 SettingsDialog::SettingsDialog(Nebula::SettingsFile& file, const Nebula::Universe& application,
                                const Nebula::ComponentFactory& factory, QWidget* parent)
-    : QDialog(parent), m_file(file), m_application(application)
+    : EditDialog(file, parent), m_file(file), m_application(application),
+      m_tree(newChoiceTree({tr("Property"), tr("Value"), tr("Held by")}))
 {
     setWindowTitle(tr("Settings file"));
     setWindowIcon(icon(GlossaryTerm::Comet));
-
-    m_fileName = new QLineEdit(file.name());
-    if(file.galaxy() != nullptr)
-    {
-        m_fileName->setToolTip(tr("The name the file of the galaxy gives it: each instance of the galaxy writes its "
-                                  "own, named after it, %1 for this one")
-                                   .arg(file.fileName()));
-    }
-    m_directory = new QLineEdit(file.directory());
-    m_directory->setPlaceholderText(tr("Configuration directory of the user"));
-    m_directory->setToolTip(tr("Empty: the configuration directory of the user, for the application that runs\n"
-                               "Relative: from the directory of the application that runs"));
-    auto* browseButton = new QPushButton(tr("Browse..."));
-    connect(browseButton, &QPushButton::clicked, this, &SettingsDialog::browse);
-    auto* directoryRow = new QHBoxLayout;
-    directoryRow->addWidget(m_directory, 1);
-    directoryRow->addWidget(browseButton);
-    m_path = new QLabel;
-    m_path->setWordWrap(true);
-    m_path->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    m_path->setToolTip(tr("Where the application writes it when it runs here, in NebulaStudio"));
-
-    auto* form = new QFormLayout;
-    form->addRow(tr("File name:"), m_fileName);
-    form->addRow(tr("Directory:"), directoryRow);
-    form->addRow(tr("Written to:"), m_path);
-
-    auto* hint = new QLabel(tr("The properties checked keep the values the user of the application gives them, from "
-                               "one run to the next. The values of the project are their default values."));
-    hint->setWordWrap(true);
-
-    m_tree = new QTreeWidget;
-    m_tree->setColumnCount(ColumnCount);
-    m_tree->setHeaderLabels({tr("Property"), tr("Value"), tr("Held by")});
-    m_tree->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    createFields();
     fill(application, factory);
-
-    m_buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    connect(m_buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
-    connect(m_buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    connect(this, &QDialog::accepted, this, &SettingsDialog::apply);
-    // Should the file go meanwhile, with what it would have been given.
-    connect(&m_file, &QObject::destroyed, this, &QDialog::reject);
-
-    auto* layout = new QVBoxLayout(this);
-    layout->addLayout(form);
-    layout->addWidget(hint);
-    layout->addWidget(m_tree, 1);
-    layout->addWidget(m_buttons);
-
-    connect(m_fileName, &QLineEdit::textChanged, this, &SettingsDialog::refreshPath);
-    connect(m_directory, &QLineEdit::textChanged, this, &SettingsDialog::refreshPath);
+    layOut();
     refreshPath();
     resize(560, 520);
+}
+
+void SettingsDialog::createFields()
+{
+    m_fileName = newNameEdit(m_file);
+    m_directory = newDirectoryEdit(m_file.directory());
+    m_path = newPathLabel();
+    connect(m_fileName, &QLineEdit::textChanged, this, &SettingsDialog::refreshPath);
+    connect(m_directory, &QLineEdit::textChanged, this, &SettingsDialog::refreshPath);
+}
+
+void SettingsDialog::layOut()
+{
+    auto* layout = new QVBoxLayout(this);
+    layout->addLayout(newForm());
+    layout->addWidget(newHint(tr("The properties checked keep the values the user of the application gives them, "
+                                 "from one run to the next. The values of the project are their default values.")));
+    layout->addWidget(m_tree, 1);
+    layout->addWidget(buttons());
+}
+
+QFormLayout* SettingsDialog::newForm()
+{
+    auto* form = new QFormLayout;
+    form->addRow(tr("File name:"), m_fileName);
+    form->addRow(tr("Directory:"), newDirectoryRow());
+    form->addRow(tr("Written to:"), m_path);
+    return form;
+}
+
+QHBoxLayout* SettingsDialog::newDirectoryRow()
+{
+    auto* browseButton = new QPushButton(tr("Browse..."));
+    connect(browseButton, &QPushButton::clicked, this, &SettingsDialog::browse);
+    auto* row = new QHBoxLayout;
+    row->addWidget(m_directory, 1);
+    row->addWidget(browseButton);
+    return row;
 }
 
 void SettingsDialog::fill(const Nebula::Universe& application, const Nebula::ComponentFactory& factory)
@@ -106,95 +139,44 @@ void SettingsDialog::fill(const Nebula::Universe& application, const Nebula::Com
     // Those of its galaxy: it holds no other.
     for(const std::unique_ptr<Nebula::Component>& component : application.components(m_file.galaxy()))
     {
-        auto* componentRow = new QTreeWidgetItem({component->objectName()});
-        componentRow->setFlags(Qt::ItemIsEnabled);
-        componentRow->setToolTip(PropertyColumn, component->componentId());
-
-        // The properties of object a settings file can hold, under parent.
-        const auto list = [this, &application, &component](QTreeWidgetItem* parent, QObject* object,
-                                                           const QList<QMetaProperty>& properties)
-        {
-            for(const QMetaProperty& property : properties)
-            {
-                const QString name = QString::fromLatin1(property.name());
-                if(!Nebula::SettingsFile::canHold(*component, object, name))
-                {
-                    continue;
-                }
-                const Nebula::SettingsEntry entry{.component = component.get(), .object = object, .property = name};
-                auto* row = new QTreeWidgetItem(parent, {name, property.read(object).toString()});
-                row->setToolTip(PropertyColumn, QString::fromLatin1(property.typeName()));
-                const Nebula::SettingsFile* holder = application.settingsFile(entry);
-                if(holder != nullptr && holder != &m_file)
-                {
-                    row->setFlags(Qt::NoItemFlags); // Only one file holds a property
-                    row->setText(FileColumn, holder->fileName());
-                    continue;
-                }
-                row->setFlags(Qt::ItemIsEnabled | Qt::ItemIsUserCheckable);
-                row->setCheckState(PropertyColumn, holder != nullptr ? Qt::Checked : Qt::Unchecked);
-                m_entries.insert(row, entry);
-            }
-        };
-
-        if(const std::optional<Nebula::ComponentInfo> info = factory.component(component->componentId()))
-        {
-            list(componentRow, component.get(), info->properties);
-        }
-        // Then those of its objects, as the property editor shows them: with its own when they have no name, under a
-        // row of their name otherwise.
-        const QList<Nebula::PropertyObject> objects = component->propertyObjects();
-        QStringList names{QString()};
-        for(const Nebula::PropertyObject& added : objects)
-        {
-            if(!names.contains(added.name))
-            {
-                names.append(added.name);
-            }
-        }
-        for(const QString& name : std::as_const(names))
-        {
-            auto* group = name.isEmpty() ? componentRow : new QTreeWidgetItem({name});
-            group->setFlags(Qt::ItemIsEnabled);
-            for(const Nebula::PropertyObject& added : objects)
-            {
-                if(added.name == name)
-                {
-                    list(group, added.object, added.properties());
-                }
-            }
-            if(group != componentRow)
-            {
-                if(group->childCount() > 0)
-                {
-                    componentRow->addChild(group);
-                }
-                else
-                {
-                    delete group; // Nothing to hold
-                }
-            }
-        }
-
-        if(componentRow->childCount() > 0)
-        {
-            m_tree->addTopLevelItem(componentRow);
-            componentRow->setExpanded(true);
-        }
-        else
-        {
-            delete componentRow;
-        }
+        addIfFilled(*m_tree, componentRow(*component, factory));
     }
-    // The groups of the objects, which can have many properties, a widget say, are only open when a file holds one.
-    for(QTreeWidgetItemIterator row(m_tree); *row != nullptr; ++row)
+    openAbove(*m_tree, isHeld);
+}
+
+QTreeWidgetItem* SettingsDialog::componentRow(Nebula::Component& component, const Nebula::ComponentFactory& factory)
+{
+    QTreeWidgetItem* row = groupRow(component.objectName());
+    row->setToolTip(PropertyColumn, component.componentId());
+    const ListProperties list = std::bind_front(&SettingsDialog::addProperties, this, std::ref(component));
+    list(row, &component, ownProperties(factory, component));
+    addObjectGroups(*row, component, list);
+    return row;
+}
+
+void SettingsDialog::addProperties(Nebula::Component& component, QTreeWidgetItem* parent, QObject* object,
+                                   const QList<QMetaProperty>& properties)
+{
+    for(const QMetaProperty& property : heldProperties(component, object, properties))
     {
-        const bool held = (*row)->checkState(PropertyColumn) == Qt::Checked || !(*row)->text(FileColumn).isEmpty();
-        for(QTreeWidgetItem* parent = (*row)->parent(); held && parent != nullptr; parent = parent->parent())
-        {
-            parent->setExpanded(true);
-        }
+        const QString name = QString::fromLatin1(property.name());
+        addProperty(parent, {.component = &component, .object = object, .property = name}, property);
     }
+}
+
+void SettingsDialog::addProperty(QTreeWidgetItem* parent, const Nebula::SettingsEntry& entry,
+                                 const QMetaProperty& property)
+{
+    auto* row = new QTreeWidgetItem(parent, {entry.property, property.read(entry.object).toString()});
+    row->setToolTip(PropertyColumn, QString::fromLatin1(property.typeName()));
+    const Nebula::SettingsFile* holder = m_application.settingsFile(entry);
+    if(holder != nullptr && holder != &m_file) // Only one file holds a property
+    {
+        disableFor(*row, holder->fileName());
+        return;
+    }
+    makeCheckable(*row, PropertyColumn, holder != nullptr);
+    m_entries.insert(row, entry);
 }
 
 QString SettingsDialog::fileName() const
@@ -203,25 +185,24 @@ QString SettingsDialog::fileName() const
     return m_file.fileName().chopped(m_file.name().size()) + m_fileName->text().trimmed();
 }
 
+QString SettingsDialog::nameRefusal() const
+{
+    if(m_fileName->text().trimmed().isEmpty())
+    {
+        return tr("A file name is needed");
+    }
+    const Nebula::SettingsFile* holder = m_application.settingsFile(fileName());
+    // Its own name, whatever its case, is its own.
+    return holder != nullptr && holder != &m_file ? tr("Another settings file is named %1").arg(holder->fileName())
+                                                  : QString();
+}
+
 void SettingsDialog::refreshPath()
 {
-    const bool named = !m_fileName->text().trimmed().isEmpty();
-    const Nebula::SettingsFile* holder = m_application.settingsFile(fileName());
-    const bool taken = holder != nullptr && holder != &m_file; // Its own name, whatever its case, is its own
-    if(!named)
-    {
-        m_path->setText(tr("A file name is needed"));
-    }
-    else if(taken)
-    {
-        m_path->setText(tr("Another settings file is named %1").arg(holder->fileName()));
-    }
-    else
-    {
-        m_path->setText(
-            QDir::toNativeSeparators(Nebula::SettingsFile::filePath(fileName(), m_directory->text().trimmed())));
-    }
-    m_buttons->button(QDialogButtonBox::Ok)->setEnabled(named && !taken);
+    const QString refusal = nameRefusal();
+    const QString filePath = Nebula::SettingsFile::filePath(fileName(), m_directory->text().trimmed());
+    m_path->setText(refusal.isEmpty() ? QDir::toNativeSeparators(filePath) : refusal);
+    setAcceptable(refusal.isEmpty());
 }
 
 void SettingsDialog::browse()
@@ -244,18 +225,19 @@ void SettingsDialog::apply()
     // In the order of the tree: the one the file holds them in.
     for(QTreeWidgetItemIterator row(m_tree); *row != nullptr; ++row)
     {
-        const auto entry = m_entries.constFind(*row);
-        if(entry == m_entries.cend())
-        {
-            continue;
-        }
-        if((*row)->checkState(PropertyColumn) != Qt::Checked)
-        {
-            m_file.remove(*entry);
-        }
-        else if(!m_file.contains(*entry))
-        {
-            m_file.add(*entry);
-        }
+        applyRow(**row);
+    }
+}
+
+void SettingsDialog::applyRow(const QTreeWidgetItem& row)
+{
+    const auto entry = m_entries.constFind(&row);
+    if(entry != m_entries.cend() && row.checkState(PropertyColumn) == Qt::Checked)
+    {
+        m_file.add(*entry); // Nothing when it holds it already
+    }
+    else if(entry != m_entries.cend())
+    {
+        m_file.remove(*entry);
     }
 }
