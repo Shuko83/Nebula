@@ -29,7 +29,8 @@ nebula_add_test(TestEditionScene
     SOURCES
         "${_studio}/src/EditionScene.cpp" "${_studio}/src/ComponentItem.cpp" "${_studio}/src/InterfaceItem.cpp"
         "${_studio}/src/LinkItem.cpp" "${_studio}/src/DashedLinkItem.cpp" "${_studio}/src/NameEditor.cpp"
-        "${_studio}/src/ZoneItem.cpp" "${_studio}/src/Theme.cpp"
+        "${_studio}/src/ZoneItem.cpp" "${_studio}/src/Theme.cpp" "${_studio}/src/EditDialog.cpp"
+        "${_studio}/src/PropertyTree.cpp" "${_studio}/src/WarningLabel.cpp"
         "${_studio}/src/Galaxy/StargateItem.cpp" "${_studio}/src/Galaxy/StargateDialog.cpp"
         "${_studio}/src/Settings/SettingsItem.cpp" "${_studio}/src/Settings/SettingsDialog.cpp"
         ${_resources}
