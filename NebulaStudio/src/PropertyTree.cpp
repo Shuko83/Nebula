@@ -6,28 +6,16 @@
 #include <QHeaderView>
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
+#include <algorithm>
 #include <optional>
 
 #include "Nebula/Component/Component.h"
 #include "Nebula/Component/ComponentFactory.h"
+#include "Nebula/Galaxy/Stargate.h"
 #include "Nebula/Settings/SettingsFile.h"
 
 namespace
 {
-
-// The names of the objects among objects that have one, each once, in the order they were added.
-QStringList groupNames(const QList<Nebula::PropertyObject>& objects)
-{
-    QStringList names;
-    for(const Nebula::PropertyObject& added : objects)
-    {
-        if(!added.name.isEmpty() && !names.contains(added.name))
-        {
-            names.append(added.name);
-        }
-    }
-    return names;
-}
 
 // Lists under group the properties of the objects among objects named name.
 void listGroup(QTreeWidgetItem* group, const QList<Nebula::PropertyObject>& objects, const QString& name,
@@ -135,4 +123,48 @@ void makeCheckable(QTreeWidgetItem& row, int column, bool checked, Qt::ItemFlags
 {
     row.setFlags(Qt::ItemIsEnabled | Qt::ItemIsUserCheckable | flags);
     row.setCheckState(column, checked ? Qt::Checked : Qt::Unchecked);
+}
+
+QStringList groupNames(const QList<Nebula::PropertyObject>& objects)
+{
+    QStringList names;
+    for(const Nebula::PropertyObject& added : objects)
+    {
+        if(!added.name.isEmpty() && !names.contains(added.name))
+        {
+            names.append(added.name);
+        }
+    }
+    return names;
+}
+
+QMetaProperty metaPropertyOf(const QObject& object, const QString& name)
+{
+    const QMetaObject* metaObject = object.metaObject();
+    return metaObject->property(metaObject->indexOfProperty(name.toLatin1().constData()));
+}
+
+QList<const Nebula::Stargate*> stargatesAmong(const std::vector<std::unique_ptr<Nebula::Component>>& components)
+{
+    QList<const Nebula::Stargate*> stargates;
+    for(const std::unique_ptr<Nebula::Component>& component : components)
+    {
+        if(const auto* stargate = qobject_cast<const Nebula::Stargate*>(component.get()))
+        {
+            stargates.append(stargate);
+        }
+    }
+    return stargates;
+}
+
+std::optional<QString> exposedNameOf(const Nebula::Stargate& stargate, const Nebula::ExposedProperty& target)
+{
+    const QList<Nebula::ExposedProperty>& exposed = stargate.properties();
+    const auto isTarget = [&target](const Nebula::ExposedProperty& property)
+    {
+        return property.component == target.component && property.object == target.object &&
+               property.property == target.property;
+    };
+    const auto found = std::ranges::find_if(exposed, isTarget);
+    return found != exposed.end() ? std::optional(found->name) : std::nullopt;
 }

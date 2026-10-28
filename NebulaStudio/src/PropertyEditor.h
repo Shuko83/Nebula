@@ -10,8 +10,7 @@
 #include <QWidget>
 #include <utility>
 
-class QLabel;
-class QStackedWidget;
+class PlaceholderStack;
 class QTableWidget;
 class QTableWidgetItem;
 
@@ -19,6 +18,8 @@ namespace Nebula
 {
 class Component;
 class ComponentFactory;
+class Galaxy;
+struct PropertyObject;
 class Stargate;
 class Universe;
 } // namespace Nebula
@@ -65,8 +66,54 @@ class PropertyEditor : public QWidget
         QPointer<Nebula::Component> component; // Of the property: m_component, or one of a galaxy
     };
 
+    // Rebuilds it as component changes its objects, or, a galaxy, is read again; tells it as component is renamed.
+    void follow(Nebula::Component* component);
+    // Gives the titles of the groups the background of the palette again: it has no role for them.
+    void colorTitles();
     // Shows the properties m_component and its objects have now.
     void rebuild();
+    // No longer listens to the objects shown until now, but the component, should it still be the one shown: more
+    // than its properties is followed. Then forgets them.
+    void forgetRows();
+    // Rebuilds it when what the stargates where it is expose changes, which the names tell.
+    void followStargates();
+    // The rows of m_component: those of what a galaxy exposes, or those of the properties of a component and of its
+    // objects.
+    [[nodiscard]] QList<Row> componentRows() const;
+    // What the stargates of galaxy expose, under the names they expose them as.
+    [[nodiscard]] static QList<Row> exposedRows(const Nebula::Galaxy& galaxy);
+    // The properties of component, then those of its objects: those without a name with its own, those of each name,
+    // the first time it came, under a title.
+    [[nodiscard]] QList<Row> propertyRows(Nebula::Component& component) const;
+    // The rows of the objects among objects named name, under a title when they have a name and some rows.
+    [[nodiscard]] static QList<Row> groupRows(const QList<Nebula::PropertyObject>& objects, const QString& name,
+                                              Nebula::Component& component);
+    // The rows of the objects among objects named name, of component.
+    [[nodiscard]] static QList<Row> objectRows(const QList<Nebula::PropertyObject>& objects, const QString& name,
+                                               Nebula::Component& component);
+    // The rows of those of properties of object, of component, that can be edited here: the other properties of a
+    // component are in the viewer of its component.
+    [[nodiscard]] static QList<Row> editableRows(QObject* object, const QList<QMetaProperty>& properties,
+                                                 Nebula::Component& component);
+    // Shows m_rows in the table.
+    void showRows();
+    // Empties the table, closing the editor of a value shown until now; its values are edited while the application
+    // is.
+    void clearTable();
+    // Shows the row row of m_rows.
+    void showRow(int row);
+    // Shows title in row, over the whole of it.
+    void showTitle(int row, const QString& title);
+    // The name of the property of shown, telling where it is, which file holds it and which stargate exposes it.
+    [[nodiscard]] QTableWidgetItem* nameItem(const Row& shown) const;
+    // Tells in the tooltip of item where the property of shown is, when it is one a galaxy exposes.
+    static void tellPlace(QTableWidgetItem& item, const Row& shown);
+    // Writes the name of item in italics, and tells in its tooltip, when a settings file holds the property of shown.
+    void tellHolder(QTableWidgetItem& item, const Row& shown) const;
+    // Gives item the icon of the Stargate, and tells in its tooltip, when a stargate exposes the property of shown.
+    void tellExposure(QTableWidgetItem& item, const Row& shown) const;
+    // Shows the values again when the property of shown changes.
+    void followValue(const Row& shown);
     // Tells why no property is shown, when none is. It names the component, which can be renamed meanwhile.
     void refreshPlaceholder();
     // Writes the value edited in item to its property.
@@ -82,7 +129,6 @@ class PropertyEditor : public QWidget
     QPointer<Nebula::Component> m_component;
     QList<Row> m_rows; // One per row of m_table
 
-    QStackedWidget* m_stack = nullptr;
-    QLabel* m_placeholder = nullptr; // Shown when there is no property to show, and tells why
-    QTableWidget* m_table = nullptr; // Shown otherwise
+    QTableWidget* m_table = nullptr;     // Shown when there is a property to show
+    PlaceholderStack* m_stack = nullptr; // Of m_table and of what tells why there is none
 };
