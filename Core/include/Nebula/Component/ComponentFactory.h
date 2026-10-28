@@ -51,6 +51,9 @@ class CORE_EXPORT ComponentFactory
         Plugin::Builder builder = nullptr;
     };
 
+    // Registers the component of info, built by builder; skips it, with a warning, when its id is already registered.
+    void addType(ComponentInfo info, Plugin& plugin, Plugin::Builder builder);
+
     std::map<QString, Type> m_types; // By id
 };
 

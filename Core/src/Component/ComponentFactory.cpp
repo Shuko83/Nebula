@@ -8,6 +8,8 @@
 #include <ranges>
 #include <utility>
 
+#include "Component/MetaProperties.h"
+
 namespace Nebula
 {
 
@@ -23,21 +25,24 @@ QString classInfo(const QMetaObject& metaObject, const char* name)
     return index < 0 ? QString() : QString::fromUtf8(metaObject.classInfo(index).value());
 }
 
+// The name of the class of metaObject, without its namespaces.
+QString shortClassName(const QMetaObject& metaObject)
+{
+    const QString className = QString::fromLatin1(metaObject.className());
+    const qsizetype separator = className.lastIndexOf(u"::");
+    return separator < 0 ? className : className.mid(separator + 2);
+}
+
 ComponentInfo readInfo(const QMetaObject& metaObject, const QString& pluginId)
 {
     ComponentInfo info;
-    const QString className = QString::fromLatin1(metaObject.className());
-    const qsizetype separator = className.lastIndexOf(u"::");
-    info.name = separator < 0 ? className : className.mid(separator + 2);
+    info.name = shortClassName(metaObject);
     info.pluginId = pluginId;
     info.id = info.pluginId + u'.' + info.name;
     info.description = classInfo(metaObject, "description");
     info.category = classInfo(metaObject, "category");
     // The properties of QObject and Component come first: they are not the component's.
-    for(int index = Component::staticMetaObject.propertyCount(); index < metaObject.propertyCount(); ++index)
-    {
-        info.properties.append(metaObject.property(index));
-    }
+    info.properties = declaredProperties(metaObject, Component::staticMetaObject);
     return info;
 }
 
@@ -61,15 +66,19 @@ void ComponentFactory::add(const QString& pluginId, Plugin& plugin)
     }
     for(const Plugin::ComponentType& componentType : plugin.m_componentTypes)
     {
-        ComponentInfo info = readInfo(*componentType.metaObject, pluginId);
-        if(m_types.contains(info.id))
-        {
-            qCWarning(lcComponents).noquote() << "Ignoring" << info.id << "- already registered";
-            continue;
-        }
-        const QString componentId = info.id;
-        m_types.emplace(componentId, Type{.info = std::move(info), .plugin = &plugin, .builder = componentType.builder});
+        addType(readInfo(*componentType.metaObject, pluginId), plugin, componentType.builder);
     }
+}
+
+void ComponentFactory::addType(ComponentInfo info, Plugin& plugin, Plugin::Builder builder)
+{
+    if(m_types.contains(info.id))
+    {
+        qCWarning(lcComponents).noquote() << "Ignoring" << info.id << "- already registered";
+        return;
+    }
+    const QString componentId = info.id;
+    m_types.emplace(componentId, Type{.info = std::move(info), .plugin = &plugin, .builder = builder});
 }
 
 void ComponentFactory::remove(const QString& pluginId)
