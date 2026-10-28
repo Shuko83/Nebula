@@ -9,7 +9,6 @@
 #include "DashedLinkItem.h"
 #include "Nebula/Galaxy/Stargate.h"
 
-
 // A stargate in the edition zone, see Nebula::Stargate: a component, the icon of the Stargate before "Stargate", whose
 // interfaces are those it exposes, the other way round: on its left edge those its galaxy provides, which it consumes
 // from components of the galaxy, on its right edge those its galaxy consumes, which it provides to them. Then a row per
