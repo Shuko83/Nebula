@@ -29,6 +29,10 @@ class NameEditor : public QGraphicsTextItem
   private:
     // Puts what is typed where the name is painted, whatever its length.
     void place();
+    // Where its left side is for a text width wide to be aligned where the name is painted: its text is inside the
+    // margin of its document.
+    [[nodiscard]] qreal leftFor(qreal width) const;
+    void selectAll();
     // Ends the edition; named tells whether what was typed is the name, rather than given up.
     void end(bool named);
 

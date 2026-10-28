@@ -28,6 +28,17 @@ constexpr qreal PickWidth = 10;
 // How far, at least, a link goes straight out of its interfaces before turning to the other one.
 constexpr qreal MinimumReach = 40;
 
+// Whether a view of scene draws a rubber band; not when there is no scene.
+bool drawsRubberBand(const QGraphicsScene* scene)
+{
+    if(scene == nullptr)
+    {
+        return false;
+    }
+    const QList<QGraphicsView*> views = scene->views();
+    return std::ranges::any_of(views, [](const QGraphicsView* view) { return !view->rubberBandRect().isNull(); });
+}
+
 } // namespace
 
 LinkItem::LinkItem(InterfaceItem& provided, InterfaceItem& consumed) : m_provided(provided), m_consumed(consumed)
@@ -125,13 +136,9 @@ QVariant LinkItem::itemChange(GraphicsItemChange change, const QVariant& value)
 {
     // A rubber band selects what is in it, but a link that only crosses it would be selected too, and removed with
     // what is.
-    if(change == ItemSelectedChange && value.toBool() && scene() != nullptr)
+    if(change == ItemSelectedChange && value.toBool() && drawsRubberBand(scene()))
     {
-        const QList<QGraphicsView*> views = scene()->views();
-        if(std::ranges::any_of(views, [](const QGraphicsView* view) { return !view->rubberBandRect().isNull(); }))
-        {
-            return false;
-        }
+        return false;
     }
     return QGraphicsItem::itemChange(change, value);
 }

@@ -51,42 +51,80 @@ const ThemeColors Light = {
     .onWarning = QColor(0xFFFFFF),
 };
 
-// The roles of the palette in the colors of a scheme, the same whether its window is active or not.
-QPalette palette(const ThemeColors& colors)
+// The icons of the terms of the glossary, in the order of GlossaryTerm.
+const QStringList IconFiles = {QStringLiteral(":/icons/universe.svg"), QStringLiteral(":/icons/galaxy.svg"),
+                               QStringLiteral(":/icons/astre.svg"), QStringLiteral(":/icons/comet.svg"),
+                               QStringLiteral(":/icons/stargate.svg")};
+
+// Roles of the palette, each with its color.
+using RoleColors = QList<std::pair<QPalette::ColorRole, QColor>>;
+
+// What is behind the texts of a scheme.
+RoleColors backgroundRoles(const ThemeColors& colors)
+{
+    return {{QPalette::Window, colors.space},
+            {QPalette::Base, colors.field},
+            {QPalette::AlternateBase, colors.alternateField},
+            {QPalette::Button, colors.surface},
+            {QPalette::ToolTipBase, colors.surface}};
+}
+
+// The texts of a scheme.
+RoleColors textRoles(const ThemeColors& colors)
+{
+    return {{QPalette::WindowText, colors.text},           {QPalette::Text, colors.text},
+            {QPalette::PlaceholderText, colors.mutedText}, {QPalette::ButtonText, colors.text},
+            {QPalette::BrightText, colors.text},           {QPalette::ToolTipText, colors.text}};
+}
+
+// The bevels of the style in the colors of a scheme.
+RoleColors bevelRoles(const ThemeColors& colors)
 {
     // How much the bevels of the style are lighter or darker than the surface, in percent.
     constexpr int BevelFactor = 130;
+    return {{QPalette::Light, colors.surface.lighter(BevelFactor)},
+            {QPalette::Midlight, colors.surface.lighter((100 + BevelFactor) / 2)},
+            {QPalette::Mid, colors.edge},
+            {QPalette::Dark, colors.edge.darker(BevelFactor)},
+            {QPalette::Shadow, colors.space.darker(BevelFactor)}};
+}
 
-    QPalette palette;
-    palette.setColor(QPalette::Window, colors.space);
-    palette.setColor(QPalette::WindowText, colors.text);
-    palette.setColor(QPalette::Base, colors.field);
-    palette.setColor(QPalette::AlternateBase, colors.alternateField);
-    palette.setColor(QPalette::Text, colors.text);
-    palette.setColor(QPalette::PlaceholderText, colors.mutedText);
-    palette.setColor(QPalette::Button, colors.surface);
-    palette.setColor(QPalette::ButtonText, colors.text);
-    palette.setColor(QPalette::BrightText, colors.text);
-    palette.setColor(QPalette::ToolTipBase, colors.surface);
-    palette.setColor(QPalette::ToolTipText, colors.text);
-    palette.setColor(QPalette::Light, colors.surface.lighter(BevelFactor));
-    palette.setColor(QPalette::Midlight, colors.surface.lighter((100 + BevelFactor) / 2));
-    palette.setColor(QPalette::Mid, colors.edge);
-    palette.setColor(QPalette::Dark, colors.edge.darker(BevelFactor));
-    palette.setColor(QPalette::Shadow, colors.space.darker(BevelFactor));
-    palette.setColor(QPalette::Highlight, colors.accent);
-    palette.setColor(QPalette::HighlightedText, colors.onAccent);
-    palette.setColor(QPalette::Accent, colors.accent);
-    palette.setColor(QPalette::Link, colors.link);
-    palette.setColor(QPalette::LinkVisited, colors.visitedLink);
+// What stands out in a scheme: the selection and the links.
+RoleColors accentRoles(const ThemeColors& colors)
+{
+    return {{QPalette::Highlight, colors.accent},
+            {QPalette::HighlightedText, colors.onAccent},
+            {QPalette::Accent, colors.accent},
+            {QPalette::Link, colors.link},
+            {QPalette::LinkVisited, colors.visitedLink}};
+}
 
-    for(const QPalette::ColorRole role :
-        {QPalette::WindowText, QPalette::Text, QPalette::ButtonText, QPalette::PlaceholderText})
+// What changes in a scheme when it is disabled.
+RoleColors disabledRoles(const ThemeColors& colors)
+{
+    return {{QPalette::WindowText, colors.disabledText}, {QPalette::Text, colors.disabledText},
+            {QPalette::ButtonText, colors.disabledText}, {QPalette::PlaceholderText, colors.disabledText},
+            {QPalette::Highlight, colors.edge},          {QPalette::HighlightedText, colors.text}};
+}
+
+// Gives roles their color in group of palette.
+void setColors(QPalette& palette, QPalette::ColorGroup group, const RoleColors& roles)
+{
+    for(const auto& [role, color] : roles)
     {
-        palette.setColor(QPalette::Disabled, role, colors.disabledText);
+        palette.setColor(group, role, color);
     }
-    palette.setColor(QPalette::Disabled, QPalette::Highlight, colors.edge);
-    palette.setColor(QPalette::Disabled, QPalette::HighlightedText, colors.text);
+}
+
+// The roles of the palette in the colors of a scheme, the same whether its window is active or not.
+QPalette palette(const ThemeColors& colors)
+{
+    QPalette palette;
+    for(const RoleColors& roles : {backgroundRoles(colors), textRoles(colors), bevelRoles(colors), accentRoles(colors)})
+    {
+        setColors(palette, QPalette::All, roles);
+    }
+    setColors(palette, QPalette::Disabled, disabledRoles(colors));
     return palette;
 }
 
@@ -128,20 +166,7 @@ QFont titleFont(const QFont& font)
 
 QIcon icon(GlossaryTerm term)
 {
-    switch(term)
-    {
-    case GlossaryTerm::Universe:
-        return QIcon(QStringLiteral(":/icons/universe.svg"));
-    case GlossaryTerm::Galaxy:
-        return QIcon(QStringLiteral(":/icons/galaxy.svg"));
-    case GlossaryTerm::Astre:
-        return QIcon(QStringLiteral(":/icons/astre.svg"));
-    case GlossaryTerm::Comet:
-        return QIcon(QStringLiteral(":/icons/comet.svg"));
-    case GlossaryTerm::Stargate:
-        return QIcon(QStringLiteral(":/icons/stargate.svg"));
-    }
-    return {};
+    return QIcon(IconFiles.value(static_cast<qsizetype>(term)));
 }
 
 QString logoPath()
