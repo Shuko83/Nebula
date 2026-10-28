@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QDir>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QList>
 #include <QMetaProperty>
@@ -235,88 +236,244 @@ class CORE_EXPORT Universe : public QObject
         QString* cycle = nullptr; // Set, in a galaxy, when one it holds would hold itself: it is refused then
     };
 
+    // The stargates of a project, each with its JSON: what they expose is read once every component is there.
+    using StargateJsons = QList<std::pair<Stargate*, QJsonObject>>;
+
+    // Sets errorString() to why and returns false.
+    bool refuse(const QString& why);
+    // Scans directory, given on the command line; skips it, with a warning, when it is not one.
+    void scanDirectory(const QString& directory);
+    // Loads the plugin pluginId, unless it is loaded already; false, with PluginManager::errorString() set, when it
+    // cannot be.
+    bool loadPlugin(const QString& pluginId);
+
     // The directory of its file, canonical when it exists; empty when it has no file.
     [[nodiscard]] QString projectDirectory() const;
 
     // The scope of its own project.
     [[nodiscard]] Scope applicationScope() const;
+    // The scope of galaxy, being filled in parent; cycle is set when a galaxy it holds would hold itself.
+    [[nodiscard]] static Scope innerScope(Galaxy& galaxy, const Scope& parent, QString* cycle);
     // The galaxies from the application down to the one that holds instance, directly, in that order: none when the
     // application does. nullopt when none does.
     [[nodiscard]] std::optional<QList<Galaxy*>> pathTo(const Component& instance) const;
     // The scope of the last galaxy of path, see pathTo(), in the one before; the one of the application when path is
     // empty.
     [[nodiscard]] Scope scope(const QList<Galaxy*>& path) const;
+    // The scope instance is in; nullopt when it is none of those of the application, at any depth.
+    [[nodiscard]] std::optional<Scope> scopeOf(const Component& instance) const;
     // The scope of galaxy, one of its galaxies or of those they hold, or of the application when galaxy is nullptr;
     // nullopt when it is none of them.
     [[nodiscard]] std::optional<Scope> galaxyScope(Galaxy* galaxy) const;
-    // The project of the galaxy of filePath, read for it to be placed in parent, whose plugins are loaded; nullopt,
-    // with error set, when it cannot be placed there, see instantiateGalaxy().
-    std::optional<QJsonObject> readGalaxyProject(const QString& filePath, const Scope& parent, QString& error);
-    // Fills galaxy, an empty one named as it is to be in parent, of its file, with project, the one of its file, as
-    // loadScope() does. Returns false, with error set and galaxy empty, when a galaxy of project would hold itself.
-    bool fillGalaxy(Galaxy& galaxy, const QJsonObject& project, const Scope& parent, QString& error);
-    // Sets the properties galaxy exposes to values, by the names they are exposed as. problems tells those it does not
-    // expose, or that could not be set.
-    static void setExposedValues(const Galaxy& galaxy, const QJsonObject& values, QStringList& problems);
-    // What save() writes of components and files, the files of their galaxies relative to directory, whole when it is
-    // empty, with description.
-    [[nodiscard]] QJsonObject saveProject(const std::vector<std::unique_ptr<Component>>& components,
-                                          const std::vector<std::unique_ptr<SettingsFile>>& files,
-                                          const QString& directory, const QString& description) const;
+    [[nodiscard]] std::vector<std::unique_ptr<Component>>& scopeComponents(const Scope& scope);
+    // The one of scope named name; nullptr when none is.
+    [[nodiscard]] Component* scopeComponent(const Scope& scope, const QString& name) const;
+    // name, unless it is empty or the name of one of scope: base and the first number none is named with then.
+    [[nodiscard]] QString freeName(const Scope& scope, const QString& name, const QString& base) const;
+    // Whether name is free for instance in scope: none of scope but instance is named so.
+    [[nodiscard]] bool isFreeFor(const Scope& scope, const QString& name, const Component& instance) const;
+    // Names instance, of scope, name: the settings files of a galaxy are named after it.
+    void setName(Component& instance, const QString& name, const Scope& scope);
+    // A component of the type componentId in scope, named name or after its type when it is taken; nullptr when no
+    // loaded plugin provides it.
+    Component* create(const Scope& scope, const QString& componentId, const QString& name);
+    // A stargate of scope, named name or after the stargates when it is taken.
+    Stargate* newStargate(const Scope& scope, const QString& name);
+    // Adds component to scope, named after freeName(); nullptr when component is nullptr.
+    Component* adopt(const Scope& scope, std::unique_ptr<Component> component, const QString& name,
+                     const QString& base);
+    // adopt() for a galaxy, named already.
+    Galaxy* adoptGalaxy(const Scope& scope, std::unique_ptr<Galaxy> galaxy);
+    // adoptGalaxy() while the application is edited: its settings files change when the galaxy has some.
+    Galaxy* placeGalaxy(const Scope& scope, std::unique_ptr<Galaxy> galaxy);
+    // Tells, when scope is the application, that its components changed.
+    void tellComponentsChanged(const Scope& scope);
+    // Tells, when scope is the application, that its components changed, and its settings files too when adopted is a
+    // galaxy that has some.
+    void tellAdopted(const Scope& scope, const Component& adopted);
+    // Tells that the settings files of the application changed when component is a galaxy that has some: they come or
+    // go with it.
+    void tellSettingsFilesOf(const Component* component);
+    // Destroys its components, out of components() first, as remove() does.
+    void removeComponents();
+    // Removes the instances of the plugin pluginId, and the galaxies that hold one.
+    void removeComponentsOf(const QString& pluginId);
+
+    // The plugins of project, loaded unless they are; returns those that could not be.
+    QStringList loadProjectPlugins(const QJsonArray& plugins);
+    // Loads plugin, one of a project, opened from its file when it is not known already; why it could not, empty when
+    // it could.
+    QString loadProjectPlugin(const QJsonObject& plugin);
     // Fills scope with the components of project, its galaxies, their links and its settings files, as load() does,
     // the plugins being loaded. Returns what could not be restored.
     QStringList loadScope(const Scope& scope, const QJsonObject& project);
+    // Places in scope components, those of a project, galaxies and stargates included; problems tells what could not
+    // be. Returns the stargates.
+    StargateJsons loadComponents(const Scope& scope, const QJsonArray& components, QStringList& problems);
+    // Places in scope the component json of a project, a galaxy or a stargate included; problems tells what could not
+    // be. Returns it; nullptr when it is missing.
+    Component* loadComponent(const Scope& scope, const QJsonObject& json, QStringList& problems);
+    // Places in scope the component json of a project, of a plugin, with its properties and those of its objects;
+    // problems tells what could not be. Returns it; nullptr when no loaded plugin provides it.
+    Component* loadInstance(const Scope& scope, const QJsonObject& json, QStringList& problems);
     // Places in scope the galaxy json, a component of a project, see createGalaxy(), with the values json gives what it
-    // exposes. Returns what could not be restored, it missing included.
-    QStringList loadGalaxy(const Scope& scope, const QJsonObject& json);
-    // Has stargate, one of scope, expose the interfaces json, the stargate of a project, gives it, of the types of the
-    // components of scope. Returns what could not be restored.
-    QStringList loadStargateInterfaces(const Scope& scope, Stargate& stargate, const QJsonObject& json) const;
-    // Has stargate, one of scope, expose the properties json gives it. Returns what could not be restored.
-    QStringList loadStargateProperties(const Scope& scope, Stargate& stargate, const QJsonObject& json) const;
+    // exposes; problems tells what could not be restored, it missing included. Returns it; nullptr when it is missing.
+    Galaxy* loadGalaxy(const Scope& scope, const QJsonObject& json, QStringList& problems);
+    // Has stargates, of scope, expose the interfaces their JSON gives them, of the types of the components of scope;
+    // problems tells those they could not.
+    void loadStargateInterfaces(const Scope& scope, const StargateJsons& stargates, QStringList& problems) const;
+    // Has stargate expose, the way exposure tells, interfaces, from its JSON; problems tells those it could not.
+    void loadInterfaces(const Scope& scope, Stargate& stargate, Exposure exposure, const QJsonArray& interfaces,
+                        QStringList& problems) const;
+    // Has stargate expose, the way exposure tells, the interface json; why it could not, empty when it could.
+    QString loadInterface(const Scope& scope, Stargate& stargate, Exposure exposure, const QJsonObject& json) const;
+    // Binds the components of scope as bindings, those of a project, tell; problems tells those it could not.
+    void loadBindings(const Scope& scope, const QJsonArray& bindings, QStringList& problems) const;
+    // Binds the components of scope as json, a binding of a project, tells; why it could not, empty when it could.
+    QString loadBinding(const Scope& scope, const QJsonObject& json) const;
+    // Has stargates expose the properties their JSON gives them; problems tells those they could not.
+    void loadStargateProperties(const Scope& scope, const StargateJsons& stargates, QStringList& problems) const;
+    // Has stargate expose the property json; why it could not, empty when it could.
+    QString loadExposedProperty(const Scope& scope, Stargate& stargate, const QJsonObject& json) const;
+    // Adds to scope settings, the settings files of a project; problems tells what could not be restored.
+    void loadSettingsFiles(const Scope& scope, const QJsonArray& settings, QStringList& problems);
+    // Adds to scope json, a settings file of a project; problems tells what could not be restored.
+    void loadSettingsFile(const Scope& scope, const QJsonObject& json, QStringList& problems);
+    // Adds to file, of scope, the entry json, of a project; problems tells when it could not.
+    void loadEntry(const Scope& scope, SettingsFile& file, const QJsonObject& json, QStringList& problems) const;
     // The property json, an entry of a settings file or a property a stargate exposes, tells of a component of scope;
     // its component or its object nullptr when there is none. owner is set to what the property is of, as it is told.
     [[nodiscard]] SettingsEntry readEntry(const Scope& scope, const QJsonObject& json, QString& owner) const;
     // The type named typeName, QWidget* say, of an interface a component of scope provides or consumes, or registered
     // under that name otherwise; not valid when there is none.
     [[nodiscard]] QMetaType interfaceType(const Scope& scope, const QString& typeName) const;
+
+    // The project of the galaxy of filePath, read for it to be placed in parent, whose plugins are loaded; nullopt,
+    // with error set, when it cannot be placed there, see instantiateGalaxy().
+    std::optional<QJsonObject> readGalaxyProject(const QString& filePath, const Scope& parent, QString& error);
+    // Whether the galaxy of info, whose file is nativePath, can be placed in parent: it does not hold itself, and its
+    // plugins are known and loaded. error tells why otherwise.
+    bool canPlace(const QString& nativePath, const GalaxyInfo& info, const Scope& parent, QString& error);
+    // Whether the galaxy of the file nativePath, canonicalPath canonical, would hold itself in parent, directly or
+    // not; error and the cycle of parent tell it then.
+    static bool isCycle(const QString& nativePath, const QString& canonicalPath, const Scope& parent, QString& error);
+    // Tells the galaxy of parent that one it holds would hold itself, as cycle tells: it is refused as well.
+    static void tellCycle(const Scope& parent, const QString& cycle);
+    // Whether the application knows the plugins of the galaxy of info, whose file is nativePath; error tells those it
+    // does not.
+    bool knowsPlugins(const QString& nativePath, const GalaxyInfo& info, QString& error) const;
+    // Loads the plugins of the galaxy of info, whose file is nativePath; false, with error set, at the first that
+    // cannot be.
+    bool loadPlugins(const QString& nativePath, const GalaxyInfo& info, QString& error);
     // The galaxy of filePath, named name in parent, see instantiateGalaxy(); nullptr, with error set, when it cannot
     // be placed there. Not added to parent yet.
     std::unique_ptr<Galaxy> createGalaxy(const QString& filePath, const QString& name, const Scope& parent,
                                          QString& error);
-    [[nodiscard]] std::vector<std::unique_ptr<Component>>& scopeComponents(const Scope& scope);
-    // The one of scope named name; nullptr when none is.
-    [[nodiscard]] Component* scopeComponent(const Scope& scope, const QString& name) const;
-    // name, unless it is empty or the name of one of scope: base and the first number none is named with then.
-    [[nodiscard]] QString freeName(const Scope& scope, const QString& name, const QString& base) const;
-    // Adds component to scope, named after freeName(); nullptr when component is nullptr.
-    Component* adopt(const Scope& scope, std::unique_ptr<Component> component, const QString& name,
-                     const QString& base);
+    // An empty galaxy of the file filePath, named name in parent, or after its file when it is taken.
+    std::unique_ptr<Galaxy> emptyGalaxy(const QString& filePath, const QString& name, const Scope& parent) const;
+    // Fills galaxy, an empty one named as it is to be in parent, of its file, with project, the one of its file, as
+    // loadScope() does. Returns false, with error set and galaxy empty, when a galaxy of project would hold itself.
+    bool fillGalaxy(Galaxy& galaxy, const QJsonObject& project, const Scope& parent, QString& error);
+    // Fills galaxy with project, as fillGalaxy() does; returns why it would hold itself, empty when it would not.
+    QString loadGalaxyContent(Galaxy& galaxy, const QJsonObject& project, const Scope& parent);
+    // Empties galaxy, which would hold itself as cycle tells, and tells parent.
+    static void refuseCycle(Galaxy& galaxy, const QString& cycle, const Scope& parent);
+    // Follows the settings files of galaxy, once it is filled, and attaches its stargates, once they are bound.
+    void settleGalaxy(Galaxy& galaxy);
+    // The scope a galaxy is placed in, the one of galaxy; nullopt, with errorString() set, when none can be.
+    std::optional<Scope> placingScope(Galaxy* galaxy);
+    // Why galaxy is not read again; empty when it can be.
+    [[nodiscard]] QString reloadRefusal(const Galaxy& galaxy) const;
+    // The project of the file of galaxy, read again for it to be filled again in parent; nullopt, with error set, when
+    // it can no longer be placed there.
+    std::optional<QJsonObject> readAgain(const Galaxy& galaxy, const Scope& parent, QString& error);
+    // Fills galaxy again with project, the one of its file, in parent, keeping what is bound to its interfaces, either
+    // way, and the values of what it exposes; returns what is lost.
+    QStringList reload(Galaxy& galaxy, const QJsonObject& project, const Scope& parent);
+    // Fills galaxy, emptied, with project; returns its problems, or why it is left empty.
+    QStringList refill(Galaxy& galaxy, const QJsonObject& project, const Scope& parent);
+    // Tells galaxy was read again, and that the settings files of the application changed when it had or has some.
+    void tellReloaded(Galaxy& galaxy, bool hadSettingsFiles);
+    // The values of what galaxy exposes, by the names they are exposed as, as a project holds them.
+    [[nodiscard]] QJsonObject exposedValues(const Galaxy& galaxy) const;
+
+    // What save() writes of components and files, the files of their galaxies relative to directory, whole when it is
+    // empty, with description.
+    [[nodiscard]] QJsonObject saveProject(const std::vector<std::unique_ptr<Component>>& components,
+                                          const std::vector<std::unique_ptr<SettingsFile>>& files,
+                                          const QString& directory, const QString& description) const;
+    // The plugins of components, and of those of their galaxies, as a project holds them: those to load before it is
+    // read again.
+    [[nodiscard]] QJsonArray pluginsJson(const std::vector<std::unique_ptr<Component>>& components) const;
+    // The files of the plugins of components, and of those of their galaxies, by plugin id.
+    [[nodiscard]] std::map<QString, QString>
+    pluginFiles(const std::vector<std::unique_ptr<Component>>& components) const;
+    // Adds the plugin of component, or those of the components of a galaxy, to files, by id.
+    void addPluginFiles(const Component& component, std::map<QString, QString>& files) const;
+    // The plugin of component; nullopt when it is no longer known.
+    [[nodiscard]] std::optional<PluginInfo> pluginOf(const Component& component) const;
+    // components as a project holds them, the files of their galaxies relative to directory.
+    [[nodiscard]] QJsonArray componentsJson(const std::vector<std::unique_ptr<Component>>& components,
+                                            const QString& directory) const;
+    // component as a project holds it: its name, its type, and what contentJson() writes.
+    [[nodiscard]] QJsonObject componentJson(const Component& component, const QString& directory) const;
+    // What a project holds of component beyond its name and its type: what galaxyJson(), stargateJson() or
+    // propertiesJson() writes.
+    [[nodiscard]] QJsonObject contentJson(const Component& component, const QString& directory) const;
+    // galaxy as a project holds it: its file, relative to directory, and the values of what it exposes.
+    [[nodiscard]] QJsonObject galaxyJson(const Galaxy& galaxy, const QString& directory) const;
+    // The properties of component, and those of its objects, as a project holds them.
+    [[nodiscard]] QJsonObject propertiesJson(const Component& component) const;
+    // added, an object of a component, as a project holds it.
+    [[nodiscard]] QJsonObject objectJson(const PropertyObject& added) const;
+
+    // The settings files of galaxy, or its own when galaxy is nullptr.
+    [[nodiscard]] std::vector<std::unique_ptr<SettingsFile>>& settingsFilesOf(Galaxy* galaxy);
     // A settings file of scope, named fileName when it is not empty, after its galaxy in a galaxy; when the name is
     // taken, it is named as addSettingsFile() names it, or with a number after its name in a galaxy, which problems
     // tells.
     SettingsFile& addSettingsFile(const Scope& scope, const QString& fileName, QStringList& problems);
+    // addSettingsFile() in the application.
+    SettingsFile& addApplicationSettingsFile(const QString& fileName, QStringList& problems);
+    // addSettingsFile() in the galaxy of scope.
+    SettingsFile& addGalaxySettingsFile(const Scope& scope, const QString& fileName, QStringList& problems);
+    // base, or the first name numbered after it that no other file of the galaxy of scope has, whatever its case, nor
+    // another file of the application the one it would have then.
+    [[nodiscard]] QString freeGalaxyFileName(const Scope& scope, const QString& base) const;
     // Its settings files, then those of its galaxies, in the order they start.
     [[nodiscard]] QList<SettingsFile*> allSettingsFiles() const;
     // Names the settings files of galaxy, and of the galaxies it holds, after prefix, as createGalaxy() does.
     void nameSettingsFiles(Galaxy& galaxy, const QString& prefix);
-    // Adds the plugin of component, or those of the components of a galaxy, to pluginFiles, by id.
-    void addPluginFiles(const Component& component, std::map<QString, QString>& pluginFiles) const;
+    // settings.json, or settings<n>.json with the first number from 2 no settings file is named with.
+    [[nodiscard]] QString newSettingsFileName() const;
 
     // The properties a project holds of object, among properties: those of the edition while it runs.
     [[nodiscard]] QJsonObject savedValues(const QObject& object, const QList<QMetaProperty>& properties) const;
     // The value a project holds of property, one a galaxy exposes: the one of the edition while it runs. nullopt when
     // JSON cannot hold it.
     [[nodiscard]] std::optional<QJsonValue> savedValue(const ExposedProperty& property) const;
+    // Starts its settings files, in their order.
+    void startSettingsFiles();
+    // Stops its settings files, in the reverse order.
+    void stopSettingsFiles();
+    // Starts its components in their order; at the first that refuses, returns to the edition, errorString() telling
+    // it, and returns false.
+    bool startComponents();
     // Keeps the values of the edition, see EditedValues.
     void keepEditedValues();
+    // keepEditedValues() of each of components.
+    void keepEditedValues(const std::vector<std::unique_ptr<Component>>& components);
     // Those of component and of its objects, or of the components of a galaxy.
     void keepEditedValues(Component& component);
+    // Those of component and of its objects.
+    void keepPropertyValues(Component& component);
+    // Those of object, among properties.
+    void keepValues(QObject& object, const QList<QMetaProperty>& properties);
     // Once its components no longer run: stops its settings files, then gives the properties the values of the
     // edition again, and forgets them.
     void returnToEdition();
-    // settings.json, or settings<n>.json with the first number from 2 no settings file is named with.
-    [[nodiscard]] QString newSettingsFileName() const;
+    // Gives the properties of edited the values of the edition again, unless its object is gone.
+    static void giveBack(const EditedValues& edited);
     void setRunning(bool running);
 
     PluginManager m_plugins; // Before m_components: it unloads its plugins once their components are destroyed

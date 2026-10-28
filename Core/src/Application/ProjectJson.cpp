@@ -15,13 +15,6 @@ namespace Nebula::ProjectJson
 namespace
 {
 
-// The properties of the type of component, as its plugin registered it; empty when it is no longer registered.
-QList<QMetaProperty> componentProperties(const Component& component)
-{
-    const std::optional<ComponentInfo> info = ComponentFactory::instance().component(component.componentId());
-    return info ? info->properties : QList<QMetaProperty>();
-}
-
 // The properties of object, component or one of its property objects; empty when it is neither.
 QList<QMetaProperty> objectProperties(const Component& component, const QObject* object)
 {
@@ -67,6 +60,25 @@ bool writeProperty(QObject& object, const QList<QMetaProperty>& properties, cons
     const auto property = std::ranges::find(properties, name, [](const QMetaProperty& known)
                                             { return QString::fromLatin1(known.name()); });
     return property != properties.end() && property->write(&object, value.toVariant());
+}
+
+QStringList writeProperties(QObject& object, const QList<QMetaProperty>& properties, const QJsonObject& values)
+{
+    QStringList unset;
+    for(auto value = values.begin(); value != values.end(); ++value)
+    {
+        if(!writeProperty(object, properties, value.key(), value.value()))
+        {
+            unset.append(value.key());
+        }
+    }
+    return unset;
+}
+
+QList<QMetaProperty> componentProperties(const Component& component)
+{
+    const std::optional<ComponentInfo> info = ComponentFactory::instance().component(component.componentId());
+    return info ? info->properties : QList<QMetaProperty>();
 }
 
 std::optional<ObjectKey> objectKey(const Component& component, const QObject* object)

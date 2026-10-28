@@ -69,7 +69,7 @@ class CORE_EXPORT PluginManager
     };
 
     // Sets errorString() to error and returns false.
-    bool fail(const QString& error);
+    bool refuse(const QString& error);
     // The entry of the plugin filePath, canonical; nullptr when it is not known.
     [[nodiscard]] const Entry* findFile(const QString& filePath) const;
     // The entry of pluginId, with errorString() cleared; nullptr, with errorString() set, when it is unknown.

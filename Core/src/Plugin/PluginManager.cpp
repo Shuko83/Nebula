@@ -229,7 +229,7 @@ QString PluginManager::errorString() const
     return m_errorString;
 }
 
-bool PluginManager::fail(const QString& error)
+bool PluginManager::refuse(const QString& error)
 {
     m_errorString = error;
     return false;
@@ -303,7 +303,7 @@ bool PluginManager::unloadLoaded(const QString& pluginId, Entry& entry)
 {
     if(!entry.loaded)
     {
-        return fail(QStringLiteral("%1 was loaded by another plugin manager").arg(pluginId));
+        return refuse(QStringLiteral("%1 was loaded by another plugin manager").arg(pluginId));
     }
     entry.loaded = false;
     // Before its root object, which owns what builds them, is destroyed.
@@ -317,7 +317,7 @@ bool PluginManager::keptByAnother(const QString& pluginId, QPluginLoader& loader
     {
         ComponentFactory::instance().add(pluginId, root->plugin());
     }
-    return fail(QStringLiteral("%1 is still loaded by another plugin manager").arg(pluginId));
+    return refuse(QStringLiteral("%1 is still loaded by another plugin manager").arg(pluginId));
 }
 
 } // namespace Nebula

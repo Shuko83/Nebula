@@ -47,6 +47,7 @@ class CORE_EXPORT SettingsFile : public QObject
     Q_OBJECT
 
   public:
+    // Stops first when it is destroyed while the application runs, removed from it.
     ~SettingsFile() override;
 
     // As it was added, settings.json, or settings2.json, settings3.json... when another file has that name, until it
