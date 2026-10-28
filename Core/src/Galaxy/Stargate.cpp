@@ -5,8 +5,10 @@
 
 #include <QMetaProperty>
 #include <algorithm>
+#include <utility>
 
 #include "Application/ProjectJson.h"
+#include "Component/Components.h"
 #include "Nebula/Application/Universe.h"
 #include "Nebula/Galaxy/Galaxy.h"
 
@@ -20,6 +22,46 @@ namespace
 bool isSameProperty(const ExposedProperty& first, const ExposedProperty& second)
 {
     return first.component == second.component && first.object == second.object && first.property == second.property;
+}
+
+// Whether a passage is the one exposed the way exposure tells under name.
+auto isPassage(Exposure exposure, const QString& name)
+{
+    return [exposure, &name](const auto& passage)
+    { return passage.info.exposure == exposure && passage.info.name == name; };
+}
+
+// Whether a project holds property, of a component that is not a galaxy.
+bool isHeld(const ExposedProperty& property)
+{
+    const QList<QMetaProperty> saved = ProjectJson::savedProperties(*property.component, property.object);
+    return std::ranges::any_of(saved, [&property](const QMetaProperty& held)
+                               { return QLatin1StringView(held.name()) == property.property; });
+}
+
+// Whether property is one its component has to expose: one it exposes when it is a galaxy, one a project holds
+// otherwise.
+bool isExposable(const ExposedProperty& property)
+{
+    if(const auto* galaxy = qobject_cast<const Galaxy*>(property.component))
+    {
+        return property.object == galaxy && galaxy->exposedProperty(property.property).has_value();
+    }
+    return isHeld(property);
+}
+
+// Whether component consumes, as Mandatory, providedName of provider.
+bool needs(const Component& component, const Component* provider, const QString& providedName)
+{
+    const auto isBound = [provider, &providedName](const InterfaceBinding& to)
+    { return to.provider == provider && to.providedName == providedName; };
+    const QList<InterfaceInfo> consumed = component.consumedInterfaces();
+    return std::ranges::any_of(consumed,
+                               [&component, &isBound](const InterfaceInfo& info)
+                               {
+                                   return info.requirement == InterfaceRequirement::Mandatory &&
+                                          std::ranges::any_of(component.bindings(info.name), isBound);
+                               });
 }
 
 } // namespace
@@ -50,8 +92,7 @@ QList<ExposedInterface> Stargate::interfaces() const
 
 const ExposedInterface* Stargate::exposedInterface(Exposure exposure, const QString& name) const
 {
-    const auto found = std::ranges::find_if(m_passages, [exposure, &name](const Passage& passage)
-                                            { return passage.info.exposure == exposure && passage.info.name == name; });
+    const auto found = std::ranges::find_if(m_passages, isPassage(exposure, name));
     return found != m_passages.end() ? &found->info : nullptr;
 }
 
@@ -61,49 +102,9 @@ bool Stargate::exposeInterface(Exposure exposure, const QString& name, QMetaType
     {
         return false;
     }
-    const int id = m_nextId++;
     m_passages.append(
-        Passage{.info = {.name = name, .type = type, .exposure = exposure}, .id = id, .pointer = nullptr});
-    if(exposure == Exposure::Provided)
-    {
-        // What a component of its galaxy provides to it, its galaxy provides, once it is placed.
-        const auto take = [this, id](void* pointer)
-        {
-            if(Passage* taken = passage(id))
-            {
-                taken->pointer = pointer;
-            }
-        };
-        const auto pass = [this, id]
-        {
-            const Passage* passed = passage(id);
-            if(m_attached && passed != nullptr)
-            {
-                m_galaxy->provide(passed->info.name, passed->info.type, passed->pointer);
-            }
-        };
-        const auto withdraw = [this, id]
-        {
-            const Passage* withdrawn = passage(id);
-            if(m_attached && withdrawn != nullptr)
-            {
-                m_galaxy->provide(withdrawn->info.name, withdrawn->info.type, nullptr);
-            }
-        };
-        consume(name, type, InterfaceRequirement::Mandatory, take, pass, withdraw);
-        if(m_attached)
-        {
-            m_galaxy->provide(name, type, nullptr); // Once it is given it
-        }
-    }
-    else
-    {
-        provide(name, type, nullptr); // What its galaxy is given, once it is placed, see attach()
-        if(m_attached)
-        {
-            consumeForGalaxy(m_passages.constLast(), InterfaceRequirement::Optional); // Bound to nothing yet
-        }
-    }
+        Passage{.info = {.name = name, .type = type, .exposure = exposure}, .id = m_nextId++, .pointer = nullptr});
+    open(m_passages.constLast());
     emit changed();
     return true;
 }
@@ -111,37 +112,14 @@ bool Stargate::exposeInterface(Exposure exposure, const QString& name, QMetaType
 bool Stargate::renameInterface(Exposure exposure, const QString& name, const QString& newName)
 {
     Passage* renamed = passage(exposure, name);
-    if(renamed == nullptr || !isChangeable() || newName.isEmpty())
+    if(renamed == nullptr || !canRename(name, newName, isFreeInterfaceName(exposure, newName)))
     {
         return false;
     }
-    if(newName == name)
+    if(newName != name)
     {
-        return true;
+        renamePassage(*renamed, newName);
     }
-    if(!isFreeInterfaceName(exposure, newName))
-    {
-        return false;
-    }
-    // Before the interface: what it tells reads both.
-    renamed->info.name = newName;
-    if(exposure == Exposure::Provided)
-    {
-        renameConsumedInterface(name, newName);
-        if(m_attached)
-        {
-            m_galaxy->renameProvidedInterface(name, newName); // What is bound to it follows
-        }
-    }
-    else
-    {
-        renameProvidedInterface(name, newName);
-        if(m_attached)
-        {
-            m_galaxy->renameConsumedInterface(name, newName); // Still bound to what it was
-        }
-    }
-    emit changed();
     return true;
 }
 
@@ -151,25 +129,8 @@ void Stargate::removeInterface(Exposure exposure, const QString& name)
     {
         return;
     }
-    // While it is still a passage: what it passes is withdrawn first, on both sides.
-    if(exposure == Exposure::Provided)
-    {
-        removeConsumedInterface(name);
-        if(m_attached)
-        {
-            m_galaxy->removeProvidedInterface(name);
-        }
-    }
-    else
-    {
-        if(m_attached)
-        {
-            m_galaxy->removeConsumedInterface(name);
-        }
-        removeProvidedInterface(name);
-    }
-    m_passages.removeIf([exposure, &name](const Passage& passage)
-                        { return passage.info.exposure == exposure && passage.info.name == name; });
+    close(exposure, name);
+    m_passages.removeIf(isPassage(exposure, name));
     emit changed();
 }
 
@@ -186,45 +147,9 @@ const ExposedProperty* Stargate::property(const QString& name) const
 
 bool Stargate::exposeProperty(const ExposedProperty& property)
 {
-    if(!isChangeable() || property.name.isEmpty() || !isFreePropertyName(property.name) ||
-       property.component == nullptr || property.object == nullptr)
+    if(!canExpose(property))
     {
         return false;
-    }
-    const auto known = [&property](const std::unique_ptr<Component>& component)
-    { return component.get() == property.component; };
-    const std::vector<std::unique_ptr<Component>>& components = galaxyComponents();
-    if(!std::ranges::any_of(components, known) || qobject_cast<const Stargate*>(property.component) != nullptr)
-    {
-        return false;
-    }
-    // One a galaxy exposes, or one a project holds.
-    if(const auto* galaxy = qobject_cast<const Galaxy*>(property.component))
-    {
-        if(property.object != galaxy || !galaxy->exposedProperty(property.property))
-        {
-            return false;
-        }
-    }
-    else
-    {
-        const QList<QMetaProperty> saved = ProjectJson::savedProperties(*property.component, property.object);
-        if(!std::ranges::any_of(saved, [&property](const QMetaProperty& held)
-                                { return QLatin1StringView(held.name()) == property.property; }))
-        {
-            return false;
-        }
-    }
-    // Once in its galaxy: it would be set twice.
-    for(const std::unique_ptr<Component>& component : components)
-    {
-        const auto* stargate = qobject_cast<const Stargate*>(component.get());
-        if(stargate != nullptr &&
-           std::ranges::any_of(stargate->properties(), [&property](const ExposedProperty& exposed)
-                               { return isSameProperty(exposed, property); }))
-        {
-            return false;
-        }
     }
     m_properties.append(property);
     connect(property.component, &QObject::destroyed, this, &Stargate::forget, Qt::UniqueConnection);
@@ -236,20 +161,14 @@ bool Stargate::exposeProperty(const ExposedProperty& property)
 bool Stargate::renameProperty(const QString& name, const QString& newName)
 {
     const auto renamed = std::ranges::find(m_properties, name, &ExposedProperty::name);
-    if(renamed == m_properties.end() || !isChangeable() || newName.isEmpty())
+    if(renamed == m_properties.end() || !canRename(name, newName, isFreePropertyName(newName)))
     {
         return false;
     }
-    if(newName == name)
+    if(std::exchange(renamed->name, newName) != newName)
     {
-        return true;
+        emit changed();
     }
-    if(!isFreePropertyName(newName))
-    {
-        return false;
-    }
-    renamed->name = newName;
-    emit changed();
     return true;
 }
 
@@ -274,24 +193,53 @@ const std::vector<std::unique_ptr<Component>>& Stargate::galaxyComponents() cons
     return m_galaxy != nullptr ? m_galaxy->components() : m_application.components();
 }
 
+QList<const Stargate*> Stargate::galaxyStargates() const
+{
+    return componentsOfType<const Stargate>(galaxyComponents());
+}
+
 bool Stargate::isFreeInterfaceName(Exposure exposure, const QString& name) const
 {
-    return std::ranges::none_of(galaxyComponents(),
-                                [exposure, &name](const std::unique_ptr<Component>& component)
-                                {
-                                    const auto* stargate = qobject_cast<const Stargate*>(component.get());
-                                    return stargate != nullptr && stargate->exposedInterface(exposure, name) != nullptr;
-                                });
+    return std::ranges::none_of(galaxyStargates(), [exposure, &name](const Stargate* stargate)
+                                { return stargate->exposedInterface(exposure, name) != nullptr; });
 }
 
 bool Stargate::isFreePropertyName(const QString& name) const
 {
-    return std::ranges::none_of(galaxyComponents(),
-                                [&name](const std::unique_ptr<Component>& component)
-                                {
-                                    const auto* stargate = qobject_cast<const Stargate*>(component.get());
-                                    return stargate != nullptr && stargate->property(name) != nullptr;
-                                });
+    return std::ranges::none_of(galaxyStargates(),
+                                [&name](const Stargate* stargate) { return stargate->property(name) != nullptr; });
+}
+
+bool Stargate::canRename(const QString& name, const QString& newName, bool isFree) const
+{
+    return isChangeable() && !newName.isEmpty() && (newName == name || isFree);
+}
+
+bool Stargate::isOfGalaxy(const Component* component) const
+{
+    const auto isIt = [component](const std::unique_ptr<Component>& known) { return known.get() == component; };
+    return component != nullptr && qobject_cast<const Stargate*>(component) == nullptr &&
+           std::ranges::any_of(galaxyComponents(), isIt);
+}
+
+bool Stargate::canExpose(const ExposedProperty& property) const
+{
+    return isChangeable() && !property.name.isEmpty() && isFreePropertyName(property.name) &&
+           property.object != nullptr && isOfGalaxy(property.component) && isExposable(property) &&
+           !isExposed(property);
+}
+
+bool Stargate::isExposed(const ExposedProperty& property) const
+{
+    const auto same = [&property](const ExposedProperty& exposed) { return isSameProperty(exposed, property); };
+    return std::ranges::any_of(galaxyStargates(), [&same](const Stargate* stargate)
+                               { return std::ranges::any_of(stargate->properties(), same); });
+}
+
+bool Stargate::isNeeded(const QString& name) const
+{
+    return std::ranges::any_of(m_galaxy->components(), [this, &name](const std::unique_ptr<Component>& component)
+                               { return needs(*component, this, name); });
 }
 
 Stargate::Passage* Stargate::passage(int id)
@@ -302,9 +250,128 @@ Stargate::Passage* Stargate::passage(int id)
 
 Stargate::Passage* Stargate::passage(Exposure exposure, const QString& name)
 {
-    const auto found = std::ranges::find_if(m_passages, [exposure, &name](const Passage& passage)
-                                            { return passage.info.exposure == exposure && passage.info.name == name; });
+    const auto found = std::ranges::find_if(m_passages, isPassage(exposure, name));
     return found != m_passages.end() ? &*found : nullptr;
+}
+
+void Stargate::keep(int id, void* pointer)
+{
+    if(Passage* kept = passage(id))
+    {
+        kept->pointer = pointer;
+    }
+}
+
+void Stargate::passToGalaxy(int id, bool available)
+{
+    const Passage* passed = passage(id);
+    if(m_attached && passed != nullptr)
+    {
+        m_galaxy->provide(passed->info.name, passed->info.type, available ? passed->pointer : nullptr);
+    }
+}
+
+void Stargate::passToComponents(int id, bool available)
+{
+    if(const Passage* passed = passage(id))
+    {
+        provide(passed->info.name, passed->info.type, available ? passed->pointer : nullptr);
+    }
+}
+
+void Stargate::open(const Passage& exposed)
+{
+    if(exposed.info.exposure == Exposure::Provided)
+    {
+        openProvided(exposed);
+    }
+    else
+    {
+        openConsumed(exposed);
+    }
+}
+
+void Stargate::openProvided(Passage exposed)
+{
+    const int id = exposed.id;
+    consume(
+        exposed.info.name, exposed.info.type, InterfaceRequirement::Mandatory, [this, id](void* pointer)
+        { keep(id, pointer); }, [this, id] { passToGalaxy(id, true); }, [this, id] { passToGalaxy(id, false); });
+    if(m_attached)
+    {
+        m_galaxy->provide(exposed.info.name, exposed.info.type, nullptr); // Once it is given it
+    }
+}
+
+void Stargate::openConsumed(Passage exposed)
+{
+    provide(exposed.info.name, exposed.info.type, nullptr);
+    if(m_attached)
+    {
+        consumeForGalaxy(exposed, InterfaceRequirement::Optional); // Bound to nothing yet
+    }
+}
+
+void Stargate::renamePassage(Passage& renamed, const QString& newName)
+{
+    const QString name = std::exchange(renamed.info.name, newName); // Before the interface: what it tells reads both
+    if(renamed.info.exposure == Exposure::Provided)
+    {
+        renameProvided(name, newName);
+    }
+    else
+    {
+        renameConsumed(name, newName);
+    }
+    emit changed();
+}
+
+void Stargate::renameProvided(const QString& name, const QString& newName)
+{
+    renameConsumedInterface(name, newName);
+    if(m_attached)
+    {
+        m_galaxy->renameProvidedInterface(name, newName); // What is bound to it follows
+    }
+}
+
+void Stargate::renameConsumed(const QString& name, const QString& newName)
+{
+    renameProvidedInterface(name, newName);
+    if(m_attached)
+    {
+        m_galaxy->renameConsumedInterface(name, newName); // Still bound to what it was
+    }
+}
+
+void Stargate::close(Exposure exposure, const QString& name)
+{
+    if(exposure == Exposure::Provided)
+    {
+        closeProvided(name);
+    }
+    else
+    {
+        closeConsumed(name);
+    }
+}
+
+void Stargate::closeProvided(const QString& name)
+{
+    removeConsumedInterface(name);
+    if(m_attached)
+    {
+        m_galaxy->removeProvidedInterface(name);
+    }
+}
+
+void Stargate::closeConsumed(const QString& name)
+{
+    if(m_attached)
+    {
+        m_galaxy->removeConsumedInterface(name);
+    }
+    removeProvidedInterface(name);
 }
 
 void Stargate::attach()
@@ -316,57 +383,29 @@ void Stargate::attach()
     m_attached = true;
     for(const Passage& exposed : std::as_const(m_passages))
     {
-        if(exposed.info.exposure == Exposure::Provided)
-        {
-            // With what it has already: a component can provide its interface while it is edited.
-            m_galaxy->provide(exposed.info.name, exposed.info.type, exposed.pointer);
-            continue;
-        }
-        // Mandatory when one of the components it passes it to needs it.
-        const auto needs = [this, &exposed](const std::unique_ptr<Component>& component)
-        {
-            const QList<InterfaceInfo> consumed = component->consumedInterfaces();
-            return std::ranges::any_of(
-                consumed,
-                [this, &exposed, &component](const InterfaceInfo& consumedInterface)
-                {
-                    const QList<InterfaceBinding> bound = component->bindings(consumedInterface.name);
-                    return consumedInterface.requirement == InterfaceRequirement::Mandatory &&
-                           std::ranges::any_of(bound, [this, &exposed](const InterfaceBinding& to)
-                                               { return to.provider == this && to.providedName == exposed.info.name; });
-                });
-        };
-        consumeForGalaxy(exposed, std::ranges::any_of(m_galaxy->components(), needs) ? InterfaceRequirement::Mandatory
-                                                                                     : InterfaceRequirement::Optional);
+        giveToGalaxy(exposed);
     }
+}
+
+void Stargate::giveToGalaxy(const Passage& exposed)
+{
+    if(exposed.info.exposure == Exposure::Provided)
+    {
+        // With what it has already: a component can provide its interface while it is edited.
+        m_galaxy->provide(exposed.info.name, exposed.info.type, exposed.pointer);
+        return;
+    }
+    consumeForGalaxy(exposed,
+                     isNeeded(exposed.info.name) ? InterfaceRequirement::Mandatory : InterfaceRequirement::Optional);
 }
 
 void Stargate::consumeForGalaxy(const Passage& exposed, InterfaceRequirement requirement)
 {
     // What its galaxy is given, it provides to components of its galaxy.
     const int id = exposed.id;
-    const auto take = [this, id](void* pointer)
-    {
-        if(Passage* taken = passage(id))
-        {
-            taken->pointer = pointer;
-        }
-    };
-    const auto pass = [this, id]
-    {
-        if(const Passage* passed = passage(id))
-        {
-            provide(passed->info.name, passed->info.type, passed->pointer);
-        }
-    };
-    const auto withdraw = [this, id]
-    {
-        if(const Passage* withdrawn = passage(id))
-        {
-            provide(withdrawn->info.name, withdrawn->info.type, nullptr);
-        }
-    };
-    m_galaxy->consume(exposed.info.name, exposed.info.type, requirement, take, pass, withdraw);
+    m_galaxy->consume(
+        exposed.info.name, exposed.info.type, requirement, [this, id](void* pointer) { keep(id, pointer); },
+        [this, id] { passToComponents(id, true); }, [this, id] { passToComponents(id, false); });
 }
 
 void Stargate::detach()
