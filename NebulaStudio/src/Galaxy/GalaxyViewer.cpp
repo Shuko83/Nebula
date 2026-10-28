@@ -4,16 +4,12 @@
 #include "GalaxyViewer.h"
 
 #include <QDir>
-#include <QEvent>
-#include <QHBoxLayout>
 #include <QLabel>
-#include <QPalette>
 #include <QPushButton>
-#include <QStyle>
 #include <optional>
 
 #include "Galaxy/GalaxyModel.h"
-#include "Theme.h"
+#include "WarningLabel.h"
 
 namespace
 {
@@ -47,22 +43,14 @@ QString pluginsText(const GalaxyModel::Galaxy& galaxy)
     return galaxy.info->plugins.isEmpty() ? GalaxyViewer::tr("None") : galaxy.info->plugins.join(u'\n');
 }
 
-// A label showing the warning icon of style, as a small icon.
-QLabel* newWarningIcon(const QStyle& style)
-{
-    auto* icon = new QLabel;
-    icon->setPixmap(
-        style.standardIcon(QStyle::SP_MessageBoxWarning).pixmap(style.pixelMetric(QStyle::PM_SmallIconSize)));
-    return icon;
-}
-
 } // namespace
 
 GalaxyViewer::GalaxyViewer(const GalaxyModel& model, QWidget* parent) : Inspector(parent), m_model(model)
 {
     followModel();
     addFields();
-    addBelow(newError());
+    m_error = new WarningLabel;
+    addBelow(m_error);
     m_openButton = newButton(tr("Open"), [this] { emit openRequested(m_filePath); });
     addButtons({m_openButton});
     addStretch();
@@ -81,15 +69,6 @@ void GalaxyViewer::setOpenAllowed(bool allowed)
     refresh();
 }
 
-void GalaxyViewer::changeEvent(QEvent* event)
-{
-    Inspector::changeEvent(event);
-    if(event->type() == QEvent::PaletteChange)
-    {
-        colorError();
-    }
-}
-
 void GalaxyViewer::followModel()
 {
     connect(&m_model, &QAbstractItemModel::dataChanged, this, &GalaxyViewer::refresh);
@@ -106,18 +85,6 @@ void GalaxyViewer::addFields()
     m_state = addField(tr("State"));
 }
 
-QWidget* GalaxyViewer::newError()
-{
-    m_errorText = newValueLabel();
-    m_error = new QWidget;
-    auto* layout = new QHBoxLayout(m_error);
-    layout->setContentsMargins({});
-    layout->addWidget(newWarningIcon(*style()), 0, Qt::AlignTop);
-    layout->addWidget(m_errorText, 1);
-    colorError();
-    return m_error;
-}
-
 void GalaxyViewer::refresh()
 {
     const std::optional<GalaxyModel::Galaxy> galaxy = m_model.galaxy(m_filePath);
@@ -127,7 +94,7 @@ void GalaxyViewer::refresh()
         return;
     }
     showGalaxy(*galaxy);
-    showError(errorText(*galaxy));
+    m_error->setText(errorText(*galaxy));
     showOpenButton(galaxy->isLoadable());
     showPage();
 }
@@ -148,21 +115,8 @@ void GalaxyViewer::showGalaxy(const GalaxyModel::Galaxy& galaxy)
     m_state->setText(index.siblingAtColumn(GalaxyModel::State).data().toString());
 }
 
-void GalaxyViewer::showError(const QString& error)
-{
-    m_errorText->setText(error);
-    m_error->setVisible(!error.isEmpty());
-}
-
 void GalaxyViewer::showOpenButton(bool loadable)
 {
     m_openButton->setEnabled(loadable && m_openAllowed);
     m_openButton->setToolTip(m_openAllowed ? QString() : tr("Stop the application to open a galaxy"));
-}
-
-void GalaxyViewer::colorError()
-{
-    QPalette palette = m_errorText->palette();
-    palette.setColor(QPalette::WindowText, currentThemeColors().warning);
-    m_errorText->setPalette(palette);
 }

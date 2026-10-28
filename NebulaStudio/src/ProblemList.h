@@ -6,14 +6,15 @@
 #include <QString>
 #include <QWidget>
 
-class QLabel;
-class QStackedWidget;
+class PlaceholderStack;
 class QTreeWidget;
 
 namespace Nebula
 {
+class Component;
 class Universe;
-}
+struct InterfaceInfo;
+} // namespace Nebula
 
 // What keeps the components of the application from working, one row per interface one of them cannot do without and
 // that is bound to nothing, see Component::unboundMandatoryInterfaces(): the component, the interface, and how to bind
@@ -39,11 +40,17 @@ class ProblemList : public QWidget
   private:
     // Lists what keeps the components from working now, and follows each component.
     void refresh();
+    // Refreshes it when component changes its interfaces, its links or its name; once, however often it is asked.
+    void follow(const Nebula::Component& component);
+    // A row for each interface component cannot do without and that is bound to nothing.
+    void addProblems(const Nebula::Component& component);
+    // The row of consumed, an interface component cannot do without, bound to nothing.
+    void addProblem(const Nebula::Component& component, const Nebula::InterfaceInfo& consumed);
+    void addRow(const QString& component, const QString& problem, const QString& fix);
 
     const Nebula::Universe& m_application;
     bool m_refreshScheduled = false;
 
-    QStackedWidget* m_stack = nullptr;
-    QLabel* m_placeholder = nullptr; // Shown when every component works
-    QTreeWidget* m_tree = nullptr;   // Shown otherwise
+    QTreeWidget* m_tree = nullptr;       // Shown when a component does not work
+    PlaceholderStack* m_stack = nullptr; // Of m_tree and of the sentence that tells every component works
 };

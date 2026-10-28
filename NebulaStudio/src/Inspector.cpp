@@ -7,21 +7,15 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
-#include <QStackedWidget>
 #include <QVBoxLayout>
 
+#include "PlaceholderStack.h"
+
 Inspector::Inspector(QWidget* parent)
-    : QWidget(parent), m_stack(new QStackedWidget), m_placeholder(new QLabel), m_page(new QWidget),
-      m_pageLayout(new QVBoxLayout(m_page)), m_form(new QFormLayout)
+    : QWidget(parent), m_page(new QWidget), m_pageLayout(new QVBoxLayout(m_page)), m_form(new QFormLayout),
+      m_stack(new PlaceholderStack(m_page, *this))
 {
-    m_placeholder->setAlignment(Qt::AlignCenter);
-    m_placeholder->setWordWrap(true);
     m_pageLayout->addLayout(m_form);
-    m_stack->addWidget(m_placeholder);
-    m_stack->addWidget(m_page);
-    auto* layout = new QVBoxLayout(this);
-    layout->setContentsMargins({});
-    layout->addWidget(m_stack);
 }
 
 QLabel* Inspector::newValueLabel()
@@ -74,11 +68,10 @@ QPushButton* Inspector::newButton(const QString& text, const std::function<void(
 
 void Inspector::showPage()
 {
-    m_stack->setCurrentWidget(m_page);
+    m_stack->showPage();
 }
 
 void Inspector::showPlaceholder(const QString& text)
 {
-    m_placeholder->setText(text);
-    m_stack->setCurrentWidget(m_placeholder);
+    m_stack->showPlaceholder(text);
 }
