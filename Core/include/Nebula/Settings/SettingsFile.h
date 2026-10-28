@@ -12,6 +12,8 @@
 
 #include "Core_export.h"
 
+class QMetaMethod;
+
 namespace Nebula
 {
 
@@ -121,13 +123,43 @@ class CORE_EXPORT SettingsFile : public QObject
 
     // Names it fileName, and name in its project. Returns false, changing nothing, as setName() does.
     bool rename(const QString& fileName, const QString& name);
+    // Whether fileName is free for it: no other file of the application has it, whatever its case.
+    [[nodiscard]] bool isFreeFileName(const QString& fileName) const;
+    // Whether entry can be added: of a component it holds the properties of, held by a project, and by no file yet.
+    [[nodiscard]] bool canAdd(const SettingsEntry& entry) const;
     // Gives the properties it holds the values of its file, writes their default values to it first when it does not
     // exist or misses some, and follows their changes.
     void start();
+    // Reads what its file holds as it starts; it is not written when it cannot be set aside.
+    void readContent();
+    // Gives each entry the value its file holds for it, keeping the value of the project to give back; returns
+    // whether the file held one for each.
+    bool giveValues();
+    // Gives entry the value its file holds for it. When it holds none, or one the property cannot have, which is
+    // told, the file is given the current value instead and false is returned.
+    bool giveValue(const SettingsEntry& entry);
+    // Tells, unless value is undefined, that its file holds value for entry, which its property cannot have.
+    void tellWrongValue(const SettingsEntry& entry, const QJsonValue& value);
+    // Follows the notify signals of the properties of its entries: what they change is written.
+    void followChanges();
+    // Has take called when the property of entry changes, unless it has no notify signal or one already followed.
+    void follow(const SettingsEntry& entry, const QMetaMethod& take);
     // Writes the values of the properties it holds to its file, and gives them their default values again.
     void stop();
+    // Has its content hold the current value of started.
+    void takeValue(const StartedEntry& started);
+    // takeValue() of each entry: those no notify signal tells the changes of as well.
+    void takeAllValues();
+    // Gives back to the properties of its entries the values of the project, kept when it started.
+    void giveBackDefaults();
+    // Writes its content to its file once for the values taken meanwhile: a property can change at every event.
+    void scheduleWrite();
+    // Writes its content to its file, unless writing it failed before; tells it once when it fails.
+    void writeContent();
     // Tells why through the log and failed().
     void fail(const QString& why);
+    // Sets errorString() to why and returns false.
+    bool refuse(const QString& why);
 
   private slots:
     // Takes the values the sender, an object of its entries, has now: one of its properties changed. A slot: their
