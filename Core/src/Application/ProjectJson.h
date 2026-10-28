@@ -8,6 +8,7 @@
 #include <QList>
 #include <QMetaProperty>
 #include <QString>
+#include <QStringList>
 #include <QVariant>
 #include <optional>
 
@@ -33,6 +34,11 @@ namespace Nebula::ProjectJson
 // Sets the property name of object, one of properties, to value; false when it is none of them or cannot be set.
 bool writeProperty(QObject& object, const QList<QMetaProperty>& properties, const QString& name,
                    const QJsonValue& value);
+// Sets the properties of object, among properties, to values, by name; returns the names of those it could not set.
+QStringList writeProperties(QObject& object, const QList<QMetaProperty>& properties, const QJsonObject& values);
+
+// The properties of the type of component, as its plugin registered it; empty when it is no longer registered.
+[[nodiscard]] QList<QMetaProperty> componentProperties(const Component& component);
 
 // An object a component added with Component::addPropertiesForQObject(), as JSON finds it again: the name it was
 // added with, and how many of the objects of the component were added with that name before it.

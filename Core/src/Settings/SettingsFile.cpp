@@ -209,7 +209,13 @@ SettingsFile::SettingsFile(Universe& application, QString fileName, Galaxy* gala
 {
 }
 
-SettingsFile::~SettingsFile() = default;
+SettingsFile::~SettingsFile()
+{
+    if(m_running)
+    {
+        stop(); // What the user changed is written, and the properties have the values of the project again
+    }
+}
 
 QString SettingsFile::fileName() const
 {
