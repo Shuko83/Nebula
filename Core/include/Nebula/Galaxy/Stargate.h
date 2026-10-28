@@ -133,16 +133,58 @@ class CORE_EXPORT Stargate : public Component
 
     // The components of its galaxy, itself among them.
     [[nodiscard]] const std::vector<std::unique_ptr<Component>>& galaxyComponents() const;
+    // The stargates of its galaxy, itself among them.
+    [[nodiscard]] QList<const Stargate*> galaxyStargates() const;
     // Whether name is free for an interface exposed the way exposure tells: no stargate of its galaxy exposes it so.
     [[nodiscard]] bool isFreeInterfaceName(Exposure exposure, const QString& name) const;
     // Whether name is free for a property: no stargate of its galaxy exposes one under it.
     [[nodiscard]] bool isFreePropertyName(const QString& name) const;
+    // Whether name can be renamed newName: it can be changed, and newName is not empty and, unless it is name, free
+    // as isFree tells.
+    [[nodiscard]] bool canRename(const QString& name, const QString& newName, bool isFree) const;
+    // Whether component is one of its galaxy, other than a stargate.
+    [[nodiscard]] bool isOfGalaxy(const Component* component) const;
+    // Whether property can be exposed: under a free name, of a component of its galaxy that has it to expose, and
+    // exposed by no stargate of its galaxy yet, whatever its name.
+    [[nodiscard]] bool canExpose(const ExposedProperty& property) const;
+    // Whether a stargate of its galaxy exposes property already, under any name: it would be set twice.
+    [[nodiscard]] bool isExposed(const ExposedProperty& property) const;
+    // Whether a component of its galaxy consumes name, which it provides, as Mandatory.
+    [[nodiscard]] bool isNeeded(const QString& name) const;
     [[nodiscard]] Passage* passage(int id);
     [[nodiscard]] Passage* passage(Exposure exposure, const QString& name);
+    // Keeps pointer, given for the passage id.
+    void keep(int id, void* pointer);
+    // Has its galaxy provide what the passage id, exposed the Provided way, is given, or nothing once it is no longer
+    // available; once it is attached.
+    void passToGalaxy(int id, bool available);
+    // Provides to the components of its galaxy what the passage id, exposed the Consumed way, is given, or nothing
+    // once it is no longer available.
+    void passToComponents(int id, bool available);
+    // Opens exposed, just exposed: it consumes or provides it, and its galaxy, once it is attached, the other way.
+    void open(const Passage& exposed);
+    // Consumes exposed, exposed the Provided way: what a component of its galaxy provides to it, its galaxy provides,
+    // once it is attached.
+    void openProvided(Passage exposed);
+    // Provides exposed, exposed the Consumed way: what its galaxy is given, once it is attached, see attach().
+    void openConsumed(Passage exposed);
+    // Names renamed newName, on both sides, and tells it.
+    void renamePassage(Passage& renamed, const QString& newName);
+    // Renames name, exposed the Provided way: it consumes it, and its galaxy, once it is attached, provides it.
+    void renameProvided(const QString& name, const QString& newName);
+    // Renames name, exposed the Consumed way: it provides it, and its galaxy, once it is attached, consumes it.
+    void renameConsumed(const QString& name, const QString& newName);
+    // Withdraws name, exposed the way exposure tells, on both sides, while it is still a passage: what it passes is
+    // withdrawn first.
+    void close(Exposure exposure, const QString& name);
+    void closeProvided(const QString& name);
+    void closeConsumed(const QString& name);
     // Gives its galaxy what it exposes, once the galaxy is filled: from then on, what one side is given, the other
     // side has, and what it exposes, its galaxy has. What its galaxy consumes is mandatory there when a component of
     // the galaxy needs it.
     void attach();
+    // Gives its galaxy exposed, see attach().
+    void giveToGalaxy(const Passage& exposed);
     // Has its galaxy consume exposed, which it exposes the Consumed way, as requirement tells, and pass it what it is
     // given.
     void consumeForGalaxy(const Passage& exposed, InterfaceRequirement requirement);
