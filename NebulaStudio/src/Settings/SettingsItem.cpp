@@ -59,17 +59,7 @@ SettingsItem::SettingsItem(Nebula::SettingsFile& file) : m_file(file)
                 refreshToolTip();
                 update(); // Its name
             });
-    connect(this, &QGraphicsObject::xChanged, this, &SettingsItem::followLinks);
-    connect(this, &QGraphicsObject::yChanged, this, &SettingsItem::followLinks);
     refreshToolTip();
-}
-
-SettingsItem::~SettingsItem()
-{
-    while(!m_links.isEmpty())
-    {
-        delete m_links.constFirst(); // Which removes it
-    }
 }
 
 Nebula::SettingsFile& SettingsItem::file() const
@@ -126,43 +116,12 @@ QVariant SettingsItem::itemChange(GraphicsItemChange change, const QVariant& val
 
 void SettingsItem::refreshLinks()
 {
-    while(!m_links.isEmpty())
-    {
-        delete m_links.constFirst();
-    }
-    if(scene() == nullptr)
-    {
-        return;
-    }
     QList<const Nebula::Component*> held; // The components it holds properties of
     for(const Nebula::SettingsEntry& entry : m_file.entries())
     {
         held.append(entry.component);
     }
-    const QList<QGraphicsItem*> items = scene()->items();
-    for(QGraphicsItem* item : items)
-    {
-        auto* component = qobject_cast<ComponentItem*>(item->toGraphicsObject());
-        if(component == nullptr || !held.contains(&component->component()))
-        {
-            continue;
-        }
-        // As it moves, as it does too.
-        connect(component, &QGraphicsObject::xChanged, this, &SettingsItem::followLinks, Qt::UniqueConnection);
-        connect(component, &QGraphicsObject::yChanged, this, &SettingsItem::followLinks, Qt::UniqueConnection);
-        auto* link =
-            new DashedLinkItem(*this, *component, [this](DashedLinkItem& removed) { m_links.removeOne(&removed); });
-        m_links.append(link);
-        scene()->addItem(link);
-    }
-}
-
-void SettingsItem::followLinks()
-{
-    for(DashedLinkItem* link : std::as_const(m_links))
-    {
-        link->follow();
-    }
+    m_links.refresh(held);
 }
 
 void SettingsItem::refreshToolTip()

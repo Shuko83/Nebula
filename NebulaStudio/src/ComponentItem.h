@@ -14,6 +14,7 @@
 #include "InterfaceItem.h"
 
 class NameEditor;
+class QGraphicsScene;
 
 namespace Nebula
 {
@@ -116,3 +117,6 @@ class ComponentItem : public QGraphicsObject
     InterfaceItem::Kind m_editedKind = InterfaceItem::Kind::Provided; // Of the interface whose name is edited
     QString m_editedName;                                             // Its name before
 };
+
+// The items of components among those of scene, the topmost first.
+[[nodiscard]] QList<ComponentItem*> componentItems(const QGraphicsScene& scene);

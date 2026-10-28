@@ -6,7 +6,7 @@
 #include <QGraphicsObject>
 #include <QList>
 
-class DashedLinkItem;
+#include "DashedLinkItem.h"
 
 namespace Nebula
 {
@@ -25,7 +25,6 @@ class SettingsItem : public QGraphicsObject
     // file, owned by the application, outlives the item.
     explicit SettingsItem(Nebula::SettingsFile& file);
     // With its links.
-    ~SettingsItem() override;
 
     [[nodiscard]] Nebula::SettingsFile& file() const;
 
@@ -39,11 +38,9 @@ class SettingsItem : public QGraphicsObject
   private:
     // Joins it to the components of its scene whose properties its file holds now.
     void refreshLinks();
-    // Draws its links again, where it and their components are now.
-    void followLinks();
     // Tells where its file is and which properties it holds.
     void refreshToolTip();
 
     Nebula::SettingsFile& m_file;
-    QList<DashedLinkItem*> m_links; // In its scene rather than its children: under the components
+    DashedLinks m_links{*this};
 };

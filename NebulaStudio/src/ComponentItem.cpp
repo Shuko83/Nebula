@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QFontMetricsF>
+#include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -428,4 +429,18 @@ qreal ComponentItem::rowsTop() const
 {
     const qsizetype interfaces = m_consumedInterfaces.size() + m_providedInterfaces.size();
     return Header.bottom() - Padding / 2 + static_cast<qreal>(interfaces) * InterfaceItem::RowHeight;
+}
+
+QList<ComponentItem*> componentItems(const QGraphicsScene& scene)
+{
+    QList<ComponentItem*> found;
+    const QList<QGraphicsItem*> items = scene.items();
+    for(QGraphicsItem* item : items)
+    {
+        if(auto* component = qobject_cast<ComponentItem*>(item->toGraphicsObject()))
+        {
+            found.append(component);
+        }
+    }
+    return found;
 }
