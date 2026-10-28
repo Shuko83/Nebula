@@ -19,29 +19,39 @@ TopBarComponent::TopBarComponent()
 {
     m_bar.setWindowTitle(QStringLiteral("Top bar"));
     m_bar.setMovable(false);
+    consumeInterfaces();
+}
+
+void TopBarComponent::consumeInterfaces()
+{
     consumeInterface<QMainWindow>(
-        QStringLiteral("mainWindow"), m_mainWindow, Nebula::InterfaceRequirement::Mandatory,
-        [this]
-        {
-            m_mainWindow->addToolBar(Qt::TopToolBarArea, &m_bar);
-            m_bar.show(); // Hidden when it was removed from a window
-        },
-        [this]
-        {
-            m_mainWindow->removeToolBar(&m_bar);
-            m_bar.setParent(nullptr); // The window would delete it
-        });
+        QStringLiteral("mainWindow"), m_mainWindow, Nebula::InterfaceRequirement::Mandatory, [this] { addToWindow(); },
+        [this] { removeFromWindow(); });
     consumeInterfaceList<QAction>(
         QStringLiteral("actions"), m_actions, [this](QAction* /*action*/) { showActions(m_actions); },
-        [this](QAction* action)
-        {
-            QList<QAction*> shown = m_actions; // Which still has it
-            shown.removeOne(action);
-            showActions(shown);
-        });
+        [this](QAction* action) { showActionsBut(action); });
     consumeInterfaceList<QWidget>(
         QStringLiteral("widgets"), m_widgets, [this](QWidget* widget) { showWidget(widget); },
         [this](QWidget* widget) { hideWidget(widget); });
+}
+
+void TopBarComponent::addToWindow()
+{
+    m_mainWindow->addToolBar(Qt::TopToolBarArea, &m_bar);
+    m_bar.show(); // Hidden when it was removed from a window
+}
+
+void TopBarComponent::removeFromWindow()
+{
+    m_mainWindow->removeToolBar(&m_bar);
+    m_bar.setParent(nullptr); // The window would delete it
+}
+
+void TopBarComponent::showActionsBut(QAction* action)
+{
+    QList<QAction*> shown = m_actions; // Which still has it
+    shown.removeOne(action);
+    showActions(shown);
 }
 
 QString TopBarComponent::title() const
@@ -80,6 +90,11 @@ void TopBarComponent::showActions(const QList<QAction*>& shown)
     {
         m_bar.removeAction(action);
     }
+    insertActions(shown);
+}
+
+void TopBarComponent::insertActions(const QList<QAction*>& shown)
+{
     QAction* widgets = holderAfter(-1);
     for(QAction* action : shown)
     {
@@ -112,13 +127,19 @@ void TopBarComponent::hideWidget(QWidget* widget)
     }
     // Deleted with its action, once it no longer holds the widget.
     QAction* action = m_holders.take(widget);
-    if(auto* holder = qobject_cast<QWidgetAction*>(action); holder != nullptr && holder->defaultWidget() != nullptr)
-    {
-        holder->defaultWidget()->layout()->removeWidget(widget);
-    }
-    widget->setParent(nullptr);
+    release(action, widget);
     m_bar.removeAction(action);
     delete action;
+}
+
+void TopBarComponent::release(QAction* holder, QWidget* widget)
+{
+    if(auto* widgetAction = qobject_cast<QWidgetAction*>(holder);
+       widgetAction != nullptr && widgetAction->defaultWidget() != nullptr)
+    {
+        widgetAction->defaultWidget()->layout()->removeWidget(widget);
+    }
+    widget->setParent(nullptr);
 }
 
 QAction* TopBarComponent::holderAfter(qsizetype index) const

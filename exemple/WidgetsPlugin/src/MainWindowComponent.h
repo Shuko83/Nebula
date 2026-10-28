@@ -43,6 +43,11 @@ class MainWindowComponent : public Nebula::Component
     void onStop() override;
 
   private:
+    // Shows the widget it consumes in the middle of the window.
+    void showCentralWidget();
+    // Takes the widget it consumes out of the window, without a parent, as it was provided.
+    void giveBackCentralWidget();
+
     QMainWindow m_window;
     QWidget* m_centralWidget = nullptr; // Consumed
     int m_width = 800;
