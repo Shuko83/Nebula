@@ -45,6 +45,15 @@ constexpr float ComponentNameOpacity = 0.7F;
 constexpr qreal IconSpacing = 4;
 // Between the name of a row and what it is.
 constexpr qreal RowSpacing = 6;
+// The width of its rows, and of the names of its interfaces.
+constexpr qreal RowWidth = Header.width() - 2 * Padding;
+// Where the name of its component is written, under its name.
+constexpr QRectF ComponentRect(Names.left(), NameRect.bottom(), Names.width(), Names.height() / 2);
+// The marks, on the line of its name: its state on the right, whether it works on the left.
+constexpr QRectF StateMarkRect(Names.right() - StateMark, Names.top() + (NameRect.height() - StateMark) / 2, StateMark,
+                               StateMark);
+constexpr QRectF WarningMarkRect(Names.left(), Names.top() + (NameRect.height() - WarningMark) / 2, WarningMark,
+                                 WarningMark);
 
 // What the name of an item of color is written in: of the style when it has none; read over its color otherwise, as
 // it shows over the item, which it lets through when it is translucent.
@@ -78,6 +87,39 @@ QStringList namesOf(const QList<Nebula::InterfaceInfo>& interfaces, qsizetype co
         names.append(interfaces.at(index).name);
     }
     return names;
+}
+
+// Whether items show the first of interfaces, in their order.
+bool showsFirst(const QList<InterfaceItem*>& items, const QList<Nebula::InterfaceInfo>& interfaces)
+{
+    return items.size() <= interfaces.size() && namesOf(items) == namesOf(interfaces, items.size());
+}
+
+// What the name of its component is written in, under the name of an item of color written in nameInk: fainter than
+// its name over its color, in the color of the hints over the one of the style.
+QColor componentInk(const QColor& color, const QPalette& palette, QColor nameInk)
+{
+    if(!color.isValid())
+    {
+        return palette.color(QPalette::PlaceholderText);
+    }
+    nameInk.setAlphaF(ComponentNameOpacity);
+    return nameInk;
+}
+
+// The exclamation mark of an item that does not work, from font, the one of the item.
+QFont warningMarkFont(QFont font)
+{
+    font.setBold(true);
+    font.setPixelSize(WarningMarkFontSize);
+    return font;
+}
+
+// What the tooltip of an item tells of unbound, the interfaces it misses.
+QString unboundText(const QStringList& unbound)
+{
+    return ComponentItem::tr("Does not work: %1 bound to nothing").arg(unbound.join(QStringLiteral(", "))) + u'\n' +
+           ComponentItem::tr("Drag from the dot of each to an interface of its type another component provides");
 }
 
 } // namespace
@@ -166,19 +208,12 @@ void ComponentItem::setInterfacesRenamable(bool renamable)
 
 void ComponentItem::editInterfaceName(const InterfaceItem& interfaceItem)
 {
-    if(m_interfaceEditor == nullptr)
-    {
-        // Its child rather than the one of the interface: renaming it shows the interfaces again, in new items.
-        m_interfaceEditor = new NameEditor(*this, [this](const QString& name)
-                                           { emit interfaceNameEdited(m_editedKind, m_editedName, name); });
-        m_interfaceEditor->setFont(QApplication::font()); // The one the interfaces are painted in
-    }
     m_editedKind = interfaceItem.kind();
     m_editedName = interfaceItem.name();
     const bool provided = interfaceItem.kind() == InterfaceItem::Kind::Provided;
-    m_interfaceEditor->edit(interfaceItem.name(), QApplication::palette().color(QPalette::ButtonText),
-                            interfaceItem.mapRectToParent(interfaceItem.nameRect()),
-                            provided ? Qt::AlignRight : Qt::AlignLeft);
+    interfaceEditor().edit(interfaceItem.name(), QApplication::palette().color(QPalette::ButtonText),
+                           interfaceItem.mapRectToParent(interfaceItem.nameRect()),
+                           provided ? Qt::AlignRight : Qt::AlignLeft);
 }
 
 bool ComponentItem::isNameEdited(const InterfaceItem& interfaceItem) const
@@ -196,107 +231,126 @@ QRectF ComponentItem::boundingRect() const
 void ComponentItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
 {
     const QPalette palette = widget != nullptr ? widget->palette() : QApplication::palette();
-    const bool selected = option->state.testFlag(QStyle::State_Selected);
+    const QColor nameInk = nameColor(m_color, palette);
+    const QFont font = painter->font();
+    painter->setRenderHint(QPainter::Antialiasing);
+    paintBody(*painter, palette, option->state.testFlag(QStyle::State_Selected));
+    paintStateMark(*painter, nameInk);
+    paintWarningMark(*painter, palette, font);
+    paintName(*painter, nameInk, font);
+    paintRows(*painter, palette, font);
+    paintComponentName(*painter, componentInk(m_color, palette, nameInk), font);
+}
+
+void ComponentItem::paintBody(QPainter& painter, const QPalette& palette, bool selected) const
+{
     // One pixel inside its bounds.
     QPainterPath outline;
     outline.addRoundedRect(boundingRect().adjusted(1, 1, -1, -1), CornerRadius, CornerRadius);
-
-    painter->setRenderHint(QPainter::Antialiasing);
-    painter->fillPath(outline, palette.color(QPalette::Button));
-    if(m_color.isValid())
-    {
-        // Behind its names only: its interfaces keep the colors of the style, which their dots are drawn with.
-        QPainterPath header;
-        header.addRect(Header);
-        painter->fillPath(outline.intersected(header), m_color);
-    }
+    painter.fillPath(outline, palette.color(QPalette::Button));
+    paintColor(painter, outline);
     // Once it is filled, for its color not to cover the half of its outline that is inside.
-    painter->setPen(selected ? QPen(palette.color(QPalette::Highlight), 2) : QPen(palette.color(QPalette::Mid), 1));
-    painter->setBrush(Qt::NoBrush);
-    painter->drawPath(outline);
+    painter.setPen(selected ? QPen(palette.color(QPalette::Highlight), 2) : QPen(palette.color(QPalette::Mid), 1));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawPath(outline);
+}
 
-    const QRectF componentRect(Names.left(), NameRect.bottom(), Names.width(), Names.height() / 2);
-    const QColor nameInk = nameColor(m_color, palette);
-    QColor componentInk = palette.color(QPalette::PlaceholderText);
-    if(m_color.isValid())
+void ComponentItem::paintColor(QPainter& painter, const QPainterPath& outline) const
+{
+    if(!m_color.isValid())
     {
-        componentInk = nameInk;
-        componentInk.setAlphaF(ComponentNameOpacity);
-    }
-
-    // A shape, as the dots of its interfaces: a triangle while it runs, nothing while it is edited.
-    const QRectF mark(Names.right() - StateMark, Names.top() + (NameRect.height() - StateMark) / 2, StateMark,
-                      StateMark);
-    painter->setPen(Qt::NoPen);
-    painter->setBrush(nameInk);
-    if(m_component.state() == Nebula::ComponentState::Running)
-    {
-        painter->drawPolygon(QPolygonF({mark.topLeft(), mark.bottomLeft(), QPointF(mark.right(), mark.center().y())}));
-    }
-
-    const QFont font = painter->font();
-    // In the corner across, while it does not work: an exclamation mark, which tells it without color, in a disc of the
-    // warning color, outlined in the one of the item to stand apart from the color it was given.
-    if(!m_unbound.isEmpty())
-    {
-        const ThemeColors& colors = currentThemeColors();
-        const QRectF warning(Names.left(), Names.top() + (NameRect.height() - WarningMark) / 2, WarningMark,
-                             WarningMark);
-        painter->setPen(QPen(palette.color(QPalette::Button), 1));
-        painter->setBrush(colors.warning);
-        painter->drawEllipse(warning);
-        QFont markFont = font;
-        markFont.setBold(true);
-        markFont.setPixelSize(WarningMarkFontSize);
-        painter->setFont(markFont);
-        painter->setPen(colors.onWarning);
-        painter->drawText(warning, Qt::AlignCenter, QStringLiteral("!"));
-    }
-
-    if(m_nameEditor == nullptr || !m_nameEditor->isVisible()) // Its name is otherwise the text being edited
-    {
-        const QFont title = titleFont(font);
-        painter->setFont(title);
-        painter->setPen(nameInk);
-        painter->drawText(NameRect, Qt::AlignCenter,
-                          QFontMetricsF(title).elidedText(m_component.objectName(), Qt::ElideRight, NameRect.width()));
-    }
-
-    // Its rows, under its interfaces: the name on the left, what it is on the right, both elided to share the width.
-    painter->setFont(font);
-    const QFontMetricsF metrics(font);
-    const qreal rowWidth = Header.width() - 2 * Padding;
-    qreal rowTop = rowsTop();
-    for(const auto& [name, what] : std::as_const(m_rows))
-    {
-        const QRectF rowRect(Header.left() + Padding, rowTop, rowWidth, InterfaceItem::RowHeight);
-        const QString shownName = metrics.elidedText(name, Qt::ElideRight, (rowWidth - RowSpacing) / 2);
-        const qreal nameWidth = metrics.horizontalAdvance(shownName);
-        painter->setPen(palette.color(QPalette::ButtonText));
-        painter->drawText(rowRect, Qt::AlignLeft | Qt::AlignVCenter, shownName);
-        painter->setPen(palette.color(QPalette::PlaceholderText));
-        painter->drawText(rowRect, Qt::AlignRight | Qt::AlignVCenter,
-                          metrics.elidedText(what, Qt::ElideLeft, rowWidth - nameWidth - RowSpacing));
-        rowTop += InterfaceItem::RowHeight;
-    }
-
-    painter->setPen(componentInk);
-    if(m_icon.isNull())
-    {
-        painter->drawText(componentRect, Qt::AlignCenter,
-                          metrics.elidedText(m_componentName, Qt::ElideRight, componentRect.width()));
         return;
     }
-    // The icon before the name, both in the middle.
-    const qreal iconSize = componentRect.height();
+    QPainterPath header;
+    header.addRect(Header);
+    painter.fillPath(outline.intersected(header), m_color);
+}
+
+void ComponentItem::paintStateMark(QPainter& painter, const QColor& ink) const
+{
+    if(m_component.state() != Nebula::ComponentState::Running)
+    {
+        return;
+    }
+    const QRectF& mark = StateMarkRect;
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(ink);
+    painter.drawPolygon(QPolygonF({mark.topLeft(), mark.bottomLeft(), QPointF(mark.right(), mark.center().y())}));
+}
+
+void ComponentItem::paintWarningMark(QPainter& painter, const QPalette& palette, const QFont& font) const
+{
+    if(m_unbound.isEmpty())
+    {
+        return;
+    }
+    painter.setPen(QPen(palette.color(QPalette::Button), 1));
+    painter.setBrush(currentThemeColors().warning);
+    painter.drawEllipse(WarningMarkRect);
+    painter.setFont(warningMarkFont(font));
+    painter.setPen(currentThemeColors().onWarning);
+    painter.drawText(WarningMarkRect, Qt::AlignCenter, QStringLiteral("!"));
+}
+
+void ComponentItem::paintName(QPainter& painter, const QColor& ink, const QFont& font) const
+{
+    if(m_nameEditor != nullptr && m_nameEditor->isVisible()) // Its name is the text being edited
+    {
+        return;
+    }
+    const QFont title = titleFont(font);
+    painter.setFont(title);
+    painter.setPen(ink);
+    painter.drawText(NameRect, Qt::AlignCenter,
+                     QFontMetricsF(title).elidedText(m_component.objectName(), Qt::ElideRight, NameRect.width()));
+}
+
+void ComponentItem::paintRows(QPainter& painter, const QPalette& palette, const QFont& font) const
+{
+    painter.setFont(font);
+    qreal top = rowsTop();
+    for(const Row& row : m_rows)
+    {
+        paintRow(painter, palette, QRectF(Header.left() + Padding, top, RowWidth, InterfaceItem::RowHeight), row);
+        top += InterfaceItem::RowHeight;
+    }
+}
+
+void ComponentItem::paintRow(QPainter& painter, const QPalette& palette, const QRectF& rect, const Row& row)
+{
+    const auto& [name, what] = row;
+    const QFontMetricsF metrics(painter.font());
+    const QString shownName = metrics.elidedText(name, Qt::ElideRight, (rect.width() - RowSpacing) / 2);
+    const qreal whatWidth = rect.width() - metrics.horizontalAdvance(shownName) - RowSpacing;
+    painter.setPen(palette.color(QPalette::ButtonText));
+    painter.drawText(rect, Qt::AlignLeft | Qt::AlignVCenter, shownName);
+    painter.setPen(palette.color(QPalette::PlaceholderText));
+    painter.drawText(rect, Qt::AlignRight | Qt::AlignVCenter, metrics.elidedText(what, Qt::ElideLeft, whatWidth));
+}
+
+void ComponentItem::paintComponentName(QPainter& painter, const QColor& ink, const QFont& font) const
+{
+    painter.setFont(font);
+    painter.setPen(ink);
+    if(!m_icon.isNull())
+    {
+        paintIconAndComponentName(painter, QFontMetricsF(font));
+        return;
+    }
+    painter.drawText(ComponentRect, Qt::AlignCenter,
+                     QFontMetricsF(font).elidedText(m_componentName, Qt::ElideRight, ComponentRect.width()));
+}
+
+void ComponentItem::paintIconAndComponentName(QPainter& painter, const QFontMetricsF& metrics) const
+{
+    const qreal iconSize = ComponentRect.height();
     const QString componentName =
-        metrics.elidedText(m_componentName, Qt::ElideRight, componentRect.width() - iconSize - IconSpacing);
+        metrics.elidedText(m_componentName, Qt::ElideRight, ComponentRect.width() - iconSize - IconSpacing);
     const qreal width = iconSize + IconSpacing + metrics.horizontalAdvance(componentName);
-    const QRectF iconRect(componentRect.center().x() - width / 2, componentRect.top(), iconSize, iconSize);
-    m_icon.paint(painter, iconRect.toAlignedRect());
-    painter->drawText(QRectF(iconRect.right() + IconSpacing, componentRect.top(),
-                             componentRect.right() - iconRect.right() - IconSpacing, componentRect.height()),
-                      Qt::AlignLeft | Qt::AlignVCenter, componentName);
+    const QRectF iconRect(ComponentRect.center().x() - width / 2, ComponentRect.top(), iconSize, iconSize);
+    m_icon.paint(&painter, iconRect.toAlignedRect());
+    const QRectF nameRect(QPointF(iconRect.right() + IconSpacing, ComponentRect.top()), ComponentRect.bottomRight());
+    painter.drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, componentName);
 }
 
 void ComponentItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
@@ -309,35 +363,62 @@ void ComponentItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 
 void ComponentItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
 {
-    if(event->button() != Qt::LeftButton)
+    if(event->button() == Qt::LeftButton && openOrEditAt(event->pos()))
     {
-        QGraphicsObject::mouseDoubleClickEvent(event); // A press
+        event->accept();
         return;
     }
-    // One that opens keeps the line of its name to be renamed, the rest of it to be opened.
-    const QRectF nameArea = m_openable ? QRectF(Header.topLeft(), QPointF(Header.right(), NameRect.bottom())) : Header;
-    const InterfaceItem* named = m_editable && m_interfacesRenamable ? interfaceNameAt(event->pos()) : nullptr;
-    if(m_editable && nameArea.contains(event->pos()))
+    QGraphicsObject::mouseDoubleClickEvent(event); // A press, or nothing to open or edit
+}
+
+NameEditor& ComponentItem::interfaceEditor()
+{
+    if(m_interfaceEditor == nullptr)
+    {
+        // Its child rather than the one of the interface: renaming it shows the interfaces again, in new items.
+        m_interfaceEditor = new NameEditor(*this, [this](const QString& name)
+                                           { emit interfaceNameEdited(m_editedKind, m_editedName, name); });
+        m_interfaceEditor->setFont(QApplication::font()); // The one the interfaces are painted in
+    }
+    return *m_interfaceEditor;
+}
+
+QRectF ComponentItem::nameArea() const
+{
+    return m_openable ? QRectF(Header.topLeft(), QPointF(Header.right(), NameRect.bottom())) : Header;
+}
+
+bool ComponentItem::openOrEditAt(const QPointF& position)
+{
+    if(m_editable && nameArea().contains(position))
     {
         editName();
+        return true;
     }
-    else if(named != nullptr)
+    return editInterfaceNameAt(position) || open();
+}
+
+bool ComponentItem::editInterfaceNameAt(const QPointF& position)
+{
+    const InterfaceItem* named = m_editable && m_interfacesRenamable ? interfaceNameAt(position) : nullptr;
+    if(named != nullptr)
     {
         editInterfaceName(*named);
     }
-    else if(m_openable)
+    return named != nullptr;
+}
+
+bool ComponentItem::open()
+{
+    if(!m_openable)
     {
-        // No longer held by the double-click: what opens, a dialog or another scene, takes its release away, and the
-        // scene would keep it held, with neither context menu nor Delete.
-        ungrabMouse();
-        emit openRequested();
+        return false;
     }
-    else
-    {
-        QGraphicsObject::mouseDoubleClickEvent(event);
-        return;
-    }
-    event->accept();
+    // No longer held by the double-click: what opens, a dialog or another scene, takes its release away, and the scene
+    // would keep it held, with neither context menu nor Delete.
+    ungrabMouse();
+    emit openRequested();
+    return true;
 }
 
 bool ComponentItem::isNameEdited() const
@@ -364,44 +445,72 @@ void ComponentItem::refreshInterfaces()
 {
     const QList<Nebula::InterfaceInfo> consumed = m_component.consumedInterfaces();
     const QList<Nebula::InterfaceInfo> provided = m_component.providedInterfaces();
-    // Those it shows, unless one was renamed or removed, as those of a stargate are: shown again from the start then.
-    const auto shown = [](const QList<InterfaceItem*>& items, const QList<Nebula::InterfaceInfo>& interfaces)
-    { return items.size() <= interfaces.size() && namesOf(items) == namesOf(interfaces, items.size()); };
-    const bool rebuilt = !shown(m_consumedInterfaces, consumed) || !shown(m_providedInterfaces, provided);
+    const bool rebuilt = clearIfChanged(consumed, provided); // Shown again from the start then
+    showInterfaces(consumed, provided);
+    refreshUnbound();
     if(rebuilt)
     {
-        prepareGeometryChange();
-        qDeleteAll(std::exchange(m_consumedInterfaces, {})); // With their links
-        qDeleteAll(std::exchange(m_providedInterfaces, {}));
+        update(); // Its rows, lower or higher
+        emit interfacesRebuilt();
     }
+}
 
-    // The rows start in the padding under the names and leave as much under the last one.
-    qreal row = Header.bottom() - Padding / 2 + InterfaceItem::RowHeight / 2;
-    // items shows interfaces, of kind, down from row, each on the edge at x.
-    const auto refresh = [&](QList<InterfaceItem*>& items, const QList<Nebula::InterfaceInfo>& interfaces,
-                             InterfaceItem::Kind kind, qreal x)
+bool ComponentItem::clearIfChanged(const QList<Nebula::InterfaceInfo>& consumed,
+                                   const QList<Nebula::InterfaceInfo>& provided)
+{
+    if(showsFirst(m_consumedInterfaces, consumed) && showsFirst(m_providedInterfaces, provided))
     {
-        for(qsizetype index = 0; index < interfaces.size(); ++index, row += InterfaceItem::RowHeight)
+        return false;
+    }
+    prepareGeometryChange();
+    qDeleteAll(std::exchange(m_consumedInterfaces, {})); // With their links
+    qDeleteAll(std::exchange(m_providedInterfaces, {}));
+    return true;
+}
+
+void ComponentItem::showInterfaces(const QList<Nebula::InterfaceInfo>& consumed,
+                                   const QList<Nebula::InterfaceInfo>& provided)
+{
+    // The rows start in the padding under the names and leave as much under the last one; the dots are on the edges
+    // drawn by paint(), one pixel inside its bounds.
+    const qreal top = Header.bottom() - Padding / 2 + InterfaceItem::RowHeight / 2;
+    const qreal providedTop = top + static_cast<qreal>(consumed.size()) * InterfaceItem::RowHeight;
+    showInterfaces(m_consumedInterfaces, consumed, InterfaceItem::Kind::Consumed, QPointF(Header.left() + 1, top));
+    showInterfaces(m_providedInterfaces, provided, InterfaceItem::Kind::Provided,
+                   QPointF(Header.right() - 1, providedTop));
+}
+
+void ComponentItem::showInterfaces(QList<InterfaceItem*>& items, const QList<Nebula::InterfaceInfo>& interfaces,
+                                   InterfaceItem::Kind kind, QPointF at)
+{
+    for(qsizetype index = 0; index < interfaces.size(); ++index, at.ry() += InterfaceItem::RowHeight)
+    {
+        if(index == items.size())
         {
-            if(index == items.size())
-            {
-                prepareGeometryChange(); // A row more
-                items.append(new InterfaceItem(kind, interfaces.at(index), Header.width() - 2 * Padding, *this));
-            }
-            items.at(index)->setAvailable(interfaces.at(index).available);
-            items.at(index)->setPos(x, row); // Lower than it was when an interface was declared above it
+            prepareGeometryChange(); // A row more
+            items.append(new InterfaceItem(kind, interfaces.at(index), RowWidth, *this));
         }
-    };
-    // On the edges drawn by paint(), one pixel inside its bounds.
-    refresh(m_consumedInterfaces, consumed, InterfaceItem::Kind::Consumed, Header.left() + 1);
-    refresh(m_providedInterfaces, provided, InterfaceItem::Kind::Provided, Header.right() - 1);
-
-    // Whether it works: what it misses is drawn in the warning color, and told by its mark and its tooltip.
-    const QStringList unbound = m_component.unboundMandatoryInterfaces();
-    for(InterfaceItem* consumedItem : std::as_const(m_consumedInterfaces))
-    {
-        consumedItem->setMissing(unbound.contains(consumedItem->name()));
+        items.at(index)->setAvailable(interfaces.at(index).available);
+        items.at(index)->setPos(at); // Lower than it was when an interface was declared above it
     }
+}
+
+void ComponentItem::refreshUnbound()
+{
+    const QStringList unbound = m_component.unboundMandatoryInterfaces();
+    for(InterfaceItem* consumed : std::as_const(m_consumedInterfaces))
+    {
+        consumed->setMissing(unbound.contains(consumed->name()));
+    }
+    setToolTip(toolTipText(unbound));
+    if(std::exchange(m_unbound, unbound) != unbound)
+    {
+        update(); // Its mark
+    }
+}
+
+QString ComponentItem::toolTipText(const QStringList& unbound) const
+{
     QString toolTip = m_about.isEmpty() ? m_component.componentId() : m_about;
     if(m_openable)
     {
@@ -409,20 +518,9 @@ void ComponentItem::refreshInterfaces()
     }
     if(!unbound.isEmpty())
     {
-        toolTip += u'\n' + tr("Does not work: %1 bound to nothing").arg(unbound.join(QStringLiteral(", "))) + u'\n' +
-                   tr("Drag from the dot of each to an interface of its type another component provides");
+        toolTip += u'\n' + unboundText(unbound);
     }
-    setToolTip(toolTip);
-    if(unbound != m_unbound)
-    {
-        m_unbound = unbound;
-        update(); // Its mark
-    }
-    if(rebuilt)
-    {
-        update(); // Its rows, lower or higher
-        emit interfacesRebuilt();
-    }
+    return toolTip;
 }
 
 qreal ComponentItem::rowsTop() const

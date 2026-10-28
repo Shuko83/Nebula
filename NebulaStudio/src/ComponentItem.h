@@ -14,7 +14,11 @@
 #include "InterfaceItem.h"
 
 class NameEditor;
+class QFontMetricsF;
 class QGraphicsScene;
+class QPainter;
+class QPainterPath;
+class QPalette;
 
 namespace Nebula
 {
@@ -95,8 +99,52 @@ class ComponentItem : public QGraphicsObject
     // Shows the interfaces of the component as they are now, again from the start when one of those it shows was
     // renamed or removed. Then whether it works.
     void refreshInterfaces();
+    // Deletes its interface items, with their links, unless they show the first of consumed and provided: one was
+    // renamed or removed, as those of a stargate are. Returns whether it deleted them.
+    bool clearIfChanged(const QList<Nebula::InterfaceInfo>& consumed, const QList<Nebula::InterfaceInfo>& provided);
+    // Shows consumed on its left edge, then provided on its right edge, under its names, adding the items they miss.
+    void showInterfaces(const QList<Nebula::InterfaceInfo>& consumed, const QList<Nebula::InterfaceInfo>& provided);
+    // Has items show interfaces, of kind, the first at at and the others below it.
+    void showInterfaces(QList<InterfaceItem*>& items, const QList<Nebula::InterfaceInfo>& interfaces,
+                        InterfaceItem::Kind kind, QPointF at);
+    // Whether it works: what it misses is drawn in the warning color, and told by its mark and its tooltip.
+    void refreshUnbound();
+    // What it is, how it opens, and what it misses, unbound, when it does not work.
+    [[nodiscard]] QString toolTipText(const QStringList& unbound) const;
     // Where its rows start: under its interfaces.
     [[nodiscard]] qreal rowsTop() const;
+    // The editor of the names of interfaces, created when first asked for.
+    NameEditor& interfaceEditor();
+    // Where a double-click edits its name: one that opens keeps the line of its name to be renamed, the rest of it to
+    // be opened.
+    [[nodiscard]] QRectF nameArea() const;
+    // Edits its name or the one of an interface at position, or asks for it to be opened; false when there is nothing
+    // to do there.
+    bool openOrEditAt(const QPointF& position);
+    // Edits the name of the interface at position, when there is one and it can be; returns whether it does.
+    bool editInterfaceNameAt(const QPointF& position);
+    // Asks for it to be opened, when it opens; returns whether it does.
+    bool open();
+
+    // Its background and its outline, highlighted when selected.
+    void paintBody(QPainter& painter, const QPalette& palette, bool selected) const;
+    // Its color, behind its names only: its interfaces keep the colors of the style, which their dots are drawn with.
+    void paintColor(QPainter& painter, const QPainterPath& outline) const;
+    // A shape, as the dots of its interfaces, in ink: a triangle while it runs, nothing while it is edited.
+    void paintStateMark(QPainter& painter, const QColor& ink) const;
+    // In the corner across, while it does not work: an exclamation mark, which tells it without color, in a disc of
+    // the warning color, outlined in the one of the item to stand apart from the color it was given.
+    void paintWarningMark(QPainter& painter, const QPalette& palette, const QFont& font) const;
+    // Its name, in ink, unless it is the text being edited.
+    void paintName(QPainter& painter, const QColor& ink, const QFont& font) const;
+    // Its rows, under its interfaces.
+    void paintRows(QPainter& painter, const QPalette& palette, const QFont& font) const;
+    // row in rect: the name on the left, what it is on the right, both elided to share the width.
+    static void paintRow(QPainter& painter, const QPalette& palette, const QRectF& rect, const Row& row);
+    // The name of its component, in ink, after its icon when it has one.
+    void paintComponentName(QPainter& painter, const QColor& ink, const QFont& font) const;
+    // The icon before the name of its component, both in the middle.
+    void paintIconAndComponentName(QPainter& painter, const QFontMetricsF& metrics) const;
 
     Nebula::Component& m_component;
     QString m_componentName;
