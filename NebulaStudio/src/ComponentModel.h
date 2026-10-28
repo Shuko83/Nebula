@@ -3,21 +3,23 @@
 
 #pragma once
 
-#include <QAbstractTableModel>
 #include <QIcon>
 #include <QList>
 #include <cstdint>
 
 #include "Nebula/Component/ComponentInfo.h"
+#include "RowsModel.h"
 
 namespace Nebula
 {
 class ComponentFactory;
 }
 
+using ComponentRows = RowsModel<Nebula::ComponentInfo, &Nebula::ComponentInfo::id>;
+
 // The components registered in a ComponentFactory, one row per component, sorted by id. The description of a
 // component is the tool tip of its row, in every column; its name has the icon of an Astre.
-class ComponentModel : public QAbstractTableModel
+class ComponentModel : public ComponentRows
 {
     Q_OBJECT
 
@@ -37,11 +39,7 @@ class ComponentModel : public QAbstractTableModel
 
     explicit ComponentModel(const Nebula::ComponentFactory& factory, QObject* parent = nullptr);
 
-    [[nodiscard]] int rowCount(const QModelIndex& parent = {}) const override;
-    [[nodiscard]] int columnCount(const QModelIndex& parent = {}) const override;
     [[nodiscard]] QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
-    [[nodiscard]] QVariant headerData(int section, Qt::Orientation orientation,
-                                      int role = Qt::DisplayRole) const override;
 
     // A component can be dragged, to be instantiated where it is dropped: see EditionScene.
     [[nodiscard]] Qt::ItemFlags flags(const QModelIndex& index) const override;
@@ -52,8 +50,13 @@ class ComponentModel : public QAbstractTableModel
     // removes the ones it no longer has, those of a plugin just unloaded.
     void refresh();
 
+  protected:
+    [[nodiscard]] QStringList headers() const override;
+
   private:
+    // What the cell of component in column has for role, one that changes with the column.
+    [[nodiscard]] QVariant cellData(const Nebula::ComponentInfo& component, int column, int role) const;
+
     const Nebula::ComponentFactory& m_factory;
-    QList<Nebula::ComponentInfo> m_components; // Sorted by id, as ComponentFactory::components()
-    QIcon m_icon;                              // Of every name: one icon keeps its pixmaps for all
+    QIcon m_icon; // Of every name: one icon keeps its pixmaps for all
 };

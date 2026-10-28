@@ -4,84 +4,32 @@
 #include "ComponentModel.h"
 
 #include <QMimeData>
-#include <algorithm>
 
 #include "Nebula/Component/ComponentFactory.h"
 #include "Theme.h"
 
 ComponentModel::ComponentModel(const Nebula::ComponentFactory& factory, QObject* parent)
-    : QAbstractTableModel(parent), m_factory(factory), m_icon(icon(GlossaryTerm::Astre))
+    : ComponentRows(parent), m_factory(factory), m_icon(icon(GlossaryTerm::Astre))
 {
-}
-
-int ComponentModel::rowCount(const QModelIndex& parent) const
-{
-    return parent.isValid() ? 0 : static_cast<int>(m_components.size());
-}
-
-int ComponentModel::columnCount(const QModelIndex& parent) const
-{
-    return parent.isValid() ? 0 : ColumnCount;
 }
 
 QVariant ComponentModel::data(const QModelIndex& index, int role) const
 {
-    if(!checkIndex(index, CheckIndexOption::IndexIsValid | CheckIndexOption::ParentIsInvalid))
+    if(!isCell(index))
     {
         return {};
     }
-    const Nebula::ComponentInfo& component = m_components.at(index.row());
-    if(role == IdRole)
+    const Nebula::ComponentInfo& component = rowAt(index);
+    if(role == IdRole || role == Qt::ToolTipRole) // In every column
     {
-        return component.id;
+        return role == IdRole ? component.id : component.description;
     }
-    if(role == Qt::ToolTipRole)
-    {
-        return component.description;
-    }
-    if(role == Qt::DecorationRole)
-    {
-        return index.column() == Name ? m_icon : QVariant();
-    }
-    if(role != Qt::DisplayRole)
-    {
-        return {};
-    }
-    switch(index.column())
-    {
-    case Name:
-        return component.name;
-    case Category:
-        return component.category;
-    case Plugin:
-        return component.pluginId;
-    default:
-        return {};
-    }
-}
-
-QVariant ComponentModel::headerData(int section, Qt::Orientation orientation, int role) const
-{
-    if(orientation != Qt::Horizontal || role != Qt::DisplayRole)
-    {
-        return {};
-    }
-    switch(section)
-    {
-    case Name:
-        return tr("Name");
-    case Category:
-        return tr("Category");
-    case Plugin:
-        return tr("Plugin");
-    default:
-        return {};
-    }
+    return cellData(component, index.column(), role);
 }
 
 Qt::ItemFlags ComponentModel::flags(const QModelIndex& index) const
 {
-    const Qt::ItemFlags flags = QAbstractTableModel::flags(index);
+    const Qt::ItemFlags flags = ComponentRows::flags(index);
     return index.isValid() ? flags | Qt::ItemIsDragEnabled : flags;
 }
 
@@ -104,26 +52,21 @@ QMimeData* ComponentModel::mimeData(const QModelIndexList& indexes) const
 
 void ComponentModel::refresh()
 {
-    const QList<Nebula::ComponentInfo> components = m_factory.components();
-    // Those of a plugin unloaded since, the last one first: the rows above it keep their number.
-    for(qsizetype row = m_components.size() - 1; row >= 0; --row)
+    setRows(m_factory.components()); // Listed by id, as the rows are
+}
+
+QStringList ComponentModel::headers() const
+{
+    return {tr("Name"), tr("Category"), tr("Plugin")};
+}
+
+QVariant ComponentModel::cellData(const Nebula::ComponentInfo& component, int column, int role) const
+{
+    if(role == Qt::DecorationRole)
     {
-        if(std::ranges::find(components, m_components.at(row).id, &Nebula::ComponentInfo::id) == components.end())
-        {
-            beginRemoveRows({}, static_cast<int>(row), static_cast<int>(row));
-            m_components.removeAt(row);
-            endRemoveRows();
-        }
+        return column == Name ? QVariant(m_icon) : QVariant();
     }
-    // ComponentFactory lists them by id: the new ones are inserted where they belong.
-    for(qsizetype row = 0; row < components.size(); ++row)
-    {
-        if(row < m_components.size() && m_components.at(row).id == components.at(row).id)
-        {
-            continue;
-        }
-        beginInsertRows({}, static_cast<int>(row), static_cast<int>(row));
-        m_components.insert(row, components.at(row));
-        endInsertRows();
-    }
+    // In the order of the columns.
+    return role == Qt::DisplayRole ? QVariantList{component.name, component.category, component.pluginId}.value(column)
+                                   : QVariant();
 }
