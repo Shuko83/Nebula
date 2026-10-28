@@ -92,6 +92,10 @@ class CORE_EXPORT Galaxy : public Component
     // Destroys its components and its settings files, once its own interfaces are gone: what was bound to them is
     // unbound, after it let go of what they passed.
     void empty();
+    // Its stargates no longer give it anything: what they are bound to is about to go.
+    void detachStargates();
+    // Removes what it provides and what it consumes, which unbinds what was bound to it.
+    void removeInterfaces();
 
     QString m_filePath;
     QString m_description;

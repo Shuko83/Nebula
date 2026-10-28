@@ -5,25 +5,19 @@
 
 #include <QObject>
 
+#include "Component/MetaProperties.h"
+
 namespace Nebula
 {
 
 QList<QMetaProperty> PropertyObject::properties() const
 {
-    QList<QMetaProperty> properties;
     if(object == nullptr)
     {
-        return properties;
+        return {};
     }
-    const QMetaObject* metaObject = object->metaObject();
-    for(int index = QObject::staticMetaObject.propertyCount(); index < metaObject->propertyCount(); ++index)
-    {
-        const QMetaProperty property = metaObject->property(index);
-        if(property.isDesignable() && property.isStored())
-        {
-            properties.append(property);
-        }
-    }
+    QList<QMetaProperty> properties = declaredProperties(*object->metaObject(), QObject::staticMetaObject);
+    properties.removeIf([](const QMetaProperty& property) { return !property.isDesignable() || !property.isStored(); });
     return properties;
 }
 

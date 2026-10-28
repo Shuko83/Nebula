@@ -5,24 +5,47 @@
 
 #include <QFileInfo>
 #include <algorithm>
-#include <ranges>
 #include <utility>
+
+#include "Component/Components.h"
 
 namespace Nebula
 {
+
+namespace
+{
+
+// The properties the stargates among components expose, as they expose them: maybe through a galaxy inside.
+QList<ExposedProperty> stargateProperties(ComponentSpan components)
+{
+    QList<ExposedProperty> properties;
+    for(const Stargate* stargate : componentsOfType<const Stargate>(components))
+    {
+        properties.append(stargate->properties());
+    }
+    return properties;
+}
+
+// Where property, exposed by a stargate, is: through the galaxy that exposes it in turn; nullopt when that galaxy no
+// longer exposes it.
+std::optional<ExposedProperty> resolve(const ExposedProperty& property)
+{
+    const auto* inner = qobject_cast<const Galaxy*>(property.component);
+    std::optional<ExposedProperty> target = inner != nullptr ? inner->exposedProperty(property.property) : property;
+    if(target)
+    {
+        target->name = property.name;
+    }
+    return target;
+}
+
+} // namespace
 
 Galaxy::Galaxy() = default;
 
 Galaxy::~Galaxy()
 {
-    // Its stargates no longer give it anything: what they are bound to is about to go with them.
-    for(const std::unique_ptr<Component>& component : m_components)
-    {
-        if(auto* stargate = qobject_cast<Stargate*>(component.get()))
-        {
-            stargate->detach();
-        }
-    }
+    detachStargates();
     releaseInterfaces(); // While its components, which what it consumes is passed to, are still there
 }
 
@@ -75,26 +98,11 @@ const std::vector<std::unique_ptr<SettingsFile>>& Galaxy::settingsFiles() const
 QList<ExposedProperty> Galaxy::exposedProperties() const
 {
     QList<ExposedProperty> exposed;
-    for(const std::unique_ptr<Component>& component : m_components)
+    for(const ExposedProperty& property : stargateProperties(m_components))
     {
-        const auto* stargate = qobject_cast<const Stargate*>(component.get());
-        if(stargate == nullptr)
+        if(const std::optional<ExposedProperty> target = resolve(property))
         {
-            continue;
-        }
-        for(const ExposedProperty& property : stargate->properties())
-        {
-            // Where it is: through the galaxy that exposes it in turn.
-            const auto* inner = qobject_cast<const Galaxy*>(property.component);
-            const std::optional<ExposedProperty> target =
-                inner != nullptr ? inner->exposedProperty(property.property) : std::optional(property);
-            if(target)
-            {
-                exposed.append(ExposedProperty{.name = property.name,
-                                               .component = target->component,
-                                               .object = target->object,
-                                               .property = target->property});
-            }
+            exposed.append(*target);
         }
     }
     return exposed;
@@ -109,44 +117,36 @@ std::optional<ExposedProperty> Galaxy::exposedProperty(const QString& name) cons
 
 bool Galaxy::onStart()
 {
-    std::vector<Component*> started;
-    for(const std::unique_ptr<Component>& component : m_components)
-    {
-        if(!component->start())
-        {
-            for(Component* running : started | std::views::reverse)
-            {
-                running->stop();
-            }
-            return false;
-        }
-        started.push_back(component.get());
-    }
-    return true;
+    return startInOrder(m_components) == nullptr;
 }
 
 void Galaxy::onStop()
 {
-    for(const std::unique_ptr<Component>& component : m_components | std::views::reverse)
-    {
-        component->stop(); // Does nothing to one that does not run
-    }
+    stopInReverse(m_components);
 }
 
 void Galaxy::builtByPlugin() {}
 
 void Galaxy::empty()
 {
-    // Its stargates no longer give it anything, as when it is destroyed.
-    for(const std::unique_ptr<Component>& component : m_components)
+    detachStargates(); // As when it is destroyed
+    removeInterfaces();
+    m_settingsFiles.clear(); // Before the components their entries are of
+    // Out of components() before they are destroyed, as Universe::clear() does.
+    const std::vector<std::unique_ptr<Component>> removed = std::exchange(m_components, {});
+}
+
+void Galaxy::detachStargates()
+{
+    for(Stargate* stargate : componentsOfType<Stargate>(m_components))
     {
-        if(auto* stargate = qobject_cast<Stargate*>(component.get()))
-        {
-            stargate->detach();
-        }
+        stargate->detach();
     }
-    // From copies of the lists: each removal tells what was bound to it, which can change them.
-    const QList<InterfaceInfo> provided = providedInterfaces();
+}
+
+void Galaxy::removeInterfaces()
+{
+    const QList<InterfaceInfo> provided = providedInterfaces(); // Copies: each removal can change the lists
     for(const InterfaceInfo& info : provided)
     {
         removeProvidedInterface(info.name);
@@ -156,9 +156,6 @@ void Galaxy::empty()
     {
         removeConsumedInterface(info.name);
     }
-    m_settingsFiles.clear(); // Before the components their entries are of
-    // Out of components() before they are destroyed, as Universe::clear() does.
-    const std::vector<std::unique_ptr<Component>> removed = std::exchange(m_components, {});
 }
 
 } // namespace Nebula
