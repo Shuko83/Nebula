@@ -4,19 +4,20 @@
 #pragma once
 
 #include <QString>
-#include <QWidget>
+
+#include "Inspector.h"
 
 class QLabel;
 class QPushButton;
-class QStackedWidget;
 
 namespace Nebula
 {
 class PluginManager;
-}
+struct PluginInfo;
+} // namespace Nebula
 
 // Shows a plugin of a PluginManager, with a button to load it and another to unload it.
-class PluginViewer : public QWidget
+class PluginViewer : public Inspector
 {
     Q_OBJECT
 
@@ -38,13 +39,17 @@ class PluginViewer : public QWidget
     void unloadRequested(const QString& pluginId);
 
   private:
+    void addFields();
+    void addLoadButtons();
+    // Shows info, loaded or not.
+    void showInfo(const Nebula::PluginInfo& info, bool loaded);
+    // Enables the button that does what can be done to the plugin shown, loaded or not.
+    void showButtons(bool loaded);
+
     const Nebula::PluginManager& m_plugins;
     QString m_pluginId;
     bool m_unloadAllowed = true;
 
-    QStackedWidget* m_stack = nullptr;
-    QWidget* m_placeholder = nullptr; // Shown when there is no plugin
-    QWidget* m_page = nullptr;        // Shown otherwise
     QLabel* m_name = nullptr;
     QLabel* m_id = nullptr;
     QLabel* m_version = nullptr;

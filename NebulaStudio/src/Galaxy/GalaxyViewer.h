@@ -4,17 +4,18 @@
 #pragma once
 
 #include <QString>
-#include <QWidget>
 
-class GalaxyModel;
+#include "Inspector.h"
+
 class QLabel;
 class QPushButton;
-class QStackedWidget;
+class GalaxyModel;
+struct ListedGalaxy;
 
 // Shows a galaxy of a GalaxyModel: its name, its description, its file, its plugins and its state, with a button to
 // open it. When it cannot be loaded, an error tells why, in the warning color: the plugins it misses, and how to make
 // them known, or why its file cannot be read. It follows the model.
-class GalaxyViewer : public QWidget
+class GalaxyViewer : public Inspector
 {
     Q_OBJECT
 
@@ -36,8 +37,21 @@ class GalaxyViewer : public QWidget
     void changeEvent(QEvent* event) override;
 
   private:
+    // Reads the galaxy shown from the model again when the model changes its rows: the galaxy shown changes with its
+    // file, and with the plugins the application knows.
+    void followModel();
+    void addFields();
+    // The error, below the form, with the warning icon of the style: see colorError().
+    QWidget* newError();
     // Reads the galaxy shown from the model again.
     void refresh();
+    // What the placeholder tells when there is no galaxy to show.
+    [[nodiscard]] QString placeholderText() const;
+    void showGalaxy(const ListedGalaxy& galaxy);
+    // Shows error, unless it is empty.
+    void showError(const QString& error);
+    // Enables the Open button when a galaxy that can be loaded can be opened now.
+    void showOpenButton(bool loadable);
     // Gives the error the warning color of the current scheme: the palette has no role for it.
     void colorError();
 
@@ -45,9 +59,6 @@ class GalaxyViewer : public QWidget
     QString m_filePath;
     bool m_openAllowed = true;
 
-    QStackedWidget* m_stack = nullptr;
-    QLabel* m_placeholder = nullptr; // Shown when there is no galaxy
-    QWidget* m_page = nullptr;       // Shown otherwise
     QLabel* m_name = nullptr;
     QLabel* m_description = nullptr;
     QLabel* m_file = nullptr;

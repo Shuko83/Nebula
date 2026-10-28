@@ -3,20 +3,23 @@
 
 #pragma once
 
+#include <QList>
+#include <QMetaProperty>
 #include <QString>
-#include <QWidget>
+
+#include "Inspector.h"
 
 class QLabel;
-class QStackedWidget;
 class QTreeWidget;
 
 namespace Nebula
 {
 class ComponentFactory;
-}
+struct ComponentInfo;
+} // namespace Nebula
 
 // Shows a component registered in a ComponentFactory: what it is and its properties.
-class ComponentViewer : public QWidget
+class ComponentViewer : public Inspector
 {
     Q_OBJECT
 
@@ -27,11 +30,11 @@ class ComponentViewer : public QWidget
     void setComponentId(const QString& componentId);
 
   private:
+    void showInfo(const Nebula::ComponentInfo& component);
+    void showProperties(const QList<QMetaProperty>& properties);
+
     const Nebula::ComponentFactory& m_factory;
 
-    QStackedWidget* m_stack = nullptr;
-    QWidget* m_placeholder = nullptr; // Shown when there is no component
-    QWidget* m_page = nullptr;        // Shown otherwise
     QLabel* m_name = nullptr;
     QLabel* m_id = nullptr;
     QLabel* m_plugin = nullptr;
