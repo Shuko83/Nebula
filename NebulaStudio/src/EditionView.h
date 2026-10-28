@@ -40,6 +40,17 @@ class EditionView : public QGraphicsView
     void mouseReleaseEvent(QMouseEvent* event) override;
 
   private:
+    // Scrolls the view by delta, in pixels of the viewport.
+    void scrollBy(QPoint delta);
+    // Zooms to zoom, what is under cursor staying there.
+    void zoomAround(QPoint cursor, qreal zoom);
+    // Zooms in or out when event is + or -, which it accepts then.
+    void zoomByKey(QKeyEvent& event);
+    // Ends the pan once the middle button is released, see endPanIfReleased(); while it goes on, accepts event, which
+    // is not for the scene then. Returns whether it goes on.
+    bool isPanning(QMouseEvent& event);
+    // Moves the view for what was under the cursor to stay under it, now at at.
+    void pan(QPoint at);
     void startPan(QPoint at);
     // Ends the pan once the middle button is no longer held with event, its release or not: the release is lost when
     // another window takes the mouse meanwhile.

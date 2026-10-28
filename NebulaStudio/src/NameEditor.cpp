@@ -28,26 +28,19 @@ void NameEditor::edit(const QString& name, const QColor& color, const QRectF& re
     place();
     show();
     setFocus();
-    QTextCursor cursor = textCursor();
-    cursor.select(QTextCursor::Document); // What is typed replaces it
-    setTextCursor(cursor);
+    selectAll();            // What is typed replaces it
     parentItem()->update(); // Its name is no longer painted
 }
 
 void NameEditor::keyPressEvent(QKeyEvent* event)
 {
-    switch(event->key())
+    const int key = event->key();
+    if(key == Qt::Key_Escape || key == Qt::Key_Return || key == Qt::Key_Enter)
     {
-    case Qt::Key_Escape:
-        end(false);
-        break;
-    case Qt::Key_Return:
-    case Qt::Key_Enter:
-        end(true);
-        break;
-    default:
-        QGraphicsTextItem::keyPressEvent(event);
+        end(key != Qt::Key_Escape);
+        return;
     }
+    QGraphicsTextItem::keyPressEvent(event);
 }
 
 void NameEditor::focusOutEvent(QFocusEvent* event)
@@ -58,19 +51,29 @@ void NameEditor::focusOutEvent(QFocusEvent* event)
 
 void NameEditor::place()
 {
-    // Its text is inside the margin of its document.
     const QSizeF size = document()->size();
+    setPos(leftFor(size.width()), m_rect.center().y() - size.height() / 2);
+}
+
+qreal NameEditor::leftFor(qreal width) const
+{
     const qreal margin = document()->documentMargin();
-    qreal left = m_rect.left() - margin;
     if(m_alignment.testFlag(Qt::AlignHCenter))
     {
-        left = m_rect.center().x() - size.width() / 2;
+        return m_rect.center().x() - width / 2;
     }
-    else if(m_alignment.testFlag(Qt::AlignRight))
+    if(m_alignment.testFlag(Qt::AlignRight))
     {
-        left = m_rect.right() + margin - size.width();
+        return m_rect.right() + margin - width;
     }
-    setPos(left, m_rect.center().y() - size.height() / 2);
+    return m_rect.left() - margin;
+}
+
+void NameEditor::selectAll()
+{
+    QTextCursor cursor = textCursor();
+    cursor.select(QTextCursor::Document);
+    setTextCursor(cursor);
 }
 
 void NameEditor::end(bool named)

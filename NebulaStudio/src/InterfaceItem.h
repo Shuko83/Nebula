@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <QColor>
 #include <QCoreApplication>
 #include <QGraphicsItem>
 #include <QList>
@@ -11,6 +12,8 @@
 #include <cstdint>
 
 class ComponentItem;
+class QPainter;
+class QPalette;
 class LinkItem;
 
 namespace Nebula
@@ -90,6 +93,19 @@ class InterfaceItem : public QGraphicsItem
   private:
     // Tells what it is and its state in its tooltip.
     void refreshToolTip();
+    // What it is, which tells what it can be bound to: the other kind, of the same type.
+    [[nodiscard]] QString kindText() const;
+    // Whether it is mandatory, on a line of its own; empty when it is optional.
+    [[nodiscard]] QString requirementText() const;
+    // Whether it is available, and what to do when it is bound to nothing while mandatory.
+    [[nodiscard]] QString stateText() const;
+    // The color of its dot and of its name, before it is seen over its component.
+    [[nodiscard]] QColor inkColor(const QPalette& palette) const;
+    // Shapes rather than colors, which not everyone tells apart: a disc is provided, a circle is consumed, and a dotted
+    // circle is provided but unavailable, two stacked circles are a list. Not filled, it still hides the edge of the
+    // component it is on.
+    void paintDot(QPainter& painter, const QColor& color, const QColor& background) const;
+    void paintName(QPainter& painter, const QColor& color) const;
 
     ComponentItem& m_componentItem;
     Kind m_kind;

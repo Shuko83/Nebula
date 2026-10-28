@@ -21,6 +21,12 @@ constexpr qreal ZoomStep = 1.25;
 // The angle a notch of the wheel turns, in eighths of a degree.
 constexpr qreal WheelNotch = 120;
 
+// Whether event comes with a modifier that makes a command of its key.
+bool hasCommandModifier(const QKeyEvent& event)
+{
+    return (event.modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) != Qt::NoModifier;
+}
+
 } // namespace
 
 EditionView::EditionView(QGraphicsScene* scene, QWidget* parent) : QGraphicsView(scene, parent) {}
@@ -63,13 +69,7 @@ void EditionView::wheelEvent(QWheelEvent* event)
         QGraphicsView::wheelEvent(event);
         return;
     }
-    // What is under the cursor stays there, the view scrolled by how far it went.
-    const QPoint cursor = event->position().toPoint();
-    const QPointF under = mapToScene(cursor);
-    setZoom(zoom() * std::pow(ZoomStep, event->angleDelta().y() / WheelNotch));
-    const QPoint moved = mapFromScene(under) - cursor;
-    horizontalScrollBar()->setValue(horizontalScrollBar()->value() + moved.x());
-    verticalScrollBar()->setValue(verticalScrollBar()->value() + moved.y());
+    zoomAround(event->position().toPoint(), zoom() * std::pow(ZoomStep, event->angleDelta().y() / WheelNotch));
     event->accept();
 }
 
@@ -77,23 +77,9 @@ void EditionView::keyPressEvent(QKeyEvent* event)
 {
     // The scene first: a name edited there takes + and - as any other character.
     QGraphicsView::keyPressEvent(event);
-    if(event->isAccepted() ||
-       (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) != Qt::NoModifier)
+    if(!event->isAccepted() && !hasCommandModifier(*event))
     {
-        return;
-    }
-    switch(event->key())
-    {
-    case Qt::Key_Plus:
-        zoomIn();
-        event->accept();
-        break;
-    case Qt::Key_Minus:
-        zoomOut();
-        event->accept();
-        break;
-    default:
-        break;
+        zoomByKey(*event);
     }
 }
 
@@ -103,34 +89,21 @@ void EditionView::mousePressEvent(QMouseEvent* event)
     if(event->button() == Qt::MiddleButton && event->buttons() == Qt::MiddleButton)
     {
         startPan(event->position().toPoint());
-        event->accept();
-        return;
     }
-    endPanIfReleased(*event);
-    // The other buttons are for the scene once the pan is over.
-    if(m_panFrom)
+    if(!isPanning(*event)) // The other buttons are for the scene once the pan is over
     {
-        event->accept();
-        return;
+        QGraphicsView::mousePressEvent(event);
     }
-    QGraphicsView::mousePressEvent(event);
 }
 
 void EditionView::mouseMoveEvent(QMouseEvent* event)
 {
-    endPanIfReleased(*event);
-    if(!m_panFrom)
+    if(!isPanning(*event))
     {
         QGraphicsView::mouseMoveEvent(event);
         return;
     }
-    // What was under the cursor stays under it.
-    const QPoint at = event->position().toPoint();
-    const QPoint moved = at - *m_panFrom;
-    horizontalScrollBar()->setValue(horizontalScrollBar()->value() - moved.x());
-    verticalScrollBar()->setValue(verticalScrollBar()->value() - moved.y());
-    m_panFrom = at;
-    event->accept();
+    pan(event->position().toPoint());
 }
 
 void EditionView::mouseReleaseEvent(QMouseEvent* event)
@@ -143,6 +116,48 @@ void EditionView::mouseReleaseEvent(QMouseEvent* event)
     // Its press was for the pan, or was not given to the scene.
     endPanIfReleased(*event);
     event->accept();
+}
+
+void EditionView::scrollBy(QPoint delta)
+{
+    horizontalScrollBar()->setValue(horizontalScrollBar()->value() + delta.x());
+    verticalScrollBar()->setValue(verticalScrollBar()->value() + delta.y());
+}
+
+void EditionView::zoomAround(QPoint cursor, qreal zoom)
+{
+    const QPointF under = mapToScene(cursor);
+    setZoom(zoom);
+    scrollBy(mapFromScene(under) - cursor); // By how far it went
+}
+
+void EditionView::zoomByKey(QKeyEvent& event)
+{
+    if(event.key() == Qt::Key_Plus)
+    {
+        zoomIn();
+    }
+    else if(event.key() == Qt::Key_Minus)
+    {
+        zoomOut();
+    }
+    event.setAccepted(event.key() == Qt::Key_Plus || event.key() == Qt::Key_Minus);
+}
+
+bool EditionView::isPanning(QMouseEvent& event)
+{
+    endPanIfReleased(event);
+    if(m_panFrom)
+    {
+        event.accept();
+    }
+    return m_panFrom.has_value();
+}
+
+void EditionView::pan(QPoint at)
+{
+    scrollBy(*m_panFrom - at);
+    m_panFrom = at;
 }
 
 void EditionView::startPan(QPoint at)

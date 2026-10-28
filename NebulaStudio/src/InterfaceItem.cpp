@@ -122,23 +122,40 @@ void InterfaceItem::setMissing(bool missing)
 
 void InterfaceItem::refreshToolTip()
 {
-    // What it is, which tells what it can be bound to: the other kind, of the same type.
-    QString what = m_kind == Kind::Provided ? tr("Provides %1").arg(typeName(m_type))
-                   : m_list ? tr("Consumes a list of %1: several interfaces can be bound to it").arg(typeName(m_type))
-                            : tr("Consumes %1").arg(typeName(m_type));
-    if(m_mandatory)
-    {
-        what += u'\n' + (m_list ? tr("Mandatory: the component does not work without one at least")
-                                : tr("Mandatory: the component does not work without it"));
-    }
-    QString state = m_available ? tr("Available") : tr("Unavailable");
-    if(m_missing)
-    {
-        state += u'\n' + tr("Bound to nothing: drag from this dot to a %1 interface another component provides")
-                             .arg(typeName(m_type));
-    }
-    setToolTip(QStringLiteral("%1\n%2").arg(what, state));
+    setToolTip(QStringLiteral("%1%2\n%3").arg(kindText(), requirementText(), stateText()));
     update();
+}
+
+QString InterfaceItem::kindText() const
+{
+    if(m_kind == Kind::Provided)
+    {
+        return tr("Provides %1").arg(typeName(m_type));
+    }
+    return m_list ? tr("Consumes a list of %1: several interfaces can be bound to it").arg(typeName(m_type))
+                  : tr("Consumes %1").arg(typeName(m_type));
+}
+
+QString InterfaceItem::requirementText() const
+{
+    if(!m_mandatory)
+    {
+        return {};
+    }
+    return u'\n' + (m_list ? tr("Mandatory: the component does not work without one at least")
+                           : tr("Mandatory: the component does not work without it"));
+}
+
+QString InterfaceItem::stateText() const
+{
+    const QString state = m_available ? tr("Available") : tr("Unavailable");
+    if(!m_missing)
+    {
+        return state;
+    }
+    return state + u'\n' +
+           tr("Bound to nothing: drag from this dot to a %1 interface another component provides")
+               .arg(typeName(m_type));
 }
 
 void InterfaceItem::setDimmed(bool dimmed)
@@ -193,36 +210,46 @@ void InterfaceItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* /*o
     // The colors of the component, as ComponentItem paints them over the background of the edition zone. Opaque: the
     // colors of a style can be translucent, which would let the edge of the component show through the dot.
     const QColor background = over(palette.color(QPalette::Button), palette.color(QPalette::Base));
+    const QColor color = over(inkColor(palette), background);
+    paintDot(*painter, color, background);
+    if(!m_componentItem.isNameEdited(*this)) // Its name is the text being edited otherwise
+    {
+        paintName(*painter, color);
+    }
+}
+
+QColor InterfaceItem::inkColor(const QPalette& palette) const
+{
     // In the warning color while the component misses it, which the asterisk after its name tells without color.
     // Dimmed, it fades into the component, but stays opaque over its edge.
     QColor ink = m_missing ? currentThemeColors().warning : palette.color(QPalette::ButtonText);
     ink.setAlphaF(m_dimmed ? ink.alphaF() * DimmedOpacity : ink.alphaF());
-    const QColor color = over(ink, background);
+    return ink;
+}
 
-    // Shapes rather than colors, which not everyone tells apart: a disc is provided, a circle is consumed, and a dotted
-    // circle is provided but unavailable, two stacked circles are a list. Not filled, it still hides the edge of the
-    // component it is on.
+void InterfaceItem::paintDot(QPainter& painter, const QColor& color, const QColor& background) const
+{
     const bool provided = m_kind == Kind::Provided;
-    painter->setRenderHint(QPainter::Antialiasing);
-    painter->setPen(provided && !m_available ? dottedOutline(color) : QPen(color, DotOutline));
-    painter->setBrush(provided && m_available ? color : background);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(provided && !m_available ? dottedOutline(color) : QPen(color, DotOutline));
+    painter.setBrush(provided && m_available ? color : background);
     if(m_list) // Behind, out of the component, which a list is consumed from
     {
-        painter->drawEllipse(QPointF(-ListOffset, 0), DotRadius, DotRadius);
+        painter.drawEllipse(QPointF(-ListOffset, 0), DotRadius, DotRadius);
     }
-    painter->drawEllipse(QPointF(0, 0), DotRadius, DotRadius);
+    painter.drawEllipse(QPointF(0, 0), DotRadius, DotRadius);
+}
 
-    if(m_componentItem.isNameEdited(*this)) // Its name is the text being edited
-    {
-        return;
-    }
+void InterfaceItem::paintName(QPainter& painter, const QColor& color) const
+{
     const QRectF rect = nameRect();
     // A mandatory interface is marked as a required field is, by an asterisk after its name, which eliding keeps.
     const QString mark = m_mandatory ? QStringLiteral(" *") : QString();
-    const QFontMetricsF metrics(painter->font());
+    const QFontMetricsF metrics(painter.font());
     const QString name = metrics.elidedText(m_name, Qt::ElideRight, rect.width() - metrics.horizontalAdvance(mark));
-    painter->setPen(color);
-    painter->drawText(rect, (provided ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter, name + mark);
+    painter.setPen(color);
+    const Qt::Alignment side = m_kind == Kind::Provided ? Qt::AlignRight : Qt::AlignLeft;
+    painter.drawText(rect, side | Qt::AlignVCenter, name + mark);
 }
 
 void InterfaceItem::hoverEnterEvent(QGraphicsSceneHoverEvent* event)
