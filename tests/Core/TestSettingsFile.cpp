@@ -16,6 +16,7 @@
 #include "Nebula/Application/Universe.h"
 #include "Nebula/Settings/SettingsFile.h"
 #include "Options.h"
+#include "Outlets.h"
 #include "Panel.h"
 #include "Probe.h"
 #include "TestComponents.h"
@@ -77,6 +78,7 @@ class TestSettingsFile : public QObject
     void startReadsTheValues_data();
     void startReadsTheValues();
     void startRefusesAValueOfAnotherType();
+    void startGivesAValueThatDestroysAnObject();
     void startSetsAsideAnUnreadableFile_data();
     void startSetsAsideAnUnreadableFile();
     void unknownContentIsKept();
@@ -373,6 +375,28 @@ void TestSettingsFile::startRefusesAValueOfAnotherType()
     // Written again with its default value.
     QCOMPARE(readJson(m_file->filePath()), json(R"({"Probe1": {"properties": {"count": 3}}})"));
     m_universe->stop();
+}
+
+void TestSettingsFile::startGivesAValueThatDestroysAnObject()
+{
+    auto* outlets = qobject_cast<Outlets*>(m_universe->instantiate(testComponentId(QStringLiteral("Outlets"))));
+    outlets->setCount(3);
+    QVERIFY(m_file->add({.component = outlets, .object = outlets, .property = QStringLiteral("count")}));
+    QVERIFY(
+        m_file->add({.component = outlets, .object = outlets->objects().at(2), .property = QStringLiteral("level")}));
+    QVERIFY(writeFile(m_file->filePath(), R"({"Outlets1": {"properties": {"count": 1},
+        "objects": [{"name": "object3", "properties": {"level": 5}}]}})"));
+    const QSignalSpy failed(m_file, &SettingsFile::failed);
+
+    // Its count first, which takes the third object away, with its entry.
+    QVERIFY(m_universe->start());
+    QCOMPARE(outlets->count(), 1);
+    QCOMPARE(m_file->entries().size(), 1);
+    m_universe->stop();
+    QCOMPARE(outlets->count(), 3);
+    QCOMPARE(readJson(m_file->filePath()).value(u"Outlets1").toObject().value(u"properties").toObject(),
+             json(R"({"count": 1})"));
+    QCOMPARE(failed.count(), 0);
 }
 
 void TestSettingsFile::startSetsAsideAnUnreadableFile_data()

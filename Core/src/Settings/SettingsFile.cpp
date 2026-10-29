@@ -380,12 +380,23 @@ void SettingsFile::readContent()
 bool SettingsFile::giveValues()
 {
     bool complete = true;
-    for(const SettingsEntry& entry : std::as_const(m_entries))
+    const QList<SettingsEntry> entries = m_entries; // A copy: see startEntry()
+    for(const SettingsEntry& entry : entries)
     {
-        m_started.append(StartedEntry{.entry = entry, .defaultValue = propertyOf(entry).read(entry.object)});
-        complete = giveValue(entry) && complete;
+        complete = startEntry(entry) && complete;
     }
     return complete;
+}
+
+bool SettingsFile::startEntry(const SettingsEntry& entry)
+{
+    // Unless it left: the value given to another entry can destroy its object, one of the widgets a count tells, say.
+    if(!m_entries.contains(entry))
+    {
+        return true;
+    }
+    m_started.append(StartedEntry{.entry = entry, .defaultValue = propertyOf(entry).read(entry.object)});
+    return giveValue(entry);
 }
 
 bool SettingsFile::giveValue(const SettingsEntry& entry)
@@ -457,11 +468,13 @@ void SettingsFile::takeAllValues()
 
 void SettingsFile::giveBackDefaults()
 {
-    for(const StartedEntry& started : std::as_const(m_started))
+    // Each taken out before it is given back: giving one back can destroy the object of another, which forget() then
+    // takes out of m_started.
+    while(!m_started.isEmpty())
     {
+        const StartedEntry started = m_started.takeFirst();
         propertyOf(started.entry).write(started.entry.object, started.defaultValue);
     }
-    m_started.clear();
 }
 
 void SettingsFile::scheduleWrite()
