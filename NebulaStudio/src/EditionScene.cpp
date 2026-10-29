@@ -30,6 +30,7 @@
 #include <optional>
 #include <vector>
 
+#include "AnchorItem.h"
 #include "ComponentItem.h"
 #include "ComponentModel.h"
 #include "ContextMenu.h"
@@ -40,6 +41,7 @@
 #include "LinkItem.h"
 #include "Nebula/Application/Universe.h"
 #include "Nebula/Component/ComponentFactory.h"
+#include "PositionJson.h"
 #include "SceneItems.h"
 #include "Settings/SettingsDialog.h"
 #include "Settings/SettingsItem.h"
@@ -107,18 +109,6 @@ void acceptDrop(QGraphicsSceneDragDropEvent& event)
     }
     event.setDropAction(Qt::CopyAction);
     event.accept();
-}
-
-// Where an item is, as the "x" and "y" of what a project file holds about it.
-void writePosition(QJsonObject& json, const QPointF& position)
-{
-    json.insert(u"x", position.x());
-    json.insert(u"y", position.y());
-}
-
-QPointF readPosition(const QJsonObject& json)
-{
-    return {json.value(u"x").toDouble(), json.value(u"y").toDouble()};
 }
 
 // json, what a project holds about item, with where it is.
@@ -495,6 +485,7 @@ QJsonObject EditionScene::save() const
     const QList<QGraphicsItem*> added = items(Qt::AscendingOrder);
     placeComponents(project, objectsAmong<ComponentItem>(added));
     placeSettings(project, objectsAmong<SettingsItem>(added));
+    project.insert(u"bindings", m_anchors.written(project.value(u"bindings").toArray()));
     project.insert(u"zones", zonesJson(itemsAmong<ZoneItem>(added)));
     return project;
 }
@@ -524,11 +515,17 @@ void EditionScene::show(const std::vector<std::unique_ptr<Nebula::Component>>& c
     {
         showSaved(*component, saved.value(component->objectName()));
     }
-    // The links of what is bound, once every component is shown, and of what the stargates expose.
-    refreshLinks();
-    refreshStargateLinks();
+    showLinks(components, project);                                 // Once every component is shown
     showSettingsFiles(files, project.value(u"settings").toArray()); // Joined to the components shown
     showZones(project.value(u"zones").toArray());
+}
+
+void EditionScene::showLinks(const std::vector<std::unique_ptr<Nebula::Component>>& components,
+                             const QJsonObject& project)
+{
+    m_anchors.read(components, project.value(u"bindings").toArray());
+    refreshLinks();
+    refreshStargateLinks();
 }
 
 void EditionScene::showSaved(Nebula::Component& component, const QJsonObject& json)
@@ -745,15 +742,47 @@ void EditionScene::endLink()
 
 void EditionScene::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
 {
-    SettingsItem* settings =
-        isEditable() && event->button() == Qt::LeftButton ? settingsAt(event->scenePos()) : nullptr;
-    if(settings == nullptr)
+    if(!isEditable() || event->button() != Qt::LeftButton || !doubleClick(event->scenePos(), event->widget()))
     {
         QGraphicsScene::mouseDoubleClickEvent(event);
         return;
     }
-    editSettings(*settings, event->widget());
     event->accept();
+}
+
+bool EditionScene::doubleClick(const QPointF& position, QWidget* parent)
+{
+    return editSettingsAt(position, parent) || removeAnchorAt(position) || anchorLinkAt(position);
+}
+
+bool EditionScene::editSettingsAt(const QPointF& position, QWidget* parent)
+{
+    const SettingsItem* settings = settingsAt(position);
+    if(settings != nullptr)
+    {
+        editSettings(*settings, parent);
+    }
+    return settings != nullptr;
+}
+
+bool EditionScene::removeAnchorAt(const QPointF& position)
+{
+    const AnchorItem* anchor = anchorAt(position);
+    if(anchor != nullptr)
+    {
+        anchor->link().removeAnchor(*anchor);
+    }
+    return anchor != nullptr;
+}
+
+bool EditionScene::anchorLinkAt(const QPointF& position)
+{
+    LinkItem* link = linkAt(position);
+    if(link != nullptr)
+    {
+        link->addAnchor(position);
+    }
+    return link != nullptr;
 }
 
 void EditionScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
@@ -774,7 +803,8 @@ void EditionScene::showMenu(const QGraphicsSceneContextMenuEvent& event)
     const QPointF position = event.scenePos();
     ContextMenu menu(event.widget());
     if(!addComponentEntries(menu, componentAt(position), position, event.widget()) &&
-       !addSettingsEntries(menu, settingsAt(position), event.widget()) && !addLinkEntries(menu, linkAt(position)))
+       !addSettingsEntries(menu, settingsAt(position), event.widget()) && !addAnchorEntries(menu, anchorAt(position)) &&
+       !addLinkEntries(menu, linkAt(position), position))
     {
         addSceneEntries(menu, position, event.widget());
     }
@@ -902,14 +932,35 @@ void EditionScene::addSettingsActions(ContextMenu& menu, SettingsItem& settings,
     menu.add(tr("Remove settings file"), [this, item = &settings] { remove(*item); });
 }
 
-bool EditionScene::addLinkEntries(ContextMenu& menu, LinkItem* link)
+bool EditionScene::addAnchorEntries(ContextMenu& menu, AnchorItem* anchor)
+{
+    if(anchor == nullptr)
+    {
+        return false;
+    }
+    menu.add(tr("Remove anchor point"), [anchor] { anchor->link().removeAnchor(*anchor); });
+    return true;
+}
+
+bool EditionScene::addLinkEntries(ContextMenu& menu, LinkItem* link, const QPointF& position)
 {
     if(link == nullptr)
     {
         return false;
     }
+    addAnchoringEntries(menu, *link, position);
     menu.add(tr("Remove link"), [this, link] { unlink({link}); });
     return true;
+}
+
+void EditionScene::addAnchoringEntries(ContextMenu& menu, LinkItem& link, const QPointF& position)
+{
+    menu.add(
+        tr("Add anchor point"), [item = &link, position] { item->addAnchor(position); }, {},
+        tr("Has the link go through this point, wherever its components are"));
+    menu.add(tr("Remove anchor points"), [item = &link] { item->setAnchors({}); })
+        ->setEnabled(!link.anchors().isEmpty());
+    menu.addSeparator();
 }
 
 void EditionScene::addSceneEntries(ContextMenu& menu, const QPointF& position, QWidget* parent)
@@ -1025,6 +1076,7 @@ void EditionScene::setEditable(bool editable)
     std::ranges::for_each(objectsAmong<SettingsItem>(shown),
                           [editable](SettingsItem* item) { item->setFlag(QGraphicsItem::ItemIsMovable, editable); });
     std::ranges::for_each(itemsAmong<ZoneItem>(shown), [editable](ZoneItem* item) { item->setEditable(editable); });
+    std::ranges::for_each(itemsAmong<LinkItem>(shown), [editable](LinkItem* item) { item->setEditable(editable); });
 }
 
 void EditionScene::refuseEdition()
@@ -1142,6 +1194,7 @@ void EditionScene::remove(ComponentItem& item)
     Nebula::Component& component = item.component();
     item.setSelected(false); // Who listens lets go of the component before it goes
     delete &item;            // With its interfaces, and their links
+    m_anchors.keepOnly(itemsAmong<LinkItem>(items()));
     m_application.remove(component);
     update(HintRect); // Shown again once nothing is left
 }
@@ -1153,6 +1206,7 @@ void EditionScene::removeItems()
     m_linkSource = nullptr;
     m_pendingLink = nullptr;
     clear();
+    m_anchors.clear();
     m_zoneCount = 0;
     update(HintRect); // Shown again
 }
@@ -1171,6 +1225,11 @@ void EditionScene::link(InterfaceItem& source, InterfaceItem& target)
 LinkItem* EditionScene::linkAt(const QPointF& position) const
 {
     return qgraphicsitem_cast<LinkItem*>(itemAt(position, QTransform())); // The topmost item
+}
+
+AnchorItem* EditionScene::anchorAt(const QPointF& position) const
+{
+    return qgraphicsitem_cast<AnchorItem*>(itemAt(position, QTransform())); // The topmost item
 }
 
 void EditionScene::unlink(const QList<LinkItem*>& links)
@@ -1252,6 +1311,12 @@ void EditionScene::remove(SettingsItem& item)
 
 void EditionScene::refreshLinks()
 {
+    drawBindings();
+    m_anchors.keepOnly(itemsAmong<LinkItem>(items())); // Those of what is no longer bound go
+}
+
+void EditionScene::drawBindings()
+{
     const ShownComponents shown = byKey<const Nebula::Component*>(
         objectsAmong<ComponentItem>(items()), [](const ComponentItem& item) { return &item.component(); });
     for(const ComponentItem* item : shown)
@@ -1268,8 +1333,17 @@ void EditionScene::drawLinks(InterfaceItem& consumed, const QList<InterfaceItem*
     const QList<InterfaceItem*> missing = unlinked(consumed, provided);
     for(InterfaceItem* item : missing)
     {
-        addItem(new LinkItem(*item, consumed, m_linkStyle));
+        drawLink(*item, consumed);
     }
+}
+
+void EditionScene::drawLink(InterfaceItem& provided, InterfaceItem& consumed)
+{
+    auto* link =
+        new LinkItem(provided, consumed, m_linkStyle, [this](const LinkItem& anchored) { m_anchors.keep(anchored); });
+    link->setAnchors(m_anchors.of(link->ends()));
+    link->setEditable(isEditable());
+    addItem(link);
 }
 
 void EditionScene::editStargate(const StargateItem& item, QWidget* parent)

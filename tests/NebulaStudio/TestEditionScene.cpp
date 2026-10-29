@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <memory>
 
+#include "AnchorItem.h"
 #include "ComponentItem.h"
 #include "EditionScene.h"
 #include "InterfaceItem.h"
@@ -254,13 +255,92 @@ void send(QGraphicsView& view, QEvent::Type type, QPointF at, Qt::MouseButton bu
     QApplication::sendEvent(view.viewport(), &event);
 }
 
-// Drags the rubber band of view from from to to, positions in the scene.
-void dragRubberBand(QGraphicsView& view, QPointF from, QPointF to)
+// Drags from from to to, positions in the scene of view, with the left button: the rubber band of view, or what is
+// pressed there.
+void drag(QGraphicsView& view, QPointF from, QPointF to)
 {
     send(view, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
     send(view, QEvent::MouseMove, (from + to) / 2, Qt::NoButton, Qt::LeftButton);
     send(view, QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton);
     send(view, QEvent::MouseButtonRelease, to, Qt::LeftButton, Qt::NoButton);
+}
+
+// Double-clicks view at at, a position in its scene, as the window system does: a click, then a double click.
+void doubleClick(QGraphicsView& view, QPointF at)
+{
+    send(view, QEvent::MouseButtonPress, at, Qt::LeftButton, Qt::LeftButton);
+    send(view, QEvent::MouseButtonRelease, at, Qt::LeftButton, Qt::NoButton);
+    send(view, QEvent::MouseButtonDblClick, at, Qt::LeftButton, Qt::LeftButton);
+    send(view, QEvent::MouseButtonRelease, at, Qt::LeftButton, Qt::NoButton);
+}
+
+// Where view sends a mouse event at at, a position in its scene, to its scene: on the pixel at falls on.
+QPointF onPixel(const QGraphicsView& view, QPointF at)
+{
+    return view.mapToScene(view.mapFromScene(at));
+}
+
+// The anchors scene shows, of all its links.
+QList<AnchorItem*> anchorItems(const QGraphicsScene& scene)
+{
+    QList<AnchorItem*> anchors;
+    const QList<QGraphicsItem*> items = scene.items();
+    for(QGraphicsItem* item : items)
+    {
+        if(auto* anchor = qgraphicsitem_cast<AnchorItem*>(item))
+        {
+            anchors.append(anchor);
+        }
+    }
+    return anchors;
+}
+
+// Opens the context menu of view at at, a position in its scene, and chooses the entry telling chosen there, unless it
+// is empty, not offered or disabled, which closes the menu. Returns what it offers, without its separators.
+QStringList chooseFromMenu(QGraphicsView& view, QPointF at, const QString& chosen)
+{
+    // What the offscreen platform cannot do for a menu.
+    QTest::ignoreMessage(QtWarningMsg, "This plugin does not support raise()");
+    QTest::ignoreMessage(QtWarningMsg, "This plugin does not support grabbing the keyboard");
+    QStringList offered;
+    QTimer::singleShot(0, &view,
+                       [&offered, &chosen]
+                       {
+                           auto* menu = qobject_cast<QMenu*>(QApplication::activePopupWidget());
+                           QVERIFY(menu != nullptr);
+                           const QList<QAction*> actions = menu->actions();
+                           for(const QAction* action : actions)
+                           {
+                               if(!action->isSeparator())
+                               {
+                                   offered.append(action->text());
+                               }
+                           }
+                           const auto entry = std::ranges::find(actions, chosen, &QAction::text);
+                           if(entry != actions.end() && (*entry)->isEnabled())
+                           {
+                               menu->setActiveAction(*entry);
+                               QTest::keyClick(menu, Qt::Key_Return);
+                               return;
+                           }
+                           QTest::keyClick(menu, Qt::Key_Escape);
+                       });
+    const QPoint position = view.mapFromScene(at);
+    QContextMenuEvent event(QContextMenuEvent::Mouse, position, view.viewport()->mapToGlobal(position));
+    QApplication::sendEvent(view.viewport(), &event);
+    return offered;
+}
+
+// The points a link through anchors goes through, from the dot of provided to the dot of consumed, in style: those of
+// its route from each of them to the next one, which ends where the next one starts.
+QList<QPointF> anchoredPoints(LinkStyle style, const QList<QPointF>& stops)
+{
+    QList<QPointF> found{stops.constFirst()};
+    for(qsizetype index = 1; index < stops.size(); ++index)
+    {
+        found.append(points(LinkItem::route(style, stops.at(index - 1), stops.at(index))).sliced(1));
+    }
+    return found;
 }
 
 } // namespace
@@ -297,8 +377,22 @@ class TestEditionScene : public QObject
     void noBindMenuOnAProvidedInterface();
     void linksOfAList();
     void interfacesThatFollowAProperty();
+    void anchoredPath_data();
+    void anchoredPath();
+    void doubleClickAnchors_data();
+    void doubleClickAnchors();
+    void anchorMenu_data();
+    void anchorMenu();
+    void dragAnchor();
+    void anchorsWhileRunning();
+    void anchorsSaved();
+    void anchorsOfALinkDrawnAgain();
+    void anchorsOfALinkRemoved();
 
   private:
+    // The middle of the link, moved down by offset: where nothing else is shown, below it.
+    [[nodiscard]] QPointF belowLink(qreal offset) const;
+
     // Source1, which provides "object", and Sink1, whose "object" is bound to it.
     std::unique_ptr<Nebula::Universe> m_application;
     std::unique_ptr<EditionScene> m_scene;
@@ -521,7 +615,7 @@ void TestEditionScene::rubberBandAcrossLink()
     const QPointF to = middle(*m_link) + QPointF(15, 40);
     QVERIFY(m_scene->items(from).isEmpty());
     QVERIFY(m_scene->items(to).isEmpty());
-    dragRubberBand(*m_view, from, to);
+    drag(*m_view, from, to);
     QVERIFY(!m_link->isSelected());
     QVERIFY(m_scene->selectedItems().isEmpty());
 }
@@ -532,7 +626,7 @@ void TestEditionScene::rubberBandAroundComponents()
 {
     QVERIFY(m_scene->items(AroundFrom).isEmpty());
     QVERIFY(m_scene->items(AroundTo).isEmpty());
-    dragRubberBand(*m_view, AroundFrom, AroundTo);
+    drag(*m_view, AroundFrom, AroundTo);
     QVERIFY(componentItem(*m_scene, QStringLiteral("Source1"))->isSelected());
     QVERIFY(componentItem(*m_scene, QStringLiteral("Sink1"))->isSelected());
     QVERIFY(!m_link->isSelected());
@@ -795,6 +889,265 @@ void TestEditionScene::interfacesThatFollowAProperty()
     QVERIFY(outlets->setProperty("count", 3));
     QCOMPARE(item->providedInterfaces().size(), 3);
     QCOMPARE(links(*m_scene).size(), 2);
+}
+
+QPointF TestEditionScene::belowLink(qreal offset) const
+{
+    return middle(*m_link) + QPointF(0, offset);
+}
+
+void TestEditionScene::anchoredPath_data()
+{
+    QTest::addColumn<LinkStyle>("style");
+    QTest::addColumn<int>("count"); // Of its anchors, below it, from left to right
+
+    QTest::newRow("straight lines, one anchor") << LinkStyle::Straight << 1;
+    QTest::newRow("straight lines, two anchors") << LinkStyle::Straight << 2;
+    QTest::newRow("right angles, one anchor") << LinkStyle::RightAngled << 1;
+    QTest::newRow("right angles, two anchors") << LinkStyle::RightAngled << 2;
+    QTest::newRow("curves, one anchor") << LinkStyle::Curved << 1;
+    QTest::newRow("curves, two anchors") << LinkStyle::Curved << 2;
+}
+
+// A link goes through its anchors, in their order, from each point to the next one in its style, as it goes from one
+// dot to the other; they are shown where they are.
+void TestEditionScene::anchoredPath()
+{
+    QFETCH(LinkStyle, style);
+    QFETCH(int, count);
+
+    m_scene->setLinkStyle(style);
+    QList<QPointF> anchors;
+    for(int index = 0; index < count; ++index)
+    {
+        anchors.append(belowLink(80) + QPointF(60 * index, 0));
+    }
+    m_link->setAnchors(anchors);
+    QCOMPARE(m_link->anchors(), anchors);
+    QCOMPARE(anchorItems(*m_scene).size(), count);
+    for(const AnchorItem* anchor : anchorItems(*m_scene))
+    {
+        QVERIFY(anchors.contains(anchor->scenePos()));
+        QCOMPARE(&anchor->link(), m_link);
+    }
+
+    const QPainterPath path = m_link->path();
+    if(style == LinkStyle::Curved) // A curve to each of them, then to the consumed interface
+    {
+        QCOMPARE(path.elementCount(), 1 + 3 * (count + 1));
+        for(int index = 0; index < count; ++index)
+        {
+            QCOMPARE(QPointF(path.elementAt(3 * (index + 1))), anchors.at(index));
+        }
+        return;
+    }
+    QCOMPARE(points(path), anchoredPoints(style, QList<QPointF>{m_link->provided().scenePos()} + anchors +
+                                                     QList<QPointF>{m_link->consumed().scenePos()}));
+}
+
+void TestEditionScene::doubleClickAnchors_data()
+{
+    QTest::addColumn<bool>("anchored"); // Whether the link has an anchor first, below its middle
+    QTest::addColumn<QString>("where"); // What is double-clicked: the link, before or after that anchor, or the anchor
+    QTest::addColumn<int>("added");     // Where the anchor added is among those of the link; -1 when none is
+
+    QTest::newRow("the link") << false << QStringLiteral("link") << 0;
+    QTest::newRow("the link, before its anchor") << true << QStringLiteral("before") << 0;
+    QTest::newRow("the link, after its anchor") << true << QStringLiteral("after") << 1;
+    QTest::newRow("an anchor") << true << QStringLiteral("anchor") << -1;
+}
+
+// Double-clicking a link anchors it there, the new anchor among the others where the link went through that point;
+// double-clicking an anchor removes it.
+void TestEditionScene::doubleClickAnchors()
+{
+    QFETCH(bool, anchored);
+    QFETCH(QString, where);
+    QFETCH(int, added);
+
+    m_scene->setLinkStyle(LinkStyle::Straight); // From one point to the next one, through the middle between them
+    const QPointF start = m_link->provided().scenePos();
+    const QPointF end = m_link->consumed().scenePos();
+    const QPointF anchor = belowLink(80);
+    m_link->setAnchors(anchored ? QList<QPointF>{anchor} : QList<QPointF>());
+    QPointF at = anchor;
+    if(where != QStringLiteral("anchor"))
+    {
+        at = onPixel(*m_view, where == QStringLiteral("link")
+                                  ? (start + end) / 2
+                                  : (where == QStringLiteral("before") ? (start + anchor) / 2 : (anchor + end) / 2));
+        QCOMPARE(m_scene->itemAt(at, QTransform()), m_link); // Nothing is shown over it there
+    }
+
+    QSignalSpy refused(m_scene.get(), &EditionScene::refused);
+    doubleClick(*m_view, at);
+    QCOMPARE(refused.size(), 0);
+    QList<QPointF> expected = added >= 0 && anchored ? QList<QPointF>{anchor} : QList<QPointF>();
+    if(added >= 0)
+    {
+        expected.insert(added, at);
+    }
+    QCOMPARE(m_link->anchors(), expected);
+    QCOMPARE(anchorItems(*m_scene).size(), expected.size());
+    QCOMPARE(links(*m_scene).size(), 1); // Still bound
+}
+
+void TestEditionScene::anchorMenu_data()
+{
+    QTest::addColumn<bool>("anchored");       // Whether the link has an anchor first, below its middle
+    QTest::addColumn<bool>("onAnchor");       // Whether the menu is opened on that anchor, or on the link
+    QTest::addColumn<QStringList>("offered"); // What the menu offers
+    QTest::addColumn<QString>("chosen");
+    QTest::addColumn<int>("left"); // The anchors the link has then
+
+    const QStringList onLink{QStringLiteral("Add anchor point"), QStringLiteral("Remove anchor points"),
+                             QStringLiteral("Remove link")};
+    QTest::newRow("link anchored") << false << false << onLink << QStringLiteral("Add anchor point") << 1;
+    QTest::newRow("link anchored once more") << true << false << onLink << QStringLiteral("Add anchor point") << 2;
+    QTest::newRow("anchors of the link removed")
+        << true << false << onLink << QStringLiteral("Remove anchor points") << 0;
+    QTest::newRow("anchor removed") << true << true << QStringList{QStringLiteral("Remove anchor point")}
+                                    << QStringLiteral("Remove anchor point") << 0;
+}
+
+// The menu opened on a link anchors it where it was opened, or removes its anchors; the one opened on an anchor removes
+// it alone.
+void TestEditionScene::anchorMenu()
+{
+    QFETCH(bool, anchored);
+    QFETCH(bool, onAnchor);
+    QFETCH(QStringList, offered);
+    QFETCH(QString, chosen);
+    QFETCH(int, left);
+
+    m_scene->setLinkStyle(LinkStyle::Straight);
+    const QPointF anchor = belowLink(80);
+    m_link->setAnchors(anchored ? QList<QPointF>{anchor} : QList<QPointF>());
+    // On the link, between its provided interface and where it goes next.
+    const QPointF at =
+        onAnchor ? anchor
+                 : onPixel(*m_view, (m_link->provided().scenePos() + (anchored ? anchor : middle(*m_link))) / 2);
+
+    QCOMPARE(chooseFromMenu(*m_view, at, chosen), offered);
+    QCOMPARE(m_link->anchors().size(), left);
+    QCOMPARE(m_link->anchors().contains(at), !onAnchor && left > 0);
+    QCOMPARE(links(*m_scene).size(), 1);
+}
+
+// Dragging an anchor moves it, and its link follows; the components selected stay where they are.
+void TestEditionScene::dragAnchor()
+{
+    m_scene->setLinkStyle(LinkStyle::Straight);
+    ComponentItem* source = componentItem(*m_scene, QStringLiteral("Source1"));
+    source->setSelected(true);
+    const QPointF sourceAt = source->pos();
+    const QPointF anchor = belowLink(80);
+    m_link->setAnchors({anchor});
+
+    const QPointF moved = anchor + QPointF(30, 40);
+    drag(*m_view, anchor, moved);
+    QCOMPARE(m_link->anchors(), QList<QPointF>{moved});
+    QCOMPARE(points(m_link->path()),
+             (QList<QPointF>{m_link->provided().scenePos(), moved, m_link->consumed().scenePos()}));
+    QCOMPARE(source->pos(), sourceAt);
+    QVERIFY(source->isSelected());
+    QCOMPARE(m_scene->save().value(u"bindings").toArray().at(0).toObject().value(u"anchors").toArray(),
+             (QJsonArray{QJsonObject{{QStringLiteral("x"), moved.x()}, {QStringLiteral("y"), moved.y()}}}));
+}
+
+// While the application runs, an anchor is neither moved, added nor removed: pressing it selects its link.
+void TestEditionScene::anchorsWhileRunning()
+{
+    m_scene->setLinkStyle(LinkStyle::Straight);
+    const QPointF anchor = belowLink(80);
+    const QPointF onLink = (m_link->provided().scenePos() + anchor) / 2;
+    m_link->setAnchors({anchor});
+    QVERIFY(m_application->start());
+    QCOMPARE(links(*m_scene).size(), 1);
+    m_link = links(*m_scene).constFirst();
+    QCOMPARE(m_link->anchors(), QList<QPointF>{anchor});
+
+    drag(*m_view, anchor, anchor + QPointF(30, 40));
+    QVERIFY(m_link->isSelected());
+    doubleClick(*m_view, anchor);
+    doubleClick(*m_view, onLink);
+    QCOMPARE(m_link->anchors(), QList<QPointF>{anchor});
+    m_application->stop();
+}
+
+// A project holds the anchors of a link in its binding, in their order, and gives them back once opened; a link without
+// anchors is held as it was.
+void TestEditionScene::anchorsSaved()
+{
+    QVERIFY(!m_scene->save().value(u"bindings").toArray().at(0).toObject().contains(u"anchors"));
+    const QList<QPointF> anchors{belowLink(80), belowLink(80) + QPointF(60, 0)};
+    m_link->setAnchors(anchors);
+    const QJsonObject project = m_scene->save();
+    const QJsonArray bindings = project.value(u"bindings").toArray();
+    QCOMPARE(bindings.size(), 1);
+    QCOMPARE(
+        bindings.at(0).toObject().value(u"anchors").toArray(),
+        (QJsonArray{QJsonObject{{QStringLiteral("x"), anchors.at(0).x()}, {QStringLiteral("y"), anchors.at(0).y()}},
+                    QJsonObject{{QStringLiteral("x"), anchors.at(1).x()}, {QStringLiteral("y"), anchors.at(1).y()}}}));
+
+    QCOMPARE(m_scene->load(project), QStringList()); // Nothing Core does not understand
+    QCOMPARE(links(*m_scene).size(), 1);
+    m_link = links(*m_scene).constFirst();
+    QCOMPARE(m_link->anchors(), anchors);
+    QCOMPARE(m_scene->save(), project);
+}
+
+// A link drawn again, as the interfaces of its component are shown again, goes through the same anchors; the anchors of
+// a link whose interface goes go with it.
+void TestEditionScene::anchorsOfALinkDrawnAgain()
+{
+    Nebula::Component* outlets = m_application->instantiate(testComponentId(QStringLiteral("Outlets")));
+    Nebula::Component* sink = m_application->component(QStringLiteral("Sink1"));
+    QVERIFY(outlets->setProperty("count", 2));
+    QVERIFY(sink->bindInterface(QStringLiteral("objects"), *outlets, QStringLiteral("object1")));
+    QVERIFY(sink->bindInterface(QStringLiteral("objects"), *outlets, QStringLiteral("object2")));
+    QCOMPARE(m_scene->load(m_application->save()), QStringList());
+    outlets = m_application->component(QStringLiteral("Outlets1"));
+    const auto linkTo = [this](const QString& provided)
+    {
+        const QList<LinkItem*> shown = links(*m_scene);
+        const auto found =
+            std::ranges::find(shown, provided, [](const LinkItem* link) { return link->provided().name(); });
+        return found != shown.end() ? *found : nullptr;
+    };
+    const QList<QPointF> first{{300, 400}, {340, 420}};
+    const QList<QPointF> second{{300, 500}};
+    linkTo(QStringLiteral("object1"))->setAnchors(first);
+    linkTo(QStringLiteral("object2"))->setAnchors(second);
+
+    QVERIFY(outlets->setProperty("count", 3)); // Which shows each of its interfaces again
+    QCOMPARE(linkTo(QStringLiteral("object1"))->anchors(), first);
+    QCOMPARE(linkTo(QStringLiteral("object2"))->anchors(), second);
+    QCOMPARE(anchorItems(*m_scene).size(), 3);
+
+    QVERIFY(outlets->setProperty("count", 1));
+    QCOMPARE(linkTo(QStringLiteral("object2")), nullptr);
+    QCOMPARE(linkTo(QStringLiteral("object1"))->anchors(), first);
+    QVERIFY(outlets->setProperty("count", 2)); // Not bound again
+    QCOMPARE(linkTo(QStringLiteral("object2")), nullptr);
+    QCOMPARE(anchorItems(*m_scene).size(), 2);
+}
+
+// A link removed takes its anchors with it: bound again, its interfaces are linked without them.
+void TestEditionScene::anchorsOfALinkRemoved()
+{
+    m_link->setAnchors({belowLink(80)});
+    m_link->setSelected(true);
+    QTest::keyClick(m_view.get(), Qt::Key_Delete);
+    QCOMPARE(links(*m_scene).size(), 0);
+    QVERIFY(anchorItems(*m_scene).isEmpty());
+
+    const InterfaceItem* dot = interfaceItem(*m_scene, QStringLiteral("Sink1"), QStringLiteral("object"));
+    QVERIFY(openBindMenu(*m_view, dot->scenePos(), QStringLiteral("Source1.object")).offered);
+    QCOMPARE(links(*m_scene).size(), 1);
+    QVERIFY(links(*m_scene).constFirst()->anchors().isEmpty());
+    QVERIFY(anchorItems(*m_scene).isEmpty());
+    QVERIFY(!m_scene->save().value(u"bindings").toArray().at(0).toObject().contains(u"anchors"));
 }
 
 QTEST_MAIN(TestEditionScene)
