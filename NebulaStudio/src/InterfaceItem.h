@@ -73,6 +73,8 @@ class InterfaceItem : public QGraphicsItem
 
     // The links drawn from it, which follow it and are deleted with it: LinkItem adds and removes itself.
     [[nodiscard]] const QList<LinkItem*>& links() const;
+    // The one of its links drawn to other, or from it; nullptr when there is none.
+    [[nodiscard]] LinkItem* linkTo(const InterfaceItem& other) const;
     void addLink(LinkItem& link);
     void removeLink(LinkItem& link);
 

@@ -11,6 +11,7 @@
 #include <QPalette>
 #include <QToolTip>
 #include <QWidget>
+#include <algorithm>
 #include <numbers>
 
 #include "Colors.h"
@@ -154,7 +155,8 @@ QString InterfaceItem::stateText() const
         return state;
     }
     return state + u'\n' +
-           tr("Bound to nothing: drag from this dot to a %1 interface another component provides")
+           tr("Bound to nothing: drag from this dot to a %1 interface another component provides, or right-click it to "
+              "choose one")
                .arg(typeName(m_type));
 }
 
@@ -171,6 +173,13 @@ void InterfaceItem::setDimmed(bool dimmed)
 const QList<LinkItem*>& InterfaceItem::links() const
 {
     return m_links;
+}
+
+LinkItem* InterfaceItem::linkTo(const InterfaceItem& other) const
+{
+    const auto found = std::ranges::find_if(m_links, [&other](const LinkItem* link)
+                                            { return &link->provided() == &other || &link->consumed() == &other; });
+    return found != m_links.end() ? *found : nullptr;
 }
 
 void InterfaceItem::addLink(LinkItem& link)

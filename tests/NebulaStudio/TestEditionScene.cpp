@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QContextMenuEvent>
 #include <QFontDatabase>
@@ -32,6 +33,8 @@ namespace
 // other for their link to be clicked between them.
 constexpr QPointF SourceAt(40, 40);
 constexpr QPointF SinkAt(460, 120);
+// Where another source is shown, below the first one, when a test adds one.
+constexpr QPointF OtherSourceAt(40, 300);
 // What the rubber band is dragged around to select both components, in the scene.
 constexpr QPointF AroundFrom(10, 10);
 constexpr QPointF AroundTo(760, 400);
@@ -66,6 +69,134 @@ ComponentItem* componentItem(const QGraphicsScene& scene, const QString& name)
         }
     }
     return nullptr;
+}
+
+// The interface named name of the component scene shows named component, consumed or provided; nullptr when there is
+// none.
+InterfaceItem* interfaceItem(const QGraphicsScene& scene, const QString& component, const QString& name)
+{
+    const ComponentItem* item = componentItem(scene, component);
+    if(item == nullptr)
+    {
+        return nullptr;
+    }
+    for(InterfaceItem* shown : item->consumedInterfaces() + item->providedInterfaces())
+    {
+        if(shown->name() == name)
+        {
+            return shown;
+        }
+    }
+    return nullptr;
+}
+
+// Has project, as a project of NebulaStudio, show the component named name at at.
+void place(QJsonObject& project, const QString& name, QPointF at)
+{
+    QJsonArray components = project.value(u"components").toArray();
+    for(QJsonValueRef value : components)
+    {
+        QJsonObject component = value.toObject();
+        if(component.value(u"name").toString() == name)
+        {
+            component.insert(u"x", at.x());
+            component.insert(u"y", at.y());
+            value = component;
+        }
+    }
+    project.insert(u"components", components);
+}
+
+// What name, an interface component consumes, is bound to, in their order: Source1.object.
+QStringList boundTo(const Nebula::Component& component, const QString& name)
+{
+    QStringList bound;
+    const QList<Nebula::InterfaceBinding> bindings = component.bindings(name);
+    for(const Nebula::InterfaceBinding& binding : bindings)
+    {
+        bound.append(binding.provider->objectName() + u'.' + binding.providedName);
+    }
+    return bound;
+}
+
+// What the context menu of a dot offers under Bind to.
+struct BindMenu
+{
+    bool offered = false;   // Whether the menu has Bind to
+    QStringList entries;    // Its entries, in their order
+    QStringList checked;    // Those of them checked
+    QStringList disabled;   // Those of them that cannot be chosen
+    bool exclusive = false; // Whether its entries are radio buttons: one at most can be checked
+};
+
+// Reads the entries of bindTo, a submenu.
+BindMenu readBindMenu(const QMenu& bindTo)
+{
+    BindMenu read{.offered = true};
+    const QList<QAction*> actions = bindTo.actions();
+    for(const QAction* action : actions)
+    {
+        read.entries.append(action->text());
+        if(action->isChecked())
+        {
+            read.checked.append(action->text());
+        }
+        if(!action->isEnabled())
+        {
+            read.disabled.append(action->text());
+        }
+        read.exclusive = action->actionGroup() != nullptr && action->actionGroup()->isExclusive();
+    }
+    return read;
+}
+
+// Chooses the entry of bindTo, a submenu of menu, telling chosen, as the keyboard would: Bind to opens it, then the
+// entry is triggered. Closes menu, choosing nothing, when there is no such entry, or it cannot be chosen.
+void chooseIn(QMenu& menu, QAction& bindTo, const QString& chosen)
+{
+    const QList<QAction*> actions = bindTo.menu()->actions();
+    const auto entry = std::ranges::find(actions, chosen, &QAction::text);
+    if(entry == actions.end() || !(*entry)->isEnabled())
+    {
+        QTest::keyClick(&menu, Qt::Key_Escape);
+        return;
+    }
+    // What the offscreen platform cannot do for the submenu either.
+    QTest::ignoreMessage(QtWarningMsg, "This plugin does not support raise()");
+    QTest::ignoreMessage(QtWarningMsg, "This plugin does not support grabbing the keyboard");
+    menu.setActiveAction(&bindTo); // Which opens its submenu
+    QVERIFY(bindTo.menu()->isVisible());
+    bindTo.menu()->setActiveAction(*entry);
+    QTest::keyClick(bindTo.menu(), Qt::Key_Return);
+}
+
+// Opens the context menu of view at at, a position in its scene, and reads what it offers under Bind to; then chooses
+// chosen there, unless it is empty or not offered, which closes the menu.
+BindMenu openBindMenu(QGraphicsView& view, QPointF at, const QString& chosen)
+{
+    // What the offscreen platform cannot do for a menu.
+    QTest::ignoreMessage(QtWarningMsg, "This plugin does not support raise()");
+    QTest::ignoreMessage(QtWarningMsg, "This plugin does not support grabbing the keyboard");
+    BindMenu read;
+    QTimer::singleShot(0, &view,
+                       [&read, &chosen]
+                       {
+                           auto* menu = qobject_cast<QMenu*>(QApplication::activePopupWidget());
+                           QVERIFY(menu != nullptr);
+                           const QList<QAction*> actions = menu->actions();
+                           const auto bindTo = std::ranges::find(actions, QStringLiteral("Bind to"), &QAction::text);
+                           if(bindTo == actions.end())
+                           {
+                               QTest::keyClick(menu, Qt::Key_Escape);
+                               return;
+                           }
+                           read = readBindMenu(*(*bindTo)->menu());
+                           chooseIn(*menu, **bindTo, chosen);
+                       });
+    const QPoint position = view.mapFromScene(at);
+    QContextMenuEvent event(QContextMenuEvent::Mouse, position, view.viewport()->mapToGlobal(position));
+    QApplication::sendEvent(view.viewport(), &event);
+    return read;
 }
 
 // The names of the components of application, in their order.
@@ -161,6 +292,9 @@ class TestEditionScene : public QObject
     void deleteKeyWhileRunning();
     void contextMenu_data();
     void contextMenu();
+    void bindMenu_data();
+    void bindMenu();
+    void noBindMenuOnAProvidedInterface();
     void linksOfAList();
     void interfacesThatFollowAProperty();
 
@@ -191,16 +325,8 @@ void TestEditionScene::init()
 
     // Shown where they are told to be, as a project of NebulaStudio holds them.
     QJsonObject project = m_application->save();
-    QJsonArray components = project.value(u"components").toArray();
-    for(QJsonValueRef value : components)
-    {
-        QJsonObject component = value.toObject();
-        const QPointF at = component.value(u"name").toString() == source->objectName() ? SourceAt : SinkAt;
-        component.insert(u"x", at.x());
-        component.insert(u"y", at.y());
-        value = component;
-    }
-    project.insert(u"components", components);
+    place(project, source->objectName(), SourceAt);
+    place(project, sink->objectName(), SinkAt);
     m_scene = std::make_unique<EditionScene>(*m_application, Nebula::ComponentFactory::instance());
     QCOMPARE(m_scene->load(project), QStringList());
 
@@ -525,6 +651,91 @@ void TestEditionScene::contextMenu()
     QCOMPARE(m_application->component(QStringLiteral("Sink1"))->binding(QStringLiteral("object")).provider == nullptr,
              removable);
     QCOMPARE(names(*m_application), (QStringList{QStringLiteral("Source1"), QStringLiteral("Sink1")}));
+}
+
+void TestEditionScene::bindMenu_data()
+{
+    QTest::addColumn<QString>("consumed");    // The interface of Sink1 whose dot is right-clicked
+    QTest::addColumn<QStringList>("before");  // What it is bound to first, besides object to Source1.object
+    QTest::addColumn<QStringList>("offered"); // The entries of Bind to
+    QTest::addColumn<QStringList>("checked"); // Those of them checked
+    QTest::addColumn<bool>("exclusive");      // Whether they are radio buttons
+    QTest::addColumn<QString>("chosen");      // The one chosen; none when the menu is closed
+    QTest::addColumn<QStringList>("after");   // What it is bound to then
+
+    const QString first = QStringLiteral("Source1.object");
+    const QString second = QStringLiteral("Source2.object");
+    const QString object = QStringLiteral("object");
+    const QString objects = QStringLiteral("objects");
+    const QStringList both{first, second};
+    QTest::newRow("bound to another one")
+        << object << QStringList() << both << QStringList{first} << true << second << QStringList{second};
+    QTest::newRow("unbound from its own")
+        << object << QStringList() << both << QStringList{first} << true << first << QStringList();
+    QTest::newRow("menu closed") << object << QStringList() << both << QStringList{first} << true << QString()
+                                 << QStringList{first};
+    QTest::newRow("list bound to a first one")
+        << objects << QStringList() << both << QStringList() << false << second << QStringList{second};
+    QTest::newRow("list bound to one more")
+        << objects << QStringList{first} << both << QStringList{first} << false << second << both;
+    QTest::newRow("list unbound from one of them")
+        << objects << both << both << both << false << first << QStringList{second};
+    QTest::newRow("nothing provides its type") << QStringLiteral("timer") << QStringList()
+                                               << QStringList{QStringLiteral("No other component here provides QTimer")}
+                                               << QStringList() << false << QString() << QStringList();
+}
+
+// The menu of the dot of a consumed interface offers, under Bind to, the interfaces shown it can be bound to, those it
+// is bound to checked: choosing one binds it, in place of what it was bound to, or after them for a list, and choosing
+// a checked one unbinds it. Its links follow.
+void TestEditionScene::bindMenu()
+{
+    QFETCH(QString, consumed);
+    QFETCH(QStringList, before);
+    QFETCH(QStringList, offered);
+    QFETCH(QStringList, checked);
+    QFETCH(bool, exclusive);
+    QFETCH(QString, chosen);
+    QFETCH(QStringList, after);
+
+    // Another source, which Sink1 can be bound to as well, shown below the first one.
+    QVERIFY(m_application->instantiate(testComponentId(QStringLiteral("Source"))) != nullptr);
+    for(const QString& provider : std::as_const(before))
+    {
+        QVERIFY(m_application->component(QStringLiteral("Sink1"))
+                    ->bindInterface(consumed, *m_application->component(provider.section(u'.', 0, 0)),
+                                    provider.section(u'.', 1)));
+    }
+    QJsonObject project = m_scene->save();
+    place(project, QStringLiteral("Source2"), OtherSourceAt);
+    QCOMPARE(m_scene->load(project), QStringList());
+    const Nebula::Component* sink = m_application->component(QStringLiteral("Sink1"));
+
+    const InterfaceItem* dot = interfaceItem(*m_scene, QStringLiteral("Sink1"), consumed);
+    QVERIFY(dot != nullptr);
+    const BindMenu read = openBindMenu(*m_view, dot->scenePos(), chosen);
+    QVERIFY(read.offered);
+    QCOMPARE(read.entries, offered);
+    QCOMPARE(read.checked, checked);
+    QCOMPARE(read.exclusive, exclusive);
+    QCOMPARE(read.disabled, consumed == QStringLiteral("timer") ? offered : QStringList());
+
+    QCOMPARE(boundTo(*sink, consumed), after);
+    QCOMPARE(interfaceItem(*m_scene, QStringLiteral("Sink1"), consumed)->links().size(), after.size());
+    if(consumed != QStringLiteral("object")) // Which keeps its own
+    {
+        QCOMPARE(boundTo(*sink, QStringLiteral("object")), QStringList{QStringLiteral("Source1.object")});
+    }
+}
+
+// The menu of the dot of a provided interface does not offer Bind to: several interfaces can be bound to it, each from
+// its own dot.
+void TestEditionScene::noBindMenuOnAProvidedInterface()
+{
+    const InterfaceItem* dot = interfaceItem(*m_scene, QStringLiteral("Source1"), QStringLiteral("object"));
+    QVERIFY(dot != nullptr);
+    QVERIFY(!openBindMenu(*m_view, dot->scenePos(), {}).offered);
+    QCOMPARE(links(*m_scene).size(), 1);
 }
 
 // A list a component consumes has a link for each of what it is bound to; removing one leaves the others.

@@ -3,6 +3,7 @@
 
 #include "EditionScene.h"
 
+#include <QActionGroup>
 #include <QColorDialog>
 #include <QDialog>
 #include <QDir>
@@ -24,6 +25,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -301,6 +303,33 @@ std::optional<QMetaType> interfaceType(const InterfaceItem& item)
         isProvided(item) ? item.component().providedInterfaces() : item.component().consumedInterfaces();
     const auto info = std::ranges::find(interfaces, item.name(), &Nebula::InterfaceInfo::name);
     return info != interfaces.end() ? std::optional(info->type) : std::nullopt;
+}
+
+// What provided is named in the menu of an interface it can be bound to: its component, then its name, as in
+// Ticker1.display.
+QString qualifiedName(const InterfaceItem& provided)
+{
+    return provided.component().objectName() + u'.' + provided.name();
+}
+
+// Tells in bindMenu, rather than leaving it empty, that no interface shown can be bound to consumed.
+void addNoTarget(QMenu& bindMenu, const InterfaceItem& consumed)
+{
+    const QString type = InterfaceItem::typeName(interfaceType(consumed).value_or(QMetaType()));
+    bindMenu.addAction(EditionScene::tr("No other component here provides %1").arg(type))->setEnabled(false);
+}
+
+// What the entries of bindMenu that bind consumed are in, which draws them as radio buttons: a single interface is
+// bound to one of them at most. nullptr for a list, bound to several, whose entries are check boxes.
+QActionGroup* choiceGroup(QMenu& bindMenu, const InterfaceItem& consumed)
+{
+    if(consumed.isList())
+    {
+        return nullptr;
+    }
+    auto* group = new QActionGroup(&bindMenu);
+    group->setExclusionPolicy(QActionGroup::ExclusionPolicy::ExclusiveOptional); // Bound to nothing, none is checked
+    return group;
 }
 
 // Where the stargate that exposes item is added: next to its component, on the side of the interface, which the dot
@@ -760,9 +789,44 @@ bool EditionScene::addComponentEntries(ContextMenu& menu, ComponentItem* compone
     {
         return false;
     }
+    addBindEntries(menu, interfaceAt(position));
     addKindEntries(menu, *component, position, parent);
     addComponentActions(menu, *component, parent);
     return true;
+}
+
+void EditionScene::addBindEntries(ContextMenu& menu, InterfaceItem* consumed)
+{
+    if(consumed == nullptr || isProvided(*consumed))
+    {
+        return;
+    }
+    addBindTargets(menu, menu.addMenu(tr("Bind to")), *consumed);
+    menu.addSeparator();
+}
+
+void EditionScene::addBindTargets(ContextMenu& menu, QMenu& bindMenu, InterfaceItem& consumed)
+{
+    const QList<InterfaceItem*> targets = linkTargets(consumed);
+    if(targets.isEmpty())
+    {
+        addNoTarget(bindMenu, consumed);
+    }
+    QActionGroup* group = choiceGroup(bindMenu, consumed);
+    for(InterfaceItem* provided : targets)
+    {
+        addBindTarget(menu, bindMenu, consumed, *provided)->setActionGroup(group);
+    }
+}
+
+QAction* EditionScene::addBindTarget(ContextMenu& menu, QMenu& bindMenu, InterfaceItem& consumed,
+                                     InterfaceItem& provided)
+{
+    QAction* entry = menu.add(bindMenu, qualifiedName(provided),
+                              [this, consumer = &consumed, provider = &provided] { toggleLink(*consumer, *provider); });
+    entry->setCheckable(true);
+    entry->setChecked(consumed.linkTo(provided) != nullptr);
+    return entry;
 }
 
 void EditionScene::addKindEntries(ContextMenu& menu, ComponentItem& component, const QPointF& position, QWidget* parent)
@@ -993,6 +1057,19 @@ void EditionScene::dimLinkTargets(const InterfaceItem* source)
     }
 }
 
+QList<InterfaceItem*> EditionScene::linkTargets(const InterfaceItem& consumed) const
+{
+    QList<InterfaceItem*> targets;
+    // From the first one added, as save() lists them.
+    const QList<ComponentItem*> shown = objectsAmong<ComponentItem>(items(Qt::AscendingOrder));
+    for(const ComponentItem* item : shown)
+    {
+        std::ranges::copy_if(item->providedInterfaces(), std::back_inserter(targets),
+                             [&consumed](const InterfaceItem* provided) { return consumed.canLinkTo(*provided); });
+    }
+    return targets;
+}
+
 ComponentItem* EditionScene::showComponent(Nebula::Component& component, const QPointF& position)
 {
     ComponentItem* item = newItem(component);
@@ -1105,6 +1182,18 @@ void EditionScene::unlink(const QList<LinkItem*>& links)
     const QList<Binding> bindings = bindingsOf(links);
     std::ranges::for_each(bindings, &Binding::unbind);
     refreshLinks(); // Which no longer draws them
+}
+
+void EditionScene::toggleLink(InterfaceItem& consumed, InterfaceItem& provided)
+{
+    if(LinkItem* shown = consumed.linkTo(provided))
+    {
+        unlink({shown});
+    }
+    else
+    {
+        link(consumed, provided);
+    }
 }
 
 ZoneItem* EditionScene::zoneAt(const QPointF& position) const

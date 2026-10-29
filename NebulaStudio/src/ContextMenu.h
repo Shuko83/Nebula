@@ -22,8 +22,14 @@ class ContextMenu
     // An entry telling text, which calls chosen once it is chosen, with icon before it and toolTip.
     QAction* add(const QString& text, std::function<void()> chosen, const QIcon& icon = {},
                  const QString& toolTip = {});
+    // The same entry in submenu, one addMenu() returned.
+    QAction* add(QMenu& submenu, const QString& text, std::function<void()> chosen, const QIcon& icon = {},
+                 const QString& toolTip = {});
+    // A submenu telling text, with icon before it, which it owns: its entries are added by add().
+    QMenu& addMenu(const QString& text, const QIcon& icon = {});
     void addSeparator();
-    // Shows it at position, the one of the screen, and does what the entry chosen is for; nothing when none is.
+    // Shows it at position, the one of the screen, and does what the entry chosen is for, in a submenu or not;
+    // nothing when none is.
     void exec(const QPoint& position);
 
   private:
