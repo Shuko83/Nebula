@@ -70,6 +70,10 @@ class PropertyEditor : public QWidget
     void follow(Nebula::Component* component);
     // Gives the titles of the groups the background of the palette again: it has no role for them.
     void colorTitles();
+    // rebuild() once the events are processed, once for all the times it is asked meanwhile: a value written from the
+    // table can add or destroy objects, its count of widgets say, while the item it was edited in, which rebuild()
+    // destroys, tells it.
+    void scheduleRebuild();
     // Shows the properties m_component and its objects have now.
     void rebuild();
     // No longer listens to the objects shown until now, but the component, should it still be the one shown: more
@@ -128,6 +132,7 @@ class PropertyEditor : public QWidget
     const Nebula::ComponentFactory& m_factory;
     QPointer<Nebula::Component> m_component;
     QList<Row> m_rows; // One per row of m_table
+    bool m_rebuildScheduled = false;
 
     QTableWidget* m_table = nullptr;     // Shown when there is a property to show
     PlaceholderStack* m_stack = nullptr; // Of m_table and of what tells why there is none

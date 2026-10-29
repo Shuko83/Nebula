@@ -137,7 +137,7 @@ void PropertyEditor::follow(Nebula::Component* component)
     if(component != nullptr)
     {
         connect(component, &QObject::objectNameChanged, this, &PropertyEditor::refreshPlaceholder);
-        connect(component, &Nebula::Component::propertyObjectsChanged, this, &PropertyEditor::rebuild);
+        connect(component, &Nebula::Component::propertyObjectsChanged, this, &PropertyEditor::scheduleRebuild);
     }
 }
 
@@ -153,8 +153,18 @@ void PropertyEditor::colorTitles()
     }
 }
 
+void PropertyEditor::scheduleRebuild()
+{
+    if(!m_rebuildScheduled)
+    {
+        m_rebuildScheduled = true;
+        QMetaObject::invokeMethod(this, &PropertyEditor::rebuild, Qt::QueuedConnection);
+    }
+}
+
 void PropertyEditor::rebuild()
 {
+    m_rebuildScheduled = false;
     forgetRows();
     followStargates();
     m_rows = componentRows();

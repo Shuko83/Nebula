@@ -123,6 +123,7 @@ class TestEditionScene : public QObject
     void contextMenu_data();
     void contextMenu();
     void linksOfAList();
+    void interfacesThatFollowAProperty();
 
   private:
     // Source1, which provides "object", and Sink1, whose "object" is bound to it.
@@ -388,6 +389,29 @@ void TestEditionScene::linksOfAList()
     QCOMPARE(bound.size(), 1);
     QCOMPARE(bound.constFirst().provider, m_application->component(QStringLiteral("Source2")));
     QVERIFY(sink->binding(QStringLiteral("object")).provider != nullptr); // The other interface keeps its own
+}
+
+// A component whose count tells the interfaces it provides: its item shows those it has, and the link of one it removes
+// leaves with it, the others stay.
+void TestEditionScene::interfacesThatFollowAProperty()
+{
+    Nebula::Component* outlets = m_application->instantiate(testComponentId(QStringLiteral("Outlets")));
+    Nebula::Component* sink = m_application->component(QStringLiteral("Sink1"));
+    QVERIFY(outlets->setProperty("count", 2));
+    QVERIFY(sink->bindInterface(QStringLiteral("objects"), *outlets, QStringLiteral("object1")));
+    QVERIFY(sink->bindInterface(QStringLiteral("objects"), *outlets, QStringLiteral("object2")));
+    QCOMPARE(m_scene->load(m_application->save()), QStringList());
+    outlets = m_application->component(QStringLiteral("Outlets1"));
+    const ComponentItem* item = componentItem(*m_scene, QStringLiteral("Outlets1"));
+    QCOMPARE(item->providedInterfaces().size(), 2);
+    QCOMPARE(links(*m_scene).size(), 3);
+
+    QVERIFY(outlets->setProperty("count", 1));
+    QCOMPARE(item->providedInterfaces().size(), 1);
+    QCOMPARE(links(*m_scene).size(), 2);
+    QVERIFY(outlets->setProperty("count", 3));
+    QCOMPARE(item->providedInterfaces().size(), 3);
+    QCOMPARE(links(*m_scene).size(), 2);
 }
 
 QTEST_MAIN(TestEditionScene)
