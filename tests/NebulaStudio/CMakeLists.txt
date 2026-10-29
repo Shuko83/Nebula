@@ -24,6 +24,10 @@ nebula_add_test(TestEditionView
     SOURCES "${_studio}/src/EditionView.cpp"
     INCLUDE_DIRECTORIES "${_studio}/src"
     LINK_LIBRARIES Qt6::Widgets)
+nebula_add_test(TestPreferences
+    SOURCES "${_studio}/src/Preferences.cpp"
+    INCLUDE_DIRECTORIES "${_studio}/src"
+    LINK_LIBRARIES Qt6::Core)
 # The edition zone, with its items and the dialogs it opens.
 nebula_add_test(TestEditionScene
     SOURCES

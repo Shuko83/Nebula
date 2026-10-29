@@ -7,10 +7,12 @@
 #include <QList>
 #include <QMainWindow>
 #include <QMessageBox>
+#include <QSettings>
 #include <QString>
 
 #include "LinkStyle.h"
 #include "Nebula/Application/Universe.h"
+#include "Preferences.h"
 
 class ComponentItem;
 class ComponentModel;
@@ -80,7 +82,8 @@ class MainWindow : public QMainWindow
     void createViewMenu();
     // Links: the styles of LinkStyles, one of them checked, the one the links are drawn in.
     void addLinkStyleMenu(QMenu& menu);
-    // Draws the links of every scene in style from now on: those of the application, and of the galaxies opened.
+    // Draws the links of every scene in style from now on: those of the application, and of the galaxies opened, and
+    // at the next launch.
     void setLinkStyle(LinkStyle style);
     void createRunMenu();
     // Follows what the application tells: whether it runs, its settings files that failed, its components.
@@ -269,5 +272,8 @@ class MainWindow : public QMainWindow
     GalaxyViewer* m_galaxyViewer = nullptr;
     QLineEdit* m_galaxyDirectory = nullptr; // Tells the directory of m_galaxyModel
 
-    LinkStyle m_linkStyle = LinkStyle::Curved; // Of the links of m_scene and m_galaxyScenes, until another is chosen
+    // Of the user who runs NebulaStudio, kept from one launch to the next: under its organization and its name, rather
+    // than those of QCoreApplication, which would move the AppConfigLocation the applications run here write to.
+    QSettings m_preferences;
+    LinkStyle m_linkStyle = readLinkStyle(m_preferences); // Of the links of m_scene and m_galaxyScenes
 };
