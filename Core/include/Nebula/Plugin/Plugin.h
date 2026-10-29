@@ -28,17 +28,8 @@ template <typename P> class Plugin : public IPlugin
     // Registers the component T; see NEBULA_REGISTER_COMPONENT.
     template <typename T> static bool add()
     {
-        static_assert(std::is_base_of_v<Plugin, P>, "A component is registered in a class deriving from Nebula::Plugin");
-        static_assert(std::is_base_of_v<Component, T>, "A component derives from Nebula::Component");
-        // The check qobject_cast makes: without Q_OBJECT, T would be registered under the name of its base class.
-        static_assert(QtPrivate::HasQ_OBJECT_Macro<T>::Value, "A component declares Q_OBJECT");
-        static_assert(!std::is_final_v<T>, "A component cannot be final: Plugin derives from it");
-        static_assert(!std::is_abstract_v<Instance<T>>, "A component implements every pure virtual function");
-        static_assert(std::is_default_constructible_v<Instance<T>>, "A component needs a default constructor");
-        // Never called: what it would create would be missing without a word.
-        static_assert(
-            !requires(P& plugin, T& component) { plugin.build(component); },
-            "build(<component>&) is no longer called: a component creates its objects in its constructor");
+        checkPluginClass<T>();
+        checkComponent<T>();
         registered().append(ComponentType{.metaObject = &T::staticMetaObject, .builder = &make<T>});
         return true;
     }
@@ -89,6 +80,27 @@ template <typename P> class Plugin : public IPlugin
             this->releaseInterfaces();
         }
     };
+
+    // Does not compile when P is not a plugin class T can be registered in.
+    template <typename T> static void checkPluginClass()
+    {
+        static_assert(std::is_base_of_v<Plugin, P>, "A component is registered in a class deriving from Nebula::Plugin");
+        // Never called: what it would create would be missing without a word.
+        static_assert(
+            !requires(P& plugin, T& component) { plugin.build(component); },
+            "build(<component>&) is no longer called: a component creates its objects in its constructor");
+    }
+
+    // Does not compile when T is not a component its plugin can create.
+    template <typename T> static void checkComponent()
+    {
+        static_assert(std::is_base_of_v<Component, T>, "A component derives from Nebula::Component");
+        // The check qobject_cast makes: without Q_OBJECT, T would be registered under the name of its base class.
+        static_assert(QtPrivate::HasQ_OBJECT_Macro<T>::Value, "A component declares Q_OBJECT");
+        static_assert(!std::is_final_v<T>, "A component cannot be final: Plugin derives from it");
+        static_assert(!std::is_abstract_v<Instance<T>>, "A component implements every pure virtual function");
+        static_assert(std::is_default_constructible_v<Instance<T>>, "A component needs a default constructor");
+    }
 
     template <typename T> static std::unique_ptr<Component> make()
     {
