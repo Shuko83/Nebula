@@ -17,6 +17,8 @@ to it.
   `removeConsumedInterface()` are protected, for a component to remove what it no longer has as a property changes,
   the widgets it provides, as many as its count, say; what is bound to an interface removed is unbound. `WidgetsPlugin`
   has a `LabelsComponent`, which provides as many labels as its `count`, each with its `text`.
+- The style of the links in NebulaStudio (#84): **View** > **Links** draws them as **Curves**, as before, **Straight
+  Lines** or **Right Angles**, in the application and in the galaxies opened. It is not saved with the project.
 
 ### Changed
 

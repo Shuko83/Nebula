@@ -33,7 +33,7 @@ qu'avec des tests verts.
 | `tests/Components/` | Bibliothèque statique `TestComponents` : les composants écrits pour les tests |
 | `tests/Plugins/` | Les plugins écrits pour les tests, chargés depuis leur fichier : `FirstPlugin`, `SecondPlugin`, `ThirdPlugin` |
 | `tests/Core/` | Un test par classe de Core : `TestComponent`, `TestComponentFactory`, `TestPluginManager`, `TestUniverse`, `TestGalaxy` (une galaxy posée, ses interfaces, ses propriétés exposées, son édition et sa relecture compris), `TestStargate`, `TestSettingsFile` |
-| `tests/NebulaStudio/` | Les classes de NebulaStudio qui se passent de sa fenêtre : `TestColors`, `TestTheme`, `TestPluginModel`, `TestComponentModel`, `TestEditionView`, `TestEditionScene` (la zone d'édition : sélection et suppression d'un lien, liens d'une interface retirée), `TestPropertyEditor` (ses groupes, qui suivent les objets qu'une propriété ajoute ou détruit), `TestGalaxyModel` |
+| `tests/NebulaStudio/` | Les classes de NebulaStudio qui se passent de sa fenêtre : `TestColors`, `TestTheme`, `TestPluginModel`, `TestComponentModel`, `TestEditionView`, `TestEditionScene` (la zone d'édition : tracé d'un lien dans chaque style, sélection et suppression d'un lien, liens d'une interface retirée), `TestPropertyEditor` (ses groupes, qui suivent les objets qu'une propriété ajoute ou détruit), `TestGalaxyModel` |
 | `tests/exemple/` | Les composants d'un plugin d'exemple, chargés depuis son fichier comme le fait une application : `TestWidgetsPlugin` (la fenêtre principale, sa barre, les actions et le compteur, assemblés par leurs interfaces), le seul test qui dépend d'un exemple, celui qu'il teste |
 
 Les tests et leurs plugins ne sont ni installés ni copiés dans le paquet.
