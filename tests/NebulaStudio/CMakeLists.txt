@@ -36,6 +36,12 @@ nebula_add_test(TestEditionScene
         ${_resources}
     INCLUDE_DIRECTORIES "${_studio}/src"
     LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
+nebula_add_test(TestPropertyEditor
+    SOURCES
+        "${_studio}/src/PropertyEditor.cpp" "${_studio}/src/PlaceholderStack.cpp" "${_studio}/src/PropertyTree.cpp"
+        "${_studio}/src/Theme.cpp" ${_resources}
+    INCLUDE_DIRECTORIES "${_studio}/src"
+    LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
 nebula_add_test(TestGalaxyModel
     SOURCES "${_studio}/src/Galaxy/GalaxyModel.cpp" "${_studio}/src/Theme.cpp" ${_resources}
     INCLUDE_DIRECTORIES "${_studio}/src"
