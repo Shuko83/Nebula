@@ -34,6 +34,7 @@ qu'avec des tests verts.
 | `tests/Plugins/` | Les plugins écrits pour les tests, chargés depuis leur fichier : `FirstPlugin`, `SecondPlugin`, `ThirdPlugin` |
 | `tests/Core/` | Un test par classe de Core : `TestComponent`, `TestComponentFactory`, `TestPluginManager`, `TestUniverse`, `TestGalaxy` (une galaxy posée, ses interfaces, ses propriétés exposées, son édition et sa relecture compris), `TestStargate`, `TestSettingsFile` |
 | `tests/NebulaStudio/` | Les classes de NebulaStudio qui se passent de sa fenêtre : `TestColors`, `TestTheme`, `TestPluginModel`, `TestComponentModel`, `TestEditionView`, `TestPreferences` (les préférences, dans un fichier ini temporaire), `TestEditionScene` (la zone d'édition : tracé d'un lien dans chaque style, sélection et suppression d'un lien, liens d'une interface retirée, sous-menu **Bind to** d'une interface consommée, ancres d'un lien), `TestComponentFinder` (la recherche des instances de la zone d'édition : par leur nom ou celui de leur composant, l'une après l'autre, la vue centrée sur celle trouvée, ce que propose son popup), `TestPropertyEditor` (ses groupes, qui suivent les objets qu'une propriété ajoute ou détruit), `TestGalaxyModel` |
+| `tests/StudioPlugin/` | Les composants de `StudioPlugin`, chargés depuis son fichier : `TestStudioPlugin` (la galaxy de NebulaStudio ouverte, ses parties opérationnelles, sa fenêtre et ses menus pendant l'exécution, ses parties qui partent avec le `Studio` et reviennent avec un autre, l'arrêt de l'application qu'elle assemble, le dossier de la liste des galaxies, les composants de mise en page, et l'aller-retour de son fichier) |
 | `tests/exemple/` | Les composants d'un plugin d'exemple, chargés depuis son fichier comme le fait une application : `TestWidgetsPlugin` (la fenêtre principale, sa barre, les actions et le compteur, assemblés par leurs interfaces), le seul test qui dépend d'un exemple, celui qu'il teste |
 
 Les tests et leurs plugins ne sont ni installés ni copiés dans le paquet.
@@ -52,7 +53,9 @@ active AUTOMOC et AUTORCC, et l'enregistre auprès de CTest. Il reçoit :
 - `NEBULA_VERSION`, la version du projet.
 
 Il ne dépend d'aucun plugin d'exemple. `TestWidgetsPlugin` reçoit en plus, de `tests/exemple/CMakeLists.txt`,
-`NEBULA_EXAMPLE_PLUGINS_DIR`, le dossier de `WidgetsPlugin`, construit avant lui.
+`NEBULA_EXAMPLE_PLUGINS_DIR`, le dossier de `WidgetsPlugin`, construit avant lui ; `TestStudioPlugin`, de
+`tests/StudioPlugin/CMakeLists.txt`, `NEBULA_STUDIO_PLUGINS_DIR`, le dossier de `StudioPlugin`, construit avant lui, et
+`NEBULA_STUDIO_GALAXY`, la galaxy de NebulaStudio des sources, celle qu'on édite.
 
 CTest le lance avec, devant `PATH`, le dossier de Qt puis celui de `Core.dll`, la plateforme `offscreen` (aucune
 fenêtre ne s'ouvre, en local comme en CI) et `QT_FORCE_STDERR_LOGGING=1`, sans quoi Windows n'envoie le journal de
