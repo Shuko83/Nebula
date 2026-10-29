@@ -12,7 +12,7 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `Core/cmake/` | — | `nebula_add_plugin()` et les gabarits `plugin.h.in` / `plugin.json.in`, livrés avec `Core` dans le paquet |
 | `NebulaStudio/` | `NebulaStudio` (exe Widgets) | L'éditeur graphique ; le code est dans `NebulaStudio/src/`, sans namespace, celui des fichiers de réglages dans `NebulaStudio/src/Settings/`, celui des galaxies (`GalaxyModel`, `GalaxyViewer`) dans `NebulaStudio/src/Galaxy/`, le logo de Nebula, les icônes du glossaire et la police des titres dans `NebulaStudio/resources/` |
 | `exemple/ExamplePlugin` | `.nbdl` dans `bin/plugins` | Composant `Greeter` (fournit `greeter` : `IGreeter`) |
-| `exemple/WidgetsPlugin` | `.nbdl` dans `bin/plugins` | L'exemple de la bonne pratique (issue #79) : des composants nommés `<Nom>Component`, chacun créant ses objets (membres) dans son constructeur. `MainWindowComponent` (fournit `mainWindow` : la `QMainWindow`, montrée pendant l'exécution ; consomme `centralWidget` : `QWidget`), `TopBarComponent` (une `QToolBar` ; consomme `mainWindow`, `Mandatory`, les listes `actions` : `QAction` et `widgets` : `QWidget`, montrés dans l'ordre de leurs liaisons, issue #67), `ActionComponent` (fournit `action` : `QAction`) et `CounterComponent` (consomme `action`, `Mandatory`, compte pendant l'exécution ; fournit `display` : son `QLabel`) |
+| `exemple/WidgetsPlugin` | `.nbdl` dans `bin/plugins` | L'exemple de la bonne pratique (issue #79) : des composants nommés `<Nom>Component`, chacun créant ses objets (membres) dans son constructeur. `MainWindowComponent` (fournit `mainWindow` : la `QMainWindow`, montrée pendant l'exécution ; consomme `centralWidget` : `QWidget`), `TopBarComponent` (une `QToolBar` ; consomme `mainWindow`, `Mandatory`, les listes `actions` : `QAction` et `widgets` : `QWidget`, montrés dans l'ordre de leurs liaisons, issue #67), `ActionComponent` (fournit `action` : `QAction`), `CounterComponent` (consomme `action`, `Mandatory`, compte pendant l'exécution ; fournit `display` : son `QLabel`) et `LabelsComponent` (issue #86 : fournit `label1`… autant de `QWidget` que son `count`, 1 au départ, de 0 à `MaxCount` = 10, chacun le `QLabel` d'un `Label`, objet dont le `text` est édité dans le groupe de son nom ; régler `count` ajoute les suivants ou retire les derniers par `removeProvidedInterface()`) |
 | `exemple/ExternalPlugin` | `.nbdl` dans `<build>/external-plugins` | `Ticker` (fournit `display` : `QWidget`, dont il expose les propriétés dans le groupe `Display`), `ProfileSelector` (fournit `display` : la `QComboBox` de ses `profiles`, où l'utilisateur choisit `profile`) et `Window` (consomme `content` : `QWidget`, `Mandatory`) |
 | `exemple/ExampleApp` | exe console | Scanne, charge, liste et fait tourner un `Greeter` |
 | `exemple/ExampleUniverseApp` | exe console + Widgets | Le `main` type : options de `Universe::addCommandLineOptions()`, `applyCommandLine()`, `open()` du projet passé en argument, puis `start()` |
@@ -20,7 +20,7 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `docs/release-notes/` | — | Notes de chaque version, `<x.y.z>.md` : le texte de sa release GitHub |
 | `CHANGELOG.md` | — | Ce qui change d'une version à l'autre, la dernière en premier, au format Keep a Changelog, en anglais : une section `## [x.y.z] - <date>` par version (Added, Changed, Removed, Fixed) et son lien vers la release en bas |
 | `docs/glossary.md` | — | Glossaire Nebula (Nebula, Univers, Galaxy, Astre, Comet, Stargate), en anglais puis en français, référencé par le README : le vocabulaire à employer pour nommer code, documentation et interface ; Nebula et Univers (la classe `Universe`) sont déjà employés, Galaxy pour un fichier de projet (`GalaxyInfo`, onglet **Galaxies**), et Stargate pour ce qu'une galaxy expose (`Stargate`) |
-| `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Core/` (une par classe, `TestGalaxy` pour les galaxies posées, leurs interfaces, leurs propriétés exposées, leur édition et leur relecture, `TestStargate` pour la Stargate dans l'application qui l'édite) et `NebulaStudio/` (Colors, Theme, PluginModel, ComponentModel, EditionView, EditionScene pour ses liens, GalaxyModel, sources recompilées), `exemple/` (`TestWidgetsPlugin` : ses composants chargés depuis le plugin et assemblés), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`, et `Plugins/`, les plugins de test construits par `nebula_add_test_plugin()` (`nebula_add_plugin()`, puis retirés du paquet) : `FirstPlugin` (`Alpha`) et `ThirdPlugin` (`Gamma`, `Delta`) dans `test-plugins/`, `SecondPlugin` (`Beta`) dans `other-test-plugins/`, à côté des tests mais pas dans leur `plugins/` (`NEBULA_TEST_PLUGINS_DIR`, `NEBULA_OTHER_TEST_PLUGINS_DIR`). `PluginManager`, les plugins d'un projet ou d'une galaxy et `PluginModel` se testent sur eux : seul `TestWidgetsPlugin` dépend d'un exemple, celui qu'il teste (issue #83). Rien n'est installé |
+| `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Core/` (une par classe, `TestGalaxy` pour les galaxies posées, leurs interfaces, leurs propriétés exposées, leur édition et leur relecture, `TestStargate` pour la Stargate dans l'application qui l'édite) et `NebulaStudio/` (Colors, Theme, PluginModel, ComponentModel, EditionView, EditionScene pour ses liens, PropertyEditor pour ses groupes, GalaxyModel, sources recompilées), `exemple/` (`TestWidgetsPlugin` : ses composants chargés depuis le plugin et assemblés), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`, `Outlets` : autant d'interfaces et d'objets que son `count`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`, et `Plugins/`, les plugins de test construits par `nebula_add_test_plugin()` (`nebula_add_plugin()`, puis retirés du paquet) : `FirstPlugin` (`Alpha`) et `ThirdPlugin` (`Gamma`, `Delta`) dans `test-plugins/`, `SecondPlugin` (`Beta`) dans `other-test-plugins/`, à côté des tests mais pas dans leur `plugins/` (`NEBULA_TEST_PLUGINS_DIR`, `NEBULA_OTHER_TEST_PLUGINS_DIR`). `PluginManager`, les plugins d'un projet ou d'une galaxy et `PluginModel` se testent sur eux : seul `TestWidgetsPlugin` dépend d'un exemple, celui qu'il teste (issue #83). Rien n'est installé |
 | `docs/testing.md` | — | Lancer, déboguer et écrire les tests, en français |
 | `CFmake/` | non suivi, dépôt à part | Ne fait pas partie du build : ne pas y toucher |
 
@@ -113,14 +113,18 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   - `unboundMandatoryInterfaces()` : les consommées `Mandatory` liées à rien. Vide = composant opérationnel ; c'est ce
     que NebulaStudio signale (liée suffit, même si le fournisseur n'a pas encore de pointeur, comme `Greeter` en
     édition).
+  - `removeProvidedInterface(nom)` / `removeConsumedInterface(nom)` (protégés, issue #86, appelés aussi par `Galaxy`
+    et `Stargate`) : ce qu'un composant ne fournit ou ne consomme plus quand une de ses propriétés change (ses widgets,
+    autant que son `count`). Une fournie est rendue indisponible (ses consommateurs la lâchent pendant que le pointeur
+    vaut encore), oubliée, puis `interfaceRemoved(nom)` délie ses consommateurs (une liste garde ses autres liaisons) ;
+    une consommée est déliée (`onUnavailable`) puis oubliée. Rien pour un nom inconnu de ce côté.
   - Privés, pour `Galaxy` et `Stargate` (amies) : `provide()` / `consume()` d'un type connu à l'exécution seulement,
-    `renameProvidedInterface()` / `renameConsumedInterface()` / `removeProvidedInterface()` /
-    `removeConsumedInterface()`, et `releaseInterfaces()`. Signaux `interfaceRenamed(nom, nouveau)` (une fournie : ses
-    consommateurs suivent son nom, `followProvider()`) et `interfaceRemoved(nom)` (une fournie : ses consommateurs
-    sont déliés). Un lien connaît le nom fourni au moment où le fournisseur parle, pas à sa création.
+    `renameProvidedInterface()` / `renameConsumedInterface()`, et `releaseInterfaces()`. Signal
+    `interfaceRenamed(nom, nouveau)` (une fournie : ses consommateurs suivent son nom, `followProvider()`). Un lien
+    connaît le nom fourni au moment où le fournisseur parle, pas à sa création.
 - Objets à propriétés (`PropertyObject.*`) : `addPropertiesForQObject(objet[, nom])` (protégé, appelé par le composant
-  à sa construction) ajoute un `PropertyObject {object, name}` à `propertyObjects()` ; il en sort seul à sa
-  destruction. Signal `propertyObjectsChanged`. `PropertyObject::properties()` : les propriétés déclarées, sans
+  à sa construction, ou quand une propriété dont ils dépendent est réglée) ajoute un `PropertyObject {object, name}` à
+  `propertyObjects()` ; il en sort seul à sa destruction. Signal `propertyObjectsChanged`. `PropertyObject::properties()` : les propriétés déclarées, sans
   `objectName` ni celles `DESIGNABLE false` / `STORED false` ; c'est la liste qu'éditent NebulaStudio et qu'écrit un
   projet.
 - Journalisation : catégories `nebula.components` et `nebula.plugins`.
@@ -138,7 +142,12 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   qui n'a pas pu être restauré, `open(fichier)` = les deux, strict (`false` au moindre problème), `save()` qui écrit
   `version`, `description` (si elle n'est pas vide), `plugins`, `components` (nom, type, propriétés inscriptibles qui font l'aller-retour JSON, et `objects` : celles de ses
   `propertyObjects()`, retrouvés à l'ouverture par nom puis par ordre d'ajout) et `bindings`. `description()` /
-  `setDescription()` : celle du projet, remplacée par `load()`, vidée par `clear()`.
+  `setDescription()` : celle du projet, remplacée par `load()`, vidée par `clear()`. Les propriétés sont rendues dans
+  l'ordre de leur déclaration, pas dans celui du JSON, alphabétique (`ProjectJson::writeProperties()`, issue #86),
+  puis celles des objets, puis les liens : une propriété qui fait les interfaces et les objets d'un composant (son
+  `count`) passe avant ce qui en dépend. De même pour les valeurs exposées d'une galaxy, dans l'ordre où elle les
+  expose (`setExposedValues()`), chacune retrouvée au moment de l'écrire (`writeExposed()`) : la précédente a pu
+  détruire son objet.
 - Galaxy : un fichier de projet, nommé d'après son fichier. `readGalaxy(fichier, erreur)` (statique) le lit sans le
   charger, en `GalaxyInfo {name, description, plugins, filePath}` (`include/Nebula/Galaxy/GalaxyInfo.h`, `name`
   = `completeBaseName()`, `plugins` = les ids de `plugins`) ; `missingPlugins(galaxy)` : ceux de ses plugins dont
@@ -239,7 +248,8 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   vers « en cours » seulement) lit chaque fichier avant de démarrer le premier composant, l'écrit avec les valeurs du projet
   s'il manque ou est incomplet, met de côté en `.bak` un fichier illisible, puis suit les NOTIFY (écriture regroupée
   par `QTimer::singleShot(0)`) ; `stop()` écrit une dernière fois et remet les valeurs du projet, mémorisées au
-  `start()`. Le contenu inconnu d'un fichier est conservé. Problèmes : `SettingsFile::failed` →
+  `start()`. Une valeur donnée ou remise peut détruire l'objet d'une autre entrée (un `count`) : `giveValues()` parcourt
+  une copie et saute ce qui est parti (`startEntry()`), `giveBackDefaults()` sort chaque entrée avant de la remettre. Le contenu inconnu d'un fichier est conservé. Problèmes : `SettingsFile::failed` →
   `Universe::settingsFileFailed`, journal `nebula.settings`. `src/Application/ProjectJson.*` (privé,
   inclus depuis `src/Settings/` par `"Application/ProjectJson.h"`) : l'écriture JSON des propriétés et la clé d'un
   objet (nom, puis rang parmi ceux de ce nom), partagées avec `Universe`. Le destructeur d'un `SettingsFile` l'arrête
@@ -291,7 +301,7 @@ fermé, pour la scène).
 | `ZoneItem` | Zone colorée titrée, `Type = UserType + 2`, Z = -aire ; déplacement par le titre avec son contenu (composants et fichiers de réglages par leur centre, zones entières), redimensionnement par les bords, édition du titre sur place ; sa `shape()` ne couvre que titre et bords ; `setEditable(false)` lui retire boutons et survol |
 | `SettingsItem` / `DashedLinkItem` | `QGraphicsObject` d'un `SettingsFile` : feuille au coin plié, nom du fichier, infobulle (chemin, propriétés tenues) ; refait ses `DashedLinkItem` (`src/`, traits pointillés de centre à centre, Z = -1, dans la scène et non enfants, détruits avec lui, qui préviennent leur item par un callback quand un autre les détruit, comme `QGraphicsScene::clear()`) sur `SettingsFile::changed` et à son ajout à la scène, et les suit par `xChanged` / `yChanged` des deux items ; `StargateItem` fait de même |
 | `SettingsDialog` | Nom (`SettingsFile::name()`, celui que lui donne le fichier de sa galaxy pour un fichier de galaxy, le nom de fichier de l'instance en infobulle ; appliqué par `setName()`), dossier (chemin résultant affiché, ou pourquoi le nom est refusé : vide, ou celui d'un autre fichier, OK alors grisé) et arbre composant → groupe d'objet → propriétés que `SettingsFile::canHold()` accepte, à cocher ; celles d'un autre fichier sont désactivées avec son nom ; les groupes d'objets ne sont ouverts que s'ils ont une propriété tenue ; appliqué au `accepted` |
-| `PropertyEditor` | `QTableWidget` des propriétés inscriptibles de type bool, int, uint, double, QString, QDate, QTime, QDateTime : celles du composant, puis celles de ses `propertyObjects()` (sans `objectName`), sans nom à la suite, avec nom sous une ligne de titre par nom ; pour une galaxy, ses `exposedProperties()` sous leur nom exposé (`Row::name`, `Row::component` = le composant intérieur, pour l'italique et l'infobulle) ; nom en italique pour une propriété tenue par un fichier de réglages, icône Stargate et infobulle pour une propriété qu'une stargate d'à côté expose (`stargates()` : celles de l'application, ou de la galaxy où est le composant, `Universe::galaxyOf()` ; `exposedBy()`) ; suit les signaux NOTIFY, `propertyObjectsChanged`, `settingsFilesChanged`, `componentsChanged`, `changed` de ces stargates, `reloaded` d'une galaxy montrée et `runningChanged` : en lecture seule pendant l'exécution (`NoEditTriggers`) ; une galaxy sans propriété exposée, ou une stargate, a un texte qui dit de double-cliquer dessus |
+| `PropertyEditor` | `QTableWidget` des propriétés inscriptibles de type bool, int, uint, double, QString, QDate, QTime, QDateTime : celles du composant, puis celles de ses `propertyObjects()` (sans `objectName`), sans nom à la suite, avec nom sous une ligne de titre par nom ; pour une galaxy, ses `exposedProperties()` sous leur nom exposé (`Row::name`, `Row::component` = le composant intérieur, pour l'italique et l'infobulle) ; nom en italique pour une propriété tenue par un fichier de réglages, icône Stargate et infobulle pour une propriété qu'une stargate d'à côté expose (`stargates()` : celles de l'application, ou de la galaxy où est le composant, `Universe::galaxyOf()` ; `exposedBy()`) ; suit les signaux NOTIFY, `propertyObjectsChanged` (reconstruit en différé, `scheduleRebuild()` : la valeur écrite depuis la table, un `count`, ajoute ou détruit des objets pendant que la cellule éditée le signale), `settingsFilesChanged`, `componentsChanged`, `changed` de ces stargates, `reloaded` d'une galaxy montrée et `runningChanged` : en lecture seule pendant l'exécution (`NoEditTriggers`) ; une galaxy sans propriété exposée, ou une stargate, a un texte qui dit de double-cliquer dessus |
 
 Les chaînes affichées passent par `tr()`, en anglais.
 
@@ -347,7 +357,7 @@ de NebulaStudio (`SpaceGrotesk-OFL.txt`). Seule la graisse Bold sert : en ajoute
 - Le verrouillage pendant l'exécution n'est complet que dans NebulaStudio : Core refuse `instantiate()`, `rename()` et
   `remove()`, mais pas `Component::bindInterface()` ni les changements de fichiers de réglages.
 - Tests : rien pour `MainWindow`, la scène et ses items hors de ses liens (`TestEditionScene`), les fenêtres
-  (`PropertyEditor`, `SettingsDialog`…), ni `NebulaPlugin.cmake`. Le paquet n'est vérifié par rien : ni projet tiers d'exemple dans le dépôt, ni étape de CI qui
+  (`SettingsDialog`…, et `PropertyEditor` hors de ses groupes, `TestPropertyEditor`), ni `NebulaPlugin.cmake`. Le paquet n'est vérifié par rien : ni projet tiers d'exemple dans le dépôt, ni étape de CI qui
   en compile un.
 - Composants non opérationnels : **Start** ne les signale pas et ne refuse rien ; seuls le « ! », l'ambre et
   `ProblemList` les montrent.
@@ -355,6 +365,12 @@ de NebulaStudio (`SpaceGrotesk-OFL.txt`). Seule la graisse Bold sert : en ajoute
   NebulaStudio ne montre pas ; la relecture d'une galaxy relie à la fin d'une liste ce qui la liait à elle. Seul un
   composant consomme une liste : une galaxy (donc une stargate) consomme ou fournit une interface seule, qu'une liste
   peut avoir parmi d'autres. Une même liste ne se lie pas deux fois à la même interface fournie.
+- Interfaces et objets qui suivent une propriété (#86) : `stop()` ne refait que les valeurs. Quand la propriété change
+  pendant l'exécution (un fichier de réglages qui la tient, ou le composant lui-même), ce qu'elle retire perd ses
+  liens, et ce qu'elle remet à l'arrêt est neuf : les valeurs d'édition de ses objets (mémorisées par `QPointer`) sont
+  perdues, et le projet est alors « modifié ». Le README conseille de ne pas mettre une telle propriété dans un fichier
+  de réglages ; rien ne l'empêche. Une interface ajoutée ou retirée refait tous les `InterfaceItem` de son composant
+  (`clearIfChanged()`), ses liens redessinés par `refreshLinks()`.
 - Galaxies : une galaxy éditée ne passe à ses autres instances qu'une fois enregistrée (**Save Galaxy**, ou en la
   quittant), et un fichier de galaxy changé hors de NebulaStudio n'est relu qu'à l'ouverture du projet ; le chemin ne
   marque pas une galaxy changée. La description d'une galaxy ne s'édite qu'en ouvrant son fichier comme projet
@@ -412,7 +428,8 @@ de NebulaStudio (`SpaceGrotesk-OFL.txt`). Seule la graisse Bold sert : en ajoute
 - Tout ce qu'un objet ajouté par `addPropertiesForQObject()` a d'inscriptible est enregistré : pour l'afficheur du
   `Ticker`, `value` compris, qui change à chaque tic, et que `stop()` remet donc à sa valeur d'édition (`ticks`, en
   lecture seule, n'est pas remis). C'est aussi ce que propose la fenêtre d'un fichier de réglages : toutes les
-  propriétés d'un `QWidget`.
+  propriétés d'un `QWidget`. `LabelsComponent` ajoute donc pour chaque label un `Label`, `QObject` qui n'a que son
+  `text`, plutôt que le `QLabel` lui-même.
 - Un fichier de réglages range les valeurs sous le nom des instances : renommer une instance laisse ce que
   l'utilisateur lui avait donné sous l'ancien nom, et elle repart des valeurs du projet. Lancée depuis NebulaStudio, une
   application dont le fichier n'a pas de dossier écrit dans `AppConfigLocation` de NebulaStudio, pas dans celui de

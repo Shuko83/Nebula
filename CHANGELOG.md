@@ -13,6 +13,10 @@ to it.
   interfaces are bound, in their order, each one telling `onInserted` and `onRemoved`; `bindings(name)`,
   `unbindInterface(name, provider, providedName)` and `InterfaceInfo::list`. NebulaStudio draws a list as two stacked
   circles, with a link for each of its bindings, removed one by one.
+- Interfaces and objects that depend on a property (#86): `Component::removeProvidedInterface()` and
+  `removeConsumedInterface()` are protected, for a component to remove what it no longer has as a property changes,
+  the widgets it provides, as many as its count, say; what is bound to an interface removed is unbound. `WidgetsPlugin`
+  has a `LabelsComponent`, which provides as many labels as its `count`, each with its `text`.
 
 ### Changed
 
@@ -26,12 +30,22 @@ to it.
   `create(name)`, the name being `Nebula::componentName()` of their class. The generated class of the plugin is its
   root object, deriving from `Nebula::Plugin<itself>`, and `ComponentFactory` has the plugin of a component create
   it (`add(pluginId, IPlugin&)`). Plugins built against 1.0.0 must be built again.
+- A project gives a component its properties in the order the component declares them, rather than in the order of
+  their names, and a galaxy the properties it exposes in the order it exposes them (#86): a property that tells what
+  a component has is set before those that depend on it.
 
 ### Removed
 
 - `IPlugin::plugin()` and `Plugin::instantiate()`: the root object is the plugin.
 - `Component::builtByPlugin()`: a class deriving from `Component` is no longer abstract. A component is still created
   by its plugin only, which ends what it provides and consumes before its members are destroyed.
+
+### Fixed
+
+- A settings file no longer reads an entry whose object a value it gave just destroyed, as a count of widgets does
+  (#86).
+- NebulaStudio: the property editor is rebuilt once the value edited in it is written, rather than while it is, when
+  that value adds or destroys objects of the component (#86).
 
 ## [1.0.0] - 2026-10-20
 
