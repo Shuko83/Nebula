@@ -26,6 +26,9 @@ to it.
 - Anchors on the links in NebulaStudio (#106): double-clicking a link, or **Add anchor point** in its menu, has it go
   through that point, which is dragged to move it and double-clicked to remove it. A project holds the anchors of a
   link in the `anchors` of its binding, which only NebulaStudio reads.
+- Finding the instances of the edition zone in NebulaStudio (#63): the field above it, also reached with Ctrl+Shift+F,
+  lists as it is typed the instances whose name, or the name of whose component, holds what is typed; choosing one, or
+  pressing Enter, selects it and shows it in the middle of the edition zone, Enter again showing the next one.
 
 ### Changed
 
