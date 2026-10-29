@@ -29,16 +29,22 @@ nebula_add_test(TestPreferences
     INCLUDE_DIRECTORIES "${_studio}/src"
     LINK_LIBRARIES Qt6::Core)
 # The edition zone, with its items and the dialogs it opens.
+set(_scene
+    "${_studio}/src/EditionScene.cpp" "${_studio}/src/ContextMenu.cpp" "${_studio}/src/ComponentItem.cpp"
+    "${_studio}/src/InterfaceItem.cpp" "${_studio}/src/LinkItem.cpp" "${_studio}/src/AnchorItem.cpp"
+    "${_studio}/src/LinkAnchors.cpp" "${_studio}/src/DashedLinkItem.cpp" "${_studio}/src/NameEditor.cpp"
+    "${_studio}/src/ZoneItem.cpp" "${_studio}/src/Theme.cpp" "${_studio}/src/EditDialog.cpp"
+    "${_studio}/src/PropertyTree.cpp" "${_studio}/src/WarningLabel.cpp"
+    "${_studio}/src/Galaxy/StargateItem.cpp" "${_studio}/src/Galaxy/StargateDialog.cpp"
+    "${_studio}/src/Settings/SettingsItem.cpp" "${_studio}/src/Settings/SettingsDialog.cpp"
+    ${_resources})
 nebula_add_test(TestEditionScene
-    SOURCES
-        "${_studio}/src/EditionScene.cpp" "${_studio}/src/ContextMenu.cpp" "${_studio}/src/ComponentItem.cpp"
-        "${_studio}/src/InterfaceItem.cpp" "${_studio}/src/LinkItem.cpp" "${_studio}/src/AnchorItem.cpp"
-        "${_studio}/src/LinkAnchors.cpp" "${_studio}/src/DashedLinkItem.cpp" "${_studio}/src/NameEditor.cpp"
-        "${_studio}/src/ZoneItem.cpp" "${_studio}/src/Theme.cpp" "${_studio}/src/EditDialog.cpp"
-        "${_studio}/src/PropertyTree.cpp" "${_studio}/src/WarningLabel.cpp"
-        "${_studio}/src/Galaxy/StargateItem.cpp" "${_studio}/src/Galaxy/StargateDialog.cpp"
-        "${_studio}/src/Settings/SettingsItem.cpp" "${_studio}/src/Settings/SettingsDialog.cpp"
-        ${_resources}
+    SOURCES ${_scene}
+    INCLUDE_DIRECTORIES "${_studio}/src"
+    LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
+# The field that finds the instances of the edition zone.
+nebula_add_test(TestComponentFinder
+    SOURCES "${_studio}/src/ComponentFinder.cpp" ${_scene}
     INCLUDE_DIRECTORIES "${_studio}/src"
     LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
 nebula_add_test(TestPropertyEditor

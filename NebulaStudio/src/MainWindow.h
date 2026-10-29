@@ -14,6 +14,7 @@
 #include "Nebula/Application/Universe.h"
 #include "Preferences.h"
 
+class ComponentFinder;
 class ComponentItem;
 class ComponentModel;
 class ComponentViewer;
@@ -42,11 +43,12 @@ class QTreeView;
 // dropped from its own is placed, above the editor of the properties of the one selected there, and the list of what
 // keeps components from working, see ProblemList. A galaxy placed there opens in its place, under a path back to the
 // application, where it is edited as the application is: Save galaxy writes it to its file, and every instance of that
-// file is read again from it; leaving a galaxy changed since asks whether to save it. Its File menu saves what is in
-// the edition zone to a project file, with the description of its galaxy, and opens it again; its View menu zooms the
-// edition zone in and out, at the zoom level its status bar tells, and chooses how its links are drawn, in the
-// application as in the galaxies; its Run menu starts the application assembled there, which is not edited while it
-// runs, and stops it.
+// file is read again from it; leaving a galaxy changed since asks whether to save it. Above the edition zone, a field
+// finds the instances it shows by their name or the one of their component, and shows the one found in its middle.
+// Its File menu saves what is in the edition zone to a project file, with the description of its galaxy, and opens it
+// again; its View menu gives the keys to that field (Ctrl+Shift+F), zooms the edition zone in and out, at the zoom
+// level its status bar tells, and chooses how its links are drawn, in the application as in the galaxies; its Run menu
+// starts the application assembled there, which is not edited while it runs, and stops it.
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -77,8 +79,8 @@ class MainWindow : public QMainWindow
     void addProjectActions(QMenu& menu);
     // Save Galaxy: the galaxy shown, to its own file, which its other instances are read again from.
     void addSaveGalaxyAction(QMenu& menu);
-    // The zoom of the edition zone, also changed there with + and -, or with Ctrl and the mouse wheel, then how its
-    // links are drawn.
+    // Finding instances in the edition zone, the zoom of the edition zone, also changed there with + and -, or with
+    // Ctrl and the mouse wheel, then how its links are drawn.
     void createViewMenu();
     // Links: the styles of LinkStyles, one of them checked, the one the links are drawn in.
     void addLinkStyleMenu(QMenu& menu);
@@ -123,8 +125,11 @@ class MainWindow : public QMainWindow
     // The edition zone, above the properties of the component selected there, then the problems; the zone takes the
     // room.
     QWidget* createEdition();
-    // The view of the scene of the application, under the path to the galaxy shown.
+    // The view of the scene of the application, under the path to the galaxy shown and the field that finds instances.
     QWidget* createZone();
+    // Above the view: the path to the galaxy shown, then the field that finds the instances it shows, see
+    // ComponentFinder, which tells in the status bar what it found.
+    QWidget* createZoneBar();
     // Follows what scene tells, the one of the application or of a galaxy, and draws its links in the style chosen.
     void followScene(EditionScene& scene);
     // Edits the properties of the component selected in scene, when it is the one shown.
@@ -261,6 +266,7 @@ class MainWindow : public QMainWindow
     EditionScene* m_scene = nullptr;       // Of m_application
     QList<EditionScene*> m_galaxyScenes;   // Opened, each of a galaxy of the one before: m_scene, then them
     QWidget* m_path = nullptr;             // Above the edition zone, while a galaxy is shown
+    ComponentFinder* m_finder = nullptr;   // Above the edition zone, on the right, of what m_editionView shows
     QAction* m_saveGalaxyAction = nullptr; // Enabled while a galaxy is shown and the application does not run
     EditionView* m_editionView = nullptr;  // Shows m_scene, or the last of m_galaxyScenes
     PluginViewer* m_pluginViewer = nullptr;

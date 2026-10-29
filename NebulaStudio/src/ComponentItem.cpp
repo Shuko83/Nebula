@@ -141,6 +141,11 @@ Nebula::Component& ComponentItem::component() const
     return m_component;
 }
 
+const QString& ComponentItem::componentName() const
+{
+    return m_componentName;
+}
+
 const QList<InterfaceItem*>& ComponentItem::consumedInterfaces() const
 {
     return m_consumedInterfaces;
@@ -176,6 +181,11 @@ void ComponentItem::setEditable(bool editable)
 {
     m_editable = editable;
     setFlag(ItemIsMovable, editable);
+}
+
+const QIcon& ComponentItem::componentIcon() const
+{
+    return m_icon;
 }
 
 void ComponentItem::setIcon(const QIcon& icon)
