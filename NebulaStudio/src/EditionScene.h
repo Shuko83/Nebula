@@ -18,8 +18,10 @@
 class ComponentItem;
 class ContextMenu;
 class LinkItem;
+class QAction;
 class QGraphicsPathItem;
 class QJsonArray;
+class QMenu;
 class QMimeData;
 class SettingsItem;
 class StargateItem;
@@ -50,8 +52,11 @@ class SettingsFile;
 // The menu adds a stargate too, see StargateItem, which exposes what the galaxy the project is has once placed: what
 // it exposes is chosen at once, and again when it is double-clicked or from its own menu, see StargateDialog.
 // Expose..., in the menu of the dot of an interface, adds one that exposes that interface, bound to it, and edits the
-// name it exposes it as at once. None of this is done while the application runs, see Universe: its components can
-// still be selected, but nothing is dropped, moved, linked, renamed, recolored, added or removed until it is stopped.
+// name it exposes it as at once.
+// Bind to, in the menu of the dot of an interface consumed, binds it to one of the interfaces shown it can be bound to,
+// those it is bound to checked: choosing one of these unbinds it.
+// None of this is done while the application runs, see Universe: its components can still be selected, but nothing is
+// dropped, moved, linked, renamed, recolored, added or removed until it is stopped.
 // A galaxy dragged from a GalaxyModel is placed in the application the same way, see Universe::instantiateGalaxy();
 // double-clicking it below its name asks for it to be opened, see galaxyOpened(), in another scene that shows it, and
 // where it is edited as the application is.
@@ -199,12 +204,24 @@ class EditionScene : public QGraphicsScene
     [[nodiscard]] InterfaceItem* linkTargetAt(const QPointF& position) const;
     // Dims the interfaces a link drawn from source cannot be bound to; none when source is nullptr.
     void dimLinkTargets(const InterfaceItem* source);
+    // The interfaces shown consumed can be bound to: those of its type other components provide, from the first
+    // component shown, each in the order of its interfaces.
+    [[nodiscard]] QList<InterfaceItem*> linkTargets(const InterfaceItem& consumed) const;
 
     // Shows the menu of where event is: about the component, the settings file or the link there, or about the edition
     // zone when there is none, then about the zone there.
     void showMenu(const QGraphicsSceneContextMenuEvent& event);
     // Adds to menu what is done to component, at position, with dialogs of parent; false when component is nullptr.
     bool addComponentEntries(ContextMenu& menu, ComponentItem* component, const QPointF& position, QWidget* parent);
+    // Adds to menu binding consumed, an interface shown, in a submenu: to one of the interfaces shown it can be bound
+    // to, or unbinding it from one it is bound to. Nothing when consumed is nullptr, or provided.
+    void addBindEntries(ContextMenu& menu, InterfaceItem* consumed);
+    // Adds to bindMenu, a submenu of menu, an entry for each of the interfaces shown consumed can be bound to, checked
+    // when it is bound to it; one that tells there is none otherwise.
+    void addBindTargets(ContextMenu& menu, QMenu& bindMenu, InterfaceItem& consumed);
+    // Adds to bindMenu, a submenu of menu, the entry that binds consumed to provided, or unbinds them, see
+    // toggleLink().
+    QAction* addBindTarget(ContextMenu& menu, QMenu& bindMenu, InterfaceItem& consumed, InterfaceItem& provided);
     // Adds to menu what is done to component as what it is: exposing the interface at position, opening a galaxy,
     // editing a stargate.
     void addKindEntries(ContextMenu& menu, ComponentItem& component, const QPointF& position, QWidget* parent);
@@ -264,6 +281,8 @@ class EditionScene : public QGraphicsScene
     // Unbinds the interfaces links are drawn between, each from the one it is drawn to, and removes them from the
     // edition zone: a list keeps the others.
     void unlink(const QList<LinkItem*>& links);
+    // Unbinds consumed from provided when they are linked, see unlink(); binds them otherwise, see link().
+    void toggleLink(InterfaceItem& consumed, InterfaceItem& provided);
     // The zone position is in, the smallest one when several are; nullptr when there is none.
     [[nodiscard]] ZoneItem* zoneAt(const QPointF& position) const;
     // Adds a zone, its top left corner at position; of the next color when color is not valid.
