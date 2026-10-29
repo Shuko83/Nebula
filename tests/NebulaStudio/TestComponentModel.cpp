@@ -63,18 +63,18 @@ void TestComponentModel::data_data()
     QTest::addColumn<int>("role");
     QTest::addColumn<QVariant>("value");
 
-    // By id: Test.Panel, Test.Probe, Test.Sink, Test.Source.
-    QTest::newRow("name") << 1 << int(ComponentModel::Name) << int(Qt::DisplayRole) << QVariant(u"Probe"_s);
-    QTest::newRow("category") << 1 << int(ComponentModel::Category) << int(Qt::DisplayRole) << QVariant(u"Test"_s);
-    QTest::newRow("no category") << 0 << int(ComponentModel::Category) << int(Qt::DisplayRole) << QVariant(QString());
-    QTest::newRow("plugin") << 2 << int(ComponentModel::Plugin) << int(Qt::DisplayRole) << QVariant(u"Test"_s);
-    QTest::newRow("description") << 3 << int(ComponentModel::Name) << int(Qt::ToolTipRole)
+    // By id: Test.Outlets, Test.Panel, Test.Probe, Test.Sink, Test.Source.
+    QTest::newRow("name") << 2 << int(ComponentModel::Name) << int(Qt::DisplayRole) << QVariant(u"Probe"_s);
+    QTest::newRow("category") << 2 << int(ComponentModel::Category) << int(Qt::DisplayRole) << QVariant(u"Test"_s);
+    QTest::newRow("no category") << 1 << int(ComponentModel::Category) << int(Qt::DisplayRole) << QVariant(QString());
+    QTest::newRow("plugin") << 3 << int(ComponentModel::Plugin) << int(Qt::DisplayRole) << QVariant(u"Test"_s);
+    QTest::newRow("description") << 4 << int(ComponentModel::Name) << int(Qt::ToolTipRole)
                                  << QVariant(u"Provides an object while it runs"_s);
-    QTest::newRow("id") << 3 << int(ComponentModel::Name) << ComponentModel::IdRole << QVariant(u"Test.Source"_s);
-    QTest::newRow("id, in every column") << 0 << int(ComponentModel::Plugin) << ComponentModel::IdRole
+    QTest::newRow("id") << 4 << int(ComponentModel::Name) << ComponentModel::IdRole << QVariant(u"Test.Source"_s);
+    QTest::newRow("id, in every column") << 1 << int(ComponentModel::Plugin) << ComponentModel::IdRole
                                          << QVariant(u"Test.Panel"_s);
     QTest::newRow("no icon but for the name")
-        << 0 << int(ComponentModel::Category) << int(Qt::DecorationRole) << QVariant();
+        << 1 << int(ComponentModel::Category) << int(Qt::DecorationRole) << QVariant();
 }
 
 void TestComponentModel::data()
@@ -84,7 +84,7 @@ void TestComponentModel::data()
     QFETCH(int, role);
     QFETCH(QVariant, value);
 
-    QCOMPARE(m_model->rowCount(), 4);
+    QCOMPARE(m_model->rowCount(), 5);
     QCOMPARE(m_model->columnCount(), int(ComponentModel::ColumnCount));
     QCOMPARE(m_model->index(row, column).data(role), value);
     // The icon of an Astre, before each name.
@@ -112,14 +112,14 @@ void TestComponentModel::headerData()
 
 void TestComponentModel::dragged()
 {
-    QVERIFY(m_model->flags(m_model->index(1, ComponentModel::Category)).testFlag(Qt::ItemIsDragEnabled));
+    QVERIFY(m_model->flags(m_model->index(2, ComponentModel::Category)).testFlag(Qt::ItemIsDragEnabled));
     QVERIFY(!m_model->flags({}).testFlag(Qt::ItemIsDragEnabled));
     QCOMPARE(m_model->mimeTypes(), QStringList{ComponentModel::MimeType});
 
     // A row, one index per column: its id, in UTF-8.
     const std::unique_ptr<QMimeData> data(
-        m_model->mimeData({m_model->index(1, ComponentModel::Name), m_model->index(1, ComponentModel::Category),
-                           m_model->index(1, ComponentModel::Plugin)}));
+        m_model->mimeData({m_model->index(2, ComponentModel::Name), m_model->index(2, ComponentModel::Category),
+                           m_model->index(2, ComponentModel::Plugin)}));
     QVERIFY(data != nullptr);
     QCOMPARE(data->data(ComponentModel::MimeType), QByteArray("Test.Probe"));
     QCOMPARE(m_model->mimeData({}), nullptr);
@@ -134,17 +134,17 @@ void TestComponentModel::refreshFollowsTheFactory()
     // Those of a plugin just loaded, where they belong by id: before Test.
     Nebula::ComponentFactory::instance().add(QStringLiteral("Another"), other);
     m_model->refresh();
-    QCOMPARE(m_model->rowCount(), 8);
-    QCOMPARE(inserted.count(), 4);
-    QCOMPARE(m_model->index(0, ComponentModel::Name).data(ComponentModel::IdRole).toString(), u"Another.Panel"_s);
-    QCOMPARE(m_model->index(4, ComponentModel::Name).data(ComponentModel::IdRole).toString(), u"Test.Panel"_s);
+    QCOMPARE(m_model->rowCount(), 10);
+    QCOMPARE(inserted.count(), 5);
+    QCOMPARE(m_model->index(0, ComponentModel::Name).data(ComponentModel::IdRole).toString(), u"Another.Outlets"_s);
+    QCOMPARE(m_model->index(5, ComponentModel::Name).data(ComponentModel::IdRole).toString(), u"Test.Outlets"_s);
 
     // And no longer those of a plugin just unloaded.
     Nebula::ComponentFactory::instance().remove(QStringLiteral("Another"));
     m_model->refresh();
-    QCOMPARE(m_model->rowCount(), 4);
-    QCOMPARE(removed.count(), 4);
-    QCOMPARE(m_model->index(0, ComponentModel::Name).data(ComponentModel::IdRole).toString(), u"Test.Panel"_s);
+    QCOMPARE(m_model->rowCount(), 5);
+    QCOMPARE(removed.count(), 5);
+    QCOMPARE(m_model->index(0, ComponentModel::Name).data(ComponentModel::IdRole).toString(), u"Test.Outlets"_s);
 }
 
 QTEST_MAIN(TestComponentModel)

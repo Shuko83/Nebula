@@ -509,25 +509,37 @@ std::optional<QMetaType> interfaceTypeOf(const Component& component, const QStri
     return found != interfaces.end() ? std::optional(found->type) : std::nullopt;
 }
 
-// Sets the property exposed as name, one of exposed, to value; false when there is none, or it could not be set.
-bool writeExposed(const QList<ExposedProperty>& exposed, const QString& name, const QJsonValue& value)
+// Sets the property galaxy exposes as name to value; false when it exposes none, or it could not be set. Found again
+// for each value: setting one can destroy the object of another, one of the widgets a count tells, say.
+bool writeExposed(const Galaxy& galaxy, const QString& name, const QJsonValue& value)
 {
-    const auto found = std::ranges::find(exposed, name, &ExposedProperty::name);
-    return found != exposed.end() && found->object != nullptr &&
+    const std::optional<ExposedProperty> found = galaxy.exposedProperty(name);
+    return found && found->object != nullptr &&
            metaProperty(*found->object, found->property).write(found->object, value.toVariant());
 }
 
-// Sets the properties galaxy exposes to values, by the names they are exposed as. problems tells those it does not
-// expose, or that could not be set.
+// The names galaxy exposes its properties as, in the order it exposes them.
+QStringList exposedNames(const Galaxy& galaxy)
+{
+    QStringList names;
+    for(const ExposedProperty& exposed : galaxy.exposedProperties())
+    {
+        names.append(exposed.name);
+    }
+    return names;
+}
+
+// Sets the properties galaxy exposes to values, by the names they are exposed as, in the order it exposes them, as a
+// component has its properties set in the order it declares them. problems tells those it does not expose, or that
+// could not be set.
 void setExposedValues(const Galaxy& galaxy, const QJsonObject& values, QStringList& problems)
 {
-    const QList<ExposedProperty> exposed = galaxy.exposedProperties();
-    QStringList unset;
-    for(auto value = values.begin(); value != values.end(); ++value)
+    QStringList unset = values.keys();
+    for(const QString& name : exposedNames(galaxy))
     {
-        if(!writeExposed(exposed, value.key(), value.value()))
+        if(unset.contains(name) && writeExposed(galaxy, name, values.value(name)))
         {
-            unset.append(value.key());
+            unset.removeOne(name);
         }
     }
     tellUnset(unset, galaxy.objectName(), problems);

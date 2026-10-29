@@ -49,6 +49,22 @@ const QByteArray Gated = R"({"version": 1,
     "bindings": [{"consumer": "Gate", "consumed": "out", "provider": "Source", "provided": "object"},
                  {"consumer": "Sink", "consumed": "object", "provider": "Gate", "provided": "in"}]})";
 
+// A galaxy whose stargate exposes the count of its Outlets, which has none, as "size", then the one of them it marks,
+// as "pick".
+const QByteArray Sized = R"({"version": 1,
+    "components": [{"name": "Outlets", "type": "Test.Outlets"},
+                   {"name": "Gate", "type": "Nebula.Stargate",
+                    "exposed": [{"name": "size", "component": "Outlets", "property": "count"},
+                                {"name": "pick", "component": "Outlets", "property": "active"}]}]})";
+
+// A galaxy whose stargate exposes the count of its Outlets, which has three, as "size", then the level of the third
+// one, as "third".
+const QByteArray ThreeOutlets = R"({"version": 1,
+    "components": [{"name": "Outlets", "type": "Test.Outlets", "properties": {"count": 3}},
+                   {"name": "Gate", "type": "Nebula.Stargate",
+                    "exposed": [{"name": "size", "component": "Outlets", "property": "count"},
+                                {"name": "third", "component": "Outlets", "object": "object3", "property": "level"}]}]})";
+
 // A project that places the galaxy of the file path, relative to it, as name.
 QByteArray placing(const QString& path, const QString& name = u"Clock1"_s)
 {
@@ -170,6 +186,7 @@ class TestGalaxy : public QObject
     void exposedProperties();
     void exposedValuesSavedAndLoaded();
     void exposedValuesSavedWhileRunning();
+    void exposedValuesInTheOrderTheyAreExposed();
     void reexposed();
 
     void editedInPlace();
@@ -879,6 +896,29 @@ void TestGalaxy::exposedValuesSavedWhileRunning()
     QCOMPARE(json.value(u"properties").toObject().value(u"rate").toInt(), 9);
     universe.stop();
     QCOMPARE(exposedValue(*galaxy, u"rate"_s).toInt(), 9);
+}
+
+void TestGalaxy::exposedValuesInTheOrderTheyAreExposed()
+{
+    const QTemporaryDir directory;
+    QVERIFY(!write(directory, u"Sized.nbp"_s, Sized).isEmpty());
+    QVERIFY(!write(directory, u"Three.nbp"_s, ThreeOutlets).isEmpty());
+    Universe universe;
+    universe.setFilePath(directory.filePath(u"App.nbp"_s));
+
+    // JSON holds them by name: pick before size, which it cannot exceed. The size of Three1 takes its third outlet
+    // away, with what the galaxy exposes of it.
+    QCOMPARE(universe.load(QJsonDocument::fromJson(R"({"version": 1, "components": [
+        {"name": "Sized1", "type": "Nebula.Galaxy", "galaxy": "Sized.nbp", "properties": {"pick": 2, "size": 3}},
+        {"name": "Three1", "type": "Nebula.Galaxy", "galaxy": "Three.nbp", "properties": {"size": 1, "third": 5}}]})")
+                               .object()),
+             QStringList{u"The property third of Three1 could not be set"_s});
+    const auto* sized = qobject_cast<const Galaxy*>(universe.component(u"Sized1"_s));
+    QCOMPARE(exposedValue(*sized, u"size"_s).toInt(), 3);
+    QCOMPARE(exposedValue(*sized, u"pick"_s).toInt(), 2);
+    const auto* three = qobject_cast<const Galaxy*>(universe.component(u"Three1"_s));
+    QCOMPARE(exposedValue(*three, u"size"_s).toInt(), 1);
+    QVERIFY(!three->exposedProperty(u"third"_s));
 }
 
 void TestGalaxy::reexposed()

@@ -76,6 +76,7 @@ void TestComponentFactory::component_data()
     QTest::newRow("no property") << "Sink" << "Consumes an object, a timer and a list of objects" << "Test"
                                  << QStringList{};
     QTest::newRow("no class info") << "Panel" << "" << "" << QStringList{"title"};
+    QTest::newRow("in the order they are declared") << "Outlets" << "" << "" << QStringList{"count", "active"};
 }
 
 void TestComponentFactory::component()
@@ -99,7 +100,7 @@ void TestComponentFactory::component()
 void TestComponentFactory::componentsAreSortedById()
 {
     const QList<ComponentInfo> components = ComponentFactory::instance().components();
-    QCOMPARE(components.size(), 4);
+    QCOMPARE(components.size(), 5);
     QVERIFY(std::ranges::is_sorted(components, {}, &ComponentInfo::id));
 }
 
@@ -133,21 +134,21 @@ void TestComponentFactory::create()
 void TestComponentFactory::addingTheSamePluginAgainDoesNothing()
 {
     ComponentFactory::instance().add(QStringLiteral("Again"), registerTestComponents());
-    QCOMPARE(ComponentFactory::instance().components().size(), 4);
+    QCOMPARE(ComponentFactory::instance().components().size(), 5);
     QVERIFY(!ComponentFactory::instance().component(QStringLiteral("Again.Probe")));
 }
 
 void TestComponentFactory::addingAKnownIdIsSkipped()
 {
     TestComponents other;
-    for(const char* name : {"Probe", "Source", "Sink", "Panel"})
+    for(const char* name : {"Probe", "Source", "Sink", "Panel", "Outlets"})
     {
         QTest::ignoreMessage(
             QtWarningMsg,
             qPrintable(QStringLiteral("Ignoring Test.%1 - already registered").arg(QLatin1StringView(name))));
     }
     ComponentFactory::instance().add(TestComponents::Id, other);
-    QCOMPARE(ComponentFactory::instance().components().size(), 4);
+    QCOMPARE(ComponentFactory::instance().components().size(), 5);
 }
 
 void TestComponentFactory::remove()
@@ -155,11 +156,11 @@ void TestComponentFactory::remove()
     const QString otherId = QStringLiteral("Other");
     TestComponents other;
     ComponentFactory::instance().add(otherId, other);
-    QCOMPARE(ComponentFactory::instance().components().size(), 8);
+    QCOMPARE(ComponentFactory::instance().components().size(), 10);
     QVERIFY(ComponentFactory::instance().create(QStringLiteral("Other.Probe")) != nullptr);
 
     ComponentFactory::instance().remove(otherId);
-    QCOMPARE(ComponentFactory::instance().components().size(), 4);
+    QCOMPARE(ComponentFactory::instance().components().size(), 5);
     QVERIFY(!ComponentFactory::instance().component(QStringLiteral("Other.Probe")));
     QVERIFY(ComponentFactory::instance().create(QStringLiteral("Other.Probe")) == nullptr);
     QVERIFY(ComponentFactory::instance().component(testComponentId(QStringLiteral("Probe"))));
@@ -180,7 +181,7 @@ void TestComponentFactory::pluginComponents()
         names.append(Nebula::componentName(*metaObject));
     }
     // In the order of NEBULA_REGISTER_COMPONENT, in a single source file.
-    QCOMPARE(names, (QStringList{"Probe", "Source", "Sink", "Panel"}));
+    QCOMPARE(names, (QStringList{"Probe", "Source", "Sink", "Panel", "Outlets"}));
 }
 
 void TestComponentFactory::pluginCreate_data()

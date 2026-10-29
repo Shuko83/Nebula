@@ -64,12 +64,13 @@ bool writeProperty(QObject& object, const QList<QMetaProperty>& properties, cons
 
 QStringList writeProperties(QObject& object, const QList<QMetaProperty>& properties, const QJsonObject& values)
 {
-    QStringList unset;
-    for(auto value = values.begin(); value != values.end(); ++value)
+    QStringList unset = values.keys();
+    for(const QMetaProperty& property : properties)
     {
-        if(!writeProperty(object, properties, value.key(), value.value()))
+        const QString name = QString::fromLatin1(property.name());
+        if(unset.contains(name) && property.write(&object, values.value(name).toVariant()))
         {
-            unset.append(value.key());
+            unset.removeOne(name);
         }
     }
     return unset;
