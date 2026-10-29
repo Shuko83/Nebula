@@ -7,6 +7,19 @@ to it.
 
 ## [Unreleased]
 
+### Added
+
+- The galaxy of NebulaStudio (#103): `StudioPlugin/NebulaStudio.nbp` assembles the window of NebulaStudio from the
+  components of `StudioPlugin`, each a part of NebulaStudio (its edition zone, its project, its lists, its property
+  editor, its problems and its window) or a layout (`SplitterComponent`, `TabsComponent`, `GroupComponent`). Copied to
+  `scene/` by each build, it is listed in the **Galaxies** tab, opened and started from NebulaStudio, or run on its own:
+  `ExampleUniverseApp scene/NebulaStudio.nbp`. The package has it next to NebulaStudio and `ExampleUniverseApp`.
+
+### Changed
+
+- NebulaStudio: `MainWindow` assembles parts that stand on their own, which the galaxy of NebulaStudio assembles too
+  (#103): `Studio`, what they share, `EditionZone`, `Project`, `PluginPanel`, `GalaxyPanel` and `ComponentPanel`.
+
 ## [2.0.0] - 2026-10-30
 
 ### Added
