@@ -19,6 +19,7 @@
 #include "ItemShapes.h"
 #include "NameEditor.h"
 #include "Nebula/Component/Component.h"
+#include "SceneItems.h"
 #include "Theme.h"
 
 namespace
@@ -526,14 +527,5 @@ qreal ComponentItem::rowsTop() const
 
 QList<ComponentItem*> componentItems(const QGraphicsScene& scene)
 {
-    QList<ComponentItem*> found;
-    const QList<QGraphicsItem*> items = scene.items();
-    for(QGraphicsItem* item : items)
-    {
-        if(auto* component = qobject_cast<ComponentItem*>(item->toGraphicsObject()))
-        {
-            found.append(component);
-        }
-    }
-    return found;
+    return objectsAmong<ComponentItem>(scene.items());
 }
