@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "InterfaceItem.h"
+#include "LinkStyle.h"
 
 class ComponentItem;
 class ContextMenu;
@@ -54,7 +55,8 @@ class SettingsFile;
 // A galaxy dragged from a GalaxyModel is placed in the application the same way, see Universe::instantiateGalaxy();
 // double-clicking it below its name asks for it to be opened, see galaxyOpened(), in another scene that shows it, and
 // where it is edited as the application is.
-// The links it shows are those of the bindings of the components, drawn again whenever they change from here.
+// The links it shows are those of the bindings of the components, drawn again whenever they change from here, in the
+// style it is given: curves until another one is chosen.
 class EditionScene : public QGraphicsScene
 {
     Q_OBJECT
@@ -91,6 +93,12 @@ class EditionScene : public QGraphicsScene
     void reset();
     // Removes components, some of the application, from it and from the edition zone, with their links.
     void remove(const QList<Nebula::Component*>& components);
+
+    // How its links are drawn, and the one being drawn.
+    [[nodiscard]] LinkStyle linkStyle() const;
+    // Draws its links in style from now on, those it shows already included. Only what is seen changes: it is not
+    // saved, see save().
+    void setLinkStyle(LinkStyle style);
 
   signals:
     // What was just asked of it is not done; why is a sentence to show.
@@ -301,5 +309,6 @@ class EditionScene : public QGraphicsScene
     QStringList m_selected;                     // The components selected while m_galaxy is read again, by name
     InterfaceItem* m_linkSource = nullptr;      // Where the link being drawn starts; nullptr when none is
     QGraphicsPathItem* m_pendingLink = nullptr; // The link being drawn
+    LinkStyle m_linkStyle = LinkStyle::Curved;  // Of its links, and of m_pendingLink
     std::size_t m_zoneCount = 0;                // The zones added so far: each takes the next color
 };

@@ -4,6 +4,7 @@
 #include "MainWindow.h"
 
 #include <QAction>
+#include <QActionGroup>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QCoreApplication>
@@ -35,6 +36,7 @@
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "ComponentItem.h"
 #include "ComponentModel.h"
@@ -77,6 +79,29 @@ void searchBy(QSortFilterProxyModel& filter, int index)
     const SearchField& field = SearchFields.at(static_cast<std::size_t>(index));
     filter.setFilterKeyColumn(field.column);
     filter.setFilterRole(field.role);
+}
+
+// A way of drawing the links, as the View menu offers it.
+struct LinkStyleEntry
+{
+    const char* name; // Translated in the context of MainWindow
+    LinkStyle style;
+};
+
+constexpr std::array LinkStyles{
+    LinkStyleEntry{.name = QT_TRANSLATE_NOOP("MainWindow", "&Curves"), .style = LinkStyle::Curved},
+    LinkStyleEntry{.name = QT_TRANSLATE_NOOP("MainWindow", "&Straight Lines"), .style = LinkStyle::Straight},
+    LinkStyleEntry{.name = QT_TRANSLATE_NOOP("MainWindow", "&Right Angles"), .style = LinkStyle::RightAngled},
+};
+
+// Adds to group the action that draws the links as entry tells, its style in its data; checked when it is current, the
+// style they are drawn in.
+void addLinkStyleAction(QActionGroup& group, const LinkStyleEntry& entry, LinkStyle current)
+{
+    QAction* action = group.addAction(MainWindow::tr(entry.name));
+    action->setData(QVariant::fromValue(entry.style));
+    action->setCheckable(true);
+    action->setChecked(entry.style == current);
 }
 
 // Where the project files are saved and looked for unless told otherwise: scene/ next to NebulaStudio.
@@ -305,6 +330,30 @@ void MainWindow::createViewMenu()
     menu->addAction(tr("Zoom &Out"), QKeySequence::ZoomOut, this, [this] { m_editionView->zoomOut(); });
     menu->addAction(tr("&Actual Size"), QKeySequence(Qt::CTRL | Qt::Key_0), this,
                     [this] { m_editionView->resetZoom(); });
+    menu->addSeparator();
+    addLinkStyleMenu(*menu);
+}
+
+void MainWindow::addLinkStyleMenu(QMenu& menu)
+{
+    auto* group = new QActionGroup(&menu); // Exclusive: one style at a time
+    connect(group, &QActionGroup::triggered, this,
+            [this](const QAction* action) { setLinkStyle(action->data().value<LinkStyle>()); });
+    for(const LinkStyleEntry& entry : LinkStyles)
+    {
+        addLinkStyleAction(*group, entry, m_linkStyle);
+    }
+    menu.addMenu(tr("&Links"))->addActions(group->actions());
+}
+
+void MainWindow::setLinkStyle(LinkStyle style)
+{
+    m_linkStyle = style;
+    m_scene->setLinkStyle(style);
+    for(EditionScene* scene : std::as_const(m_galaxyScenes))
+    {
+        scene->setLinkStyle(style);
+    }
 }
 
 void MainWindow::createRunMenu()
@@ -490,6 +539,7 @@ QWidget* MainWindow::createZone()
 
 void MainWindow::followScene(EditionScene& scene)
 {
+    scene.setLinkStyle(m_linkStyle);
     connect(&scene, &QGraphicsScene::selectionChanged, this, [this, shown = &scene] { showSelected(*shown); });
     // In the status bar rather than in a box, which would open in the middle of the click that ends an edition.
     connect(&scene, &EditionScene::refused, this, &MainWindow::tell);
