@@ -23,6 +23,9 @@ to it.
 - The links an interface can have, suggested in NebulaStudio (#82): **Bind to**, in the context menu of the dot of a
   consumed interface, lists the interfaces of its type the other instances of the scene provide, those it is bound to
   checked; choosing one binds them, or unbinds them when it is checked.
+- Anchors on the links in NebulaStudio (#106): double-clicking a link, or **Add anchor point** in its menu, has it go
+  through that point, which is dragged to move it and double-clicked to remove it. A project holds the anchors of a
+  link in the `anchors` of its binding, which only NebulaStudio reads.
 
 ### Changed
 
