@@ -4,7 +4,7 @@
 #pragma once
 
 // How the links of the edition zone are drawn from a provided interface to a consumed one, see LinkItem. Chosen in the
-// View menu, for every scene at once; not saved with the project.
+// View menu, for every scene at once; not saved with the project, but kept for the next launch, see Preferences.h.
 enum class LinkStyle
 {
     // Out of the right edge of the provider, into the left edge of the consumer, bending between them.

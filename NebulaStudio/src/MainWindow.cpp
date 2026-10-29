@@ -46,6 +46,7 @@
 #include "Galaxy/GalaxyModel.h"
 #include "Galaxy/GalaxyViewer.h"
 #include "Nebula/Component/ComponentFactory.h"
+#include "NebulaStudio_info.h"
 #include "PluginModel.h"
 #include "PluginViewer.h"
 #include "ProblemList.h"
@@ -267,7 +268,8 @@ MainWindow::MainWindow(const QCommandLineParser* commandLine, QWidget* parent)
       m_componentModel(new ComponentModel(Nebula::ComponentFactory::instance(), this)),
       m_componentViewer(new ComponentViewer(Nebula::ComponentFactory::instance())),
       m_propertyEditor(new PropertyEditor(m_application, Nebula::ComponentFactory::instance())),
-      m_galaxyModel(new GalaxyModel(m_application, this)), m_galaxyViewer(new GalaxyViewer(*m_galaxyModel))
+      m_galaxyModel(new GalaxyModel(m_application, this)), m_galaxyViewer(new GalaxyViewer(*m_galaxyModel)),
+      m_preferences(QString::fromUtf8(NebulaStudioInfo::organization), QString::fromUtf8(NebulaStudioInfo::name))
 {
     createFileMenu();
     createViewMenu();
@@ -349,6 +351,7 @@ void MainWindow::addLinkStyleMenu(QMenu& menu)
 void MainWindow::setLinkStyle(LinkStyle style)
 {
     m_linkStyle = style;
+    writeLinkStyle(m_preferences, style);
     m_scene->setLinkStyle(style);
     for(EditionScene* scene : std::as_const(m_galaxyScenes))
     {
