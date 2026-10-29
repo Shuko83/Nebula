@@ -38,6 +38,7 @@
 #include <optional>
 #include <utility>
 
+#include "ComponentFinder.h"
 #include "ComponentItem.h"
 #include "ComponentModel.h"
 #include "ComponentViewer.h"
@@ -73,6 +74,13 @@ constexpr std::array SearchFields{
     SearchField{QT_TRANSLATE_NOOP("MainWindow", "Description"), ComponentModel::Name, Qt::ToolTipRole},
     SearchField{QT_TRANSLATE_NOOP("MainWindow", "Category"), ComponentModel::Category, Qt::DisplayRole},
 };
+
+// Gives field the keys with its text selected, even when it already has them: what is typed replaces the last search.
+void focusToReplace(QLineEdit& field)
+{
+    field.setFocus(Qt::ShortcutFocusReason);
+    field.selectAll();
+}
 
 // Has filter look for the text it is given where the one of SearchFields at index tells.
 void searchBy(QSortFilterProxyModel& filter, int index)
@@ -328,6 +336,9 @@ void MainWindow::addSaveGalaxyAction(QMenu& menu)
 void MainWindow::createViewMenu()
 {
     QMenu* menu = menuBar()->addMenu(tr("&View"));
+    menu->addAction(tr("&Find Instances"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F), this,
+                    [this] { focusToReplace(*m_finder); });
+    menu->addSeparator();
     menu->addAction(tr("Zoom &In"), QKeySequence::ZoomIn, this, [this] { m_editionView->zoomIn(); });
     menu->addAction(tr("Zoom &Out"), QKeySequence::ZoomOut, this, [this] { m_editionView->zoomOut(); });
     menu->addAction(tr("&Actual Size"), QKeySequence(Qt::CTRL | Qt::Key_0), this,
@@ -510,12 +521,7 @@ QComboBox* MainWindow::createSearchFields(QSortFilterProxyModel& filter)
 void MainWindow::addFindShortcut(QLineEdit& search)
 {
     auto* shortcut = new QShortcut(QKeySequence::Find, this);
-    connect(shortcut, &QShortcut::activated, &search,
-            [field = &search]
-            {
-                field->setFocus(Qt::ShortcutFocusReason);
-                field->selectAll(); // Even when it already had the focus: what is typed replaces the last search
-            });
+    connect(shortcut, &QShortcut::activated, &search, [field = &search] { focusToReplace(*field); });
 }
 
 QWidget* MainWindow::createEdition()
@@ -534,10 +540,21 @@ QWidget* MainWindow::createZone()
     m_scene = new EditionScene(m_application, Nebula::ComponentFactory::instance(), this);
     followScene(*m_scene);
     m_editionView = createEditionView(*m_scene);
+    return createColumn(createZoneBar(), m_editionView);
+}
+
+QWidget* MainWindow::createZoneBar()
+{
     // Where the galaxy shown is: the application, then the galaxies it is in, each a button that shows it again.
     m_path = createRow();
     m_path->hide();
-    return createColumn(m_path, m_editionView);
+    m_finder = new ComponentFinder(*m_editionView);
+    connect(m_finder, &ComponentFinder::told, this, &MainWindow::tell);
+    QWidget* bar = createRow();
+    auto* layout = static_cast<QHBoxLayout*>(bar->layout());
+    layout->addWidget(m_path, 1);
+    layout->addWidget(m_finder, 0, Qt::AlignRight); // On the right, alone there while the application is shown
+    return bar;
 }
 
 void MainWindow::followScene(EditionScene& scene)

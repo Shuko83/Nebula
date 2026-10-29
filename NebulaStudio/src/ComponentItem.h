@@ -44,6 +44,8 @@ class ComponentItem : public QGraphicsObject
     ComponentItem(Nebula::Component& component, QString componentName);
 
     [[nodiscard]] Nebula::Component& component() const;
+    // The name of what it is an instance of, under its own name: its component, its galaxy, or a stargate.
+    [[nodiscard]] const QString& componentName() const;
     // Its interfaces, in the order of Component::consumedInterfaces() and Component::providedInterfaces().
     [[nodiscard]] const QList<InterfaceItem*>& consumedInterfaces() const;
     [[nodiscard]] const QList<InterfaceItem*>& providedInterfaces() const;
@@ -55,7 +57,8 @@ class ComponentItem : public QGraphicsObject
     void editName();
     // Whether it can be moved, and its name edited by double-clicking it: it is until told otherwise.
     void setEditable(bool editable);
-    // The icon before the name of what it is an instance of; none until it is given one.
+    // The icon before the name of what it is an instance of; none, a null icon, until it is given one.
+    [[nodiscard]] const QIcon& componentIcon() const;
     void setIcon(const QIcon& icon);
     // Shows it as something that opens, a galaxy say: about at the start of its tooltip, in place of the id of its
     // component, then howToOpen. Double-clicking it below its name, or anywhere while it is not editable, asks for it
