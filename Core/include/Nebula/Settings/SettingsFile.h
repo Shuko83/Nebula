@@ -136,6 +136,9 @@ class CORE_EXPORT SettingsFile : public QObject
     // Gives each entry the value its file holds for it, keeping the value of the project to give back; returns
     // whether the file held one for each.
     bool giveValues();
+    // Keeps the value of the project of entry, then gives it the one its file holds, see giveValue(); true, doing
+    // nothing, when entry is no longer one of its entries.
+    bool startEntry(const SettingsEntry& entry);
     // Gives entry the value its file holds for it. When it holds none, or one the property cannot have, which is
     // told, the file is given the current value instead and false is returned.
     bool giveValue(const SettingsEntry& entry);
