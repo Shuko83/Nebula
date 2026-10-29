@@ -565,6 +565,21 @@ void EditionScene::remove(const QList<Nebula::Component*>& components)
     removeAll(removed);
 }
 
+LinkStyle EditionScene::linkStyle() const
+{
+    return m_linkStyle;
+}
+
+void EditionScene::setLinkStyle(LinkStyle style)
+{
+    m_linkStyle = style; // The link being drawn has it as soon as the cursor moves
+    const QList<LinkItem*> links = itemsAmong<LinkItem>(items());
+    for(LinkItem* link : links)
+    {
+        link->setStyle(style);
+    }
+}
+
 void EditionScene::dragEnterEvent(QGraphicsSceneDragDropEvent* event)
 {
     acceptComponent(*event, isEditable());
@@ -664,7 +679,8 @@ void EditionScene::drawPendingLink(const InterfaceItem* hovered, const QPointF& 
     const InterfaceItem* target = hovered != nullptr && m_linkSource->canLinkTo(*hovered) ? hovered : nullptr;
     const QPointF end = target != nullptr ? target->scenePos() : cursor;
     const QPointF start = m_linkSource->scenePos();
-    m_pendingLink->setPath(isProvided(*m_linkSource) ? LinkItem::curve(start, end) : LinkItem::curve(end, start));
+    m_pendingLink->setPath(isProvided(*m_linkSource) ? LinkItem::route(m_linkStyle, start, end)
+                                                     : LinkItem::route(m_linkStyle, end, start));
 }
 
 void EditionScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
@@ -1163,7 +1179,7 @@ void EditionScene::drawLinks(InterfaceItem& consumed, const QList<InterfaceItem*
     const QList<InterfaceItem*> missing = unlinked(consumed, provided);
     for(InterfaceItem* item : missing)
     {
-        addItem(new LinkItem(*item, consumed));
+        addItem(new LinkItem(*item, consumed, m_linkStyle));
     }
 }
 

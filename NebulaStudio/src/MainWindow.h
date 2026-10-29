@@ -9,6 +9,7 @@
 #include <QMessageBox>
 #include <QString>
 
+#include "LinkStyle.h"
 #include "Nebula/Application/Universe.h"
 
 class ComponentItem;
@@ -41,8 +42,9 @@ class QTreeView;
 // application, where it is edited as the application is: Save galaxy writes it to its file, and every instance of that
 // file is read again from it; leaving a galaxy changed since asks whether to save it. Its File menu saves what is in
 // the edition zone to a project file, with the description of its galaxy, and opens it again; its View menu zooms the
-// edition zone in and out, at the zoom level its status bar tells; its Run menu starts the application assembled there,
-// which is not edited while it runs, and stops it.
+// edition zone in and out, at the zoom level its status bar tells, and chooses how its links are drawn, in the
+// application as in the galaxies; its Run menu starts the application assembled there, which is not edited while it
+// runs, and stops it.
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -73,8 +75,13 @@ class MainWindow : public QMainWindow
     void addProjectActions(QMenu& menu);
     // Save Galaxy: the galaxy shown, to its own file, which its other instances are read again from.
     void addSaveGalaxyAction(QMenu& menu);
-    // The zoom of the edition zone, also changed there with + and -, or with Ctrl and the mouse wheel.
+    // The zoom of the edition zone, also changed there with + and -, or with Ctrl and the mouse wheel, then how its
+    // links are drawn.
     void createViewMenu();
+    // Links: the styles of LinkStyles, one of them checked, the one the links are drawn in.
+    void addLinkStyleMenu(QMenu& menu);
+    // Draws the links of every scene in style from now on: those of the application, and of the galaxies opened.
+    void setLinkStyle(LinkStyle style);
     void createRunMenu();
     // Follows what the application tells: whether it runs, its settings files that failed, its components.
     void followApplication();
@@ -115,7 +122,7 @@ class MainWindow : public QMainWindow
     QWidget* createEdition();
     // The view of the scene of the application, under the path to the galaxy shown.
     QWidget* createZone();
-    // Follows what scene tells, the one of the application or of a galaxy.
+    // Follows what scene tells, the one of the application or of a galaxy, and draws its links in the style chosen.
     void followScene(EditionScene& scene);
     // Edits the properties of the component selected in scene, when it is the one shown.
     void showSelected(const EditionScene& scene);
@@ -261,4 +268,6 @@ class MainWindow : public QMainWindow
     QTreeView* m_galaxyView = nullptr;
     GalaxyViewer* m_galaxyViewer = nullptr;
     QLineEdit* m_galaxyDirectory = nullptr; // Tells the directory of m_galaxyModel
+
+    LinkStyle m_linkStyle = LinkStyle::Curved; // Of the links of m_scene and m_galaxyScenes, until another is chosen
 };
