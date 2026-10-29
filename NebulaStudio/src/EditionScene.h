@@ -13,8 +13,10 @@
 #include <vector>
 
 #include "InterfaceItem.h"
+#include "LinkAnchors.h"
 #include "LinkStyle.h"
 
+class AnchorItem;
 class ComponentItem;
 class ContextMenu;
 class LinkItem;
@@ -55,13 +57,15 @@ class SettingsFile;
 // name it exposes it as at once.
 // Bind to, in the menu of the dot of an interface consumed, binds it to one of the interfaces shown it can be bound to,
 // those it is bound to checked: choosing one of these unbinds it.
+// Double-clicking a link, or Add anchor point in its menu, has it go through that point, an anchor, see AnchorItem,
+// which the mouse drags; double-clicking an anchor, or Remove anchor point in its menu, removes it.
 // None of this is done while the application runs, see Universe: its components can still be selected, but nothing is
 // dropped, moved, linked, renamed, recolored, added or removed until it is stopped.
 // A galaxy dragged from a GalaxyModel is placed in the application the same way, see Universe::instantiateGalaxy();
 // double-clicking it below its name asks for it to be opened, see galaxyOpened(), in another scene that shows it, and
 // where it is edited as the application is.
 // The links it shows are those of the bindings of the components, drawn again whenever they change from here, in the
-// style it is given: curves until another one is chosen.
+// style it is given: curves until another one is chosen. A link drawn again keeps its anchors, see LinkAnchors.
 class EditionScene : public QGraphicsScene
 {
     Q_OBJECT
@@ -123,7 +127,8 @@ class EditionScene : public QGraphicsScene
     void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
-    // Double-clicking a settings file edits it; a stargate edits what it exposes by itself, see StargateItem.
+    // Double-clicking a settings file edits it, an anchor removes it, and a link anchors it there; a stargate edits
+    // what it exposes by itself, see StargateItem.
     void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
     // Not while it is busy, see isBusy().
     void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
@@ -169,6 +174,9 @@ class EditionScene : public QGraphicsScene
               const std::vector<std::unique_ptr<Nebula::SettingsFile>>& files, const QJsonObject& project);
     // Shows component where json, what a project holds of it, tells, in the color it tells.
     void showSaved(Nebula::Component& component, const QJsonObject& json);
+    // Draws the links of what components, those shown, bind, through the anchors project holds, and the lines of the
+    // stargates.
+    void showLinks(const std::vector<std::unique_ptr<Nebula::Component>>& components, const QJsonObject& project);
     // Has the stargates shown draw the lines to the components of the properties they expose.
     void refreshStargateLinks();
     // Shows files where settings, what a project holds of them, tells: one each, in their order.
@@ -237,8 +245,12 @@ class EditionScene : public QGraphicsScene
     bool addSettingsEntries(ContextMenu& menu, SettingsItem* settings, QWidget* parent);
     // Adds to menu editing settings, writing its default values and removing it.
     void addSettingsActions(ContextMenu& menu, SettingsItem& settings, QWidget* parent);
-    // Adds to menu removing link; false when it is nullptr.
-    bool addLinkEntries(ContextMenu& menu, LinkItem* link);
+    // Adds to menu removing anchor; false when it is nullptr.
+    static bool addAnchorEntries(ContextMenu& menu, AnchorItem* anchor);
+    // Adds to menu anchoring link at position, removing its anchors, and removing it; false when it is nullptr.
+    bool addLinkEntries(ContextMenu& menu, LinkItem* link, const QPointF& position);
+    // Adds to menu anchoring link at position and removing its anchors.
+    static void addAnchoringEntries(ContextMenu& menu, LinkItem& link, const QPointF& position);
     // Adds to menu what is added at position: a zone, a settings file or a stargate.
     void addSceneEntries(ContextMenu& menu, const QPointF& position, QWidget* parent);
     // Adds to menu what is done to the zone at position; nothing when there is none.
@@ -278,6 +290,17 @@ class EditionScene : public QGraphicsScene
     void link(InterfaceItem& source, InterfaceItem& target);
     // The link at position, unless something is shown over it there; nullptr when there is none.
     [[nodiscard]] LinkItem* linkAt(const QPointF& position) const;
+    // The anchor of a link at position, unless something is shown over it there; nullptr when there is none.
+    [[nodiscard]] AnchorItem* anchorAt(const QPointF& position) const;
+    // Does what double-clicking at position does, see mouseDoubleClickEvent(), with dialogs of parent; false when
+    // nothing is there that it does something to.
+    bool doubleClick(const QPointF& position, QWidget* parent);
+    // Edits the settings file at position in a dialog of parent; false when there is none.
+    bool editSettingsAt(const QPointF& position, QWidget* parent);
+    // Removes the anchor at position from its link; false when there is none.
+    bool removeAnchorAt(const QPointF& position);
+    // Has the link at position go through it; false when there is none.
+    bool anchorLinkAt(const QPointF& position);
     // Unbinds the interfaces links are drawn between, each from the one it is drawn to, and removes them from the
     // edition zone: a list keeps the others.
     void unlink(const QList<LinkItem*>& links);
@@ -297,11 +320,16 @@ class EditionScene : public QGraphicsScene
     void writeDefaults(const SettingsItem& item);
     // Removes item, with its links, and its file from the application.
     void remove(SettingsItem& item);
-    // Draws a link for each binding of the components shown, and none other: those already drawn stay.
+    // Draws a link for each binding of the components shown, and none other: those already drawn stay. Forgets the
+    // anchors of those no longer drawn.
     void refreshLinks();
+    // Draws a link for each binding of the components shown, and none other.
+    void drawBindings();
     // Draws the links of consumed to provided, the interfaces shown it is bound to, and none other: those already
     // drawn stay.
     void drawLinks(InterfaceItem& consumed, const QList<InterfaceItem*>& provided);
+    // Draws a new link from provided to consumed, through the anchors the one it replaces had, see m_anchors.
+    void drawLink(InterfaceItem& provided, InterfaceItem& consumed);
     // Edits what the stargate of item exposes in a dialog of parent, see StargateDialog, which is left open once this
     // returns; tells why it is not when the scene is not editable.
     void editStargate(const StargateItem& item, QWidget* parent);
@@ -329,5 +357,6 @@ class EditionScene : public QGraphicsScene
     InterfaceItem* m_linkSource = nullptr;      // Where the link being drawn starts; nullptr when none is
     QGraphicsPathItem* m_pendingLink = nullptr; // The link being drawn
     LinkStyle m_linkStyle = LinkStyle::Curved;  // Of its links, and of m_pendingLink
+    LinkAnchors m_anchors;                      // Of its links, which they outlive
     std::size_t m_zoneCount = 0;                // The zones added so far: each takes the next color
 };
