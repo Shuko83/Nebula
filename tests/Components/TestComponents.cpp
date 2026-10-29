@@ -4,6 +4,7 @@
 #include "TestComponents.h"
 
 #include "Nebula/Component/ComponentFactory.h"
+#include "Outlets.h"
 #include "Panel.h"
 #include "Probe.h"
 #include "Sink.h"
@@ -15,6 +16,7 @@ NEBULA_REGISTER_COMPONENT(TestComponents, Probe);
 NEBULA_REGISTER_COMPONENT(TestComponents, Source);
 NEBULA_REGISTER_COMPONENT(TestComponents, Sink);
 NEBULA_REGISTER_COMPONENT(TestComponents, Panel);
+NEBULA_REGISTER_COMPONENT(TestComponents, Outlets);
 
 std::string_view TestComponents::buildDate() const
 {

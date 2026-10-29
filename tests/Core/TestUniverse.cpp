@@ -19,6 +19,7 @@
 #include "Nebula/Application/Universe.h"
 #include "Nebula/Component/ComponentFactory.h"
 #include "Options.h"
+#include "Outlets.h"
 #include "Panel.h"
 #include "Probe.h"
 #include "Sink.h"
@@ -85,6 +86,9 @@ class TestUniverse : public QObject
     void saveAndLoadBindings();
     void saveAndLoadListBindings();
     void saveAndLoadObjects();
+    void interfacesFollowAProperty();
+    void saveAndLoadInterfacesThatFollowAProperty();
+    void propertiesSetInTheOrderTheyAreDeclared();
     void loadReportsProblems_data();
     void loadReportsProblems();
     void loadReplacesTheComponents();
@@ -415,6 +419,64 @@ void TestUniverse::saveAndLoadObjects()
     QCOMPARE(panel->pages().at(0)->property("level").toInt(), 0);
     QCOMPARE(panel->pages().at(1)->property("level").toInt(), 7);
     QCOMPARE(panel->pages().at(1)->property("enabled").toBool(), true);
+}
+
+void TestUniverse::interfacesFollowAProperty()
+{
+    Universe universe;
+    Outlets* outlets = ::instantiate<Outlets>(universe);
+    Sink* sink = ::instantiate<Sink>(universe);
+    outlets->setCount(3);
+    QCOMPARE(outlets->providedInterfaces().size(), 3);
+    QCOMPARE(outlets->propertyObjects().size(), 3);
+    QVERIFY(sink->bindInterface(QStringLiteral("objects"), *outlets, QStringLiteral("object1")));
+    QVERIFY(sink->bindInterface(QStringLiteral("objects"), *outlets, QStringLiteral("object3")));
+
+    // The last one goes with what is bound to it, and with its properties.
+    outlets->setCount(2);
+    QCOMPARE(outlets->providedInterfaces().size(), 2);
+    QCOMPARE(outlets->propertyObjects().size(), 2);
+    QCOMPARE(sink->objects(), QList<QObject*>{outlets->objects().at(0)});
+    QCOMPARE(universe.save().value(u"bindings").toArray().size(), 1);
+    // Back, it is bound to nothing.
+    outlets->setCount(3);
+    QCOMPARE(sink->bindings(QStringLiteral("objects")).size(), 1);
+}
+
+void TestUniverse::saveAndLoadInterfacesThatFollowAProperty()
+{
+    QJsonObject saved;
+    {
+        Universe universe;
+        Outlets* outlets = ::instantiate<Outlets>(universe);
+        Sink* sink = ::instantiate<Sink>(universe);
+        outlets->setCount(3);
+        outlets->objects().at(2)->setProperty("level", 7);
+        QVERIFY(sink->bindInterface(QStringLiteral("object"), *outlets, QStringLiteral("object3")));
+        saved = universe.save();
+    }
+
+    // Its count first, which gives it the objects and the interfaces the project then sets and binds.
+    Universe universe;
+    QCOMPARE(universe.load(saved), QStringList());
+    const auto* outlets = qobject_cast<Outlets*>(universe.component(QStringLiteral("Outlets1")));
+    QCOMPARE(outlets->count(), 3);
+    QCOMPARE(outlets->objects().at(2)->property("level").toInt(), 7);
+    const auto* sink = qobject_cast<Sink*>(universe.component(QStringLiteral("Sink1")));
+    QCOMPARE(sink->binding(QStringLiteral("object")).providedName, QStringLiteral("object3"));
+    QCOMPARE(sink->object(), outlets->objects().at(2));
+}
+
+void TestUniverse::propertiesSetInTheOrderTheyAreDeclared()
+{
+    Universe universe;
+    // JSON holds them by name: active before count, which it cannot exceed, and which is declared before it.
+    QCOMPARE(universe.load(project(R"({"components": [{"name": "Outlets1", "type": "Test.Outlets",
+                                                       "properties": {"active": 2, "count": 3}}]})")),
+             QStringList());
+    const auto* outlets = qobject_cast<Outlets*>(universe.component(QStringLiteral("Outlets1")));
+    QCOMPARE(outlets->count(), 3);
+    QCOMPARE(outlets->active(), 2);
 }
 
 void TestUniverse::loadReportsProblems_data()

@@ -35,6 +35,8 @@ namespace Nebula::ProjectJson
 bool writeProperty(QObject& object, const QList<QMetaProperty>& properties, const QString& name,
                    const QJsonValue& value);
 // Sets the properties of object, among properties, to values, by name; returns the names of those it could not set.
+// In the order of properties, the one they are declared in, rather than the one of values: the property that tells what
+// the object has, its count of widgets say, before those that depend on it.
 QStringList writeProperties(QObject& object, const QList<QMetaProperty>& properties, const QJsonObject& values);
 
 // The properties of the type of component, as its plugin registered it; empty when it is no longer registered.
