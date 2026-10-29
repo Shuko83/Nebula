@@ -29,9 +29,16 @@ to it.
 - Finding the instances of the edition zone in NebulaStudio (#63): the field above it, also reached with Ctrl+Shift+F,
   lists as it is typed the instances whose name, or the name of whose component, holds what is typed; choosing one, or
   pressing Enter, selects it and shows it in the middle of the edition zone, Enter again showing the next one.
+- The galaxy of NebulaStudio (#103): `StudioPlugin/NebulaStudio.nbp` assembles the window of NebulaStudio from the
+  components of `StudioPlugin`, each a part of NebulaStudio (its edition zone, its project, its lists, its property
+  editor, its problems and its window) or a layout (`SplitterComponent`, `TabsComponent`, `GroupComponent`). Copied to
+  `scene/` by each build, it is listed in the **Galaxies** tab, opened and started from NebulaStudio, or run on its own:
+  `ExampleUniverseApp scene/NebulaStudio.nbp`. The package has it next to NebulaStudio and `ExampleUniverseApp`.
 
 ### Changed
 
+- NebulaStudio: `MainWindow` assembles parts that stand on their own, which the galaxy of NebulaStudio assembles too
+  (#103): `Studio`, what they share, `EditionZone`, `Project`, `PluginPanel`, `GalaxyPanel` and `ComponentPanel`.
 - `TopBarComponent` of `WidgetsPlugin` consumes the lists `actions` and `widgets` in place of `action1` to `action4`,
   `widget1` and `widget2`.
 - `Component.h` changes: plugins built against 1.0.0 must be built again.

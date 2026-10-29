@@ -298,6 +298,27 @@ Its theme is the one of Nebula, space: the night sky and the violets, blues and 
 
 The logo of Nebula, a nebula crossed by three astres bound to one another, is on its splash screen, it is the icon of its windows and of their buttons on the taskbar, and, on Windows, the one of `NebulaStudio.exe` in the file explorer and where it is pinned. It is drawn in `NebulaStudio/resources/nebula.svg`. Each term of the [glossary](docs/glossary.md) has its icon as well, drawn in `NebulaStudio/resources/icons/` in the colors of the theme, which read over its dark scheme as over its light one: the Univers on **New**, the Galaxy on the **Galaxies** tab, beside each galaxy of its list, on the galaxies placed in the edition zone, on **Open galaxy**, on the path to a galaxy shown, on **Description...** and on **Add zone**, the Astre beside each component of their list, the Comet on **Add settings file**, **Edit settings file...** and the dialog of a settings file, and the Stargate on **Add stargate**, **Expose...**, **Edit stargate...**, the stargates of the edition zone, their dialog, and the properties they expose in the property editor.
 
+### NebulaStudio, a galaxy
+
+NebulaStudio is a galaxy as well: `StudioPlugin/NebulaStudio.nbp` assembles its window from the components of `StudioPlugin`, in `StudioPlugin/`, each a part of NebulaStudio made of its own classes, bound to one another as the window of NebulaStudio binds them. The galaxy is copied to `scene/` next to the applications by each build, `<build>/bin/scene` (`<build>/bin/<config>/scene` with Visual Studio): NebulaStudio lists it in its **Galaxies** tab, opens it to show how its parts are bound, and runs it with **Start**, which shows a NebulaStudio of its own; `ExampleUniverseApp scene/NebulaStudio.nbp`, from `<build>/bin`, runs it as an application, until its window is closed. The copy is given the content of the one of `StudioPlugin/` again by each build: that one is the galaxy to edit.
+
+| Component | What it is |
+| --- | --- |
+| `StudioComponent` | What the parts share, provided as `studio`: the application they assemble, with the plugins of `plugins/` next to the application that runs it and of the directories its command line gives with `--plugin-dir`, the preferences of the user of NebulaStudio, the style of the links say, and what the parts tell one another. The first one gives the application that runs it the theme of NebulaStudio, and stopping it stops the application it assembles |
+| `EditionZoneComponent` | The edition zone, as `widget` and as `zone`, with its **View** menu, `viewMenu`, its **Run** menu, `runMenu`, and the label of its zoom level, `zoomLabel` |
+| `ProjectComponent` | The project file of the application, as `project`, with its **File** menu, `fileMenu`; it needs the `zone` the application is shown in |
+| `PluginListComponent` | The plugins, as `widget`: unloading one removes its instances from the `zone`, when it has one |
+| `GalaxyListComponent` | The galaxies of its `directory`, as `widget`: `scene/` next to the application that runs it while it is empty, a relative one read from the directory of that application; one is opened by the `project`, when it has one. A directory chosen in the list while it runs is its `directory` until it is stopped, which a settings file can keep |
+| `ComponentListComponent` | The components of the loaded plugins, as `widget` |
+| `PropertyEditorComponent` | The editor of the properties of the instance selected in the `zone`, as `widget` |
+| `ProblemListComponent` | What keeps the instances from working, as `widget`: activating a row shows its instance in the `zone`, when it has one |
+| `StudioWindowComponent` | The main window, shown while it runs, at its `width` and `height`: the `centralWidget` in its middle, the `menus` in its menu bar and the `statusWidgets` on the right of its status bar, in the order of their bindings. It is titled after the `project`, which saves its changes or gives them up before it closes, and its status bar tells what the `studio` tells |
+| `SplitterComponent` | Its `widgets` side by side, or one above the other when it is `vertical`, at their `sizes` (`320, 760, 360`), the one it has `stretched`, from 0, taking the room it gains |
+| `TabsComponent` | Its `pages` in tabs, each under its window title, beside its window icon when it has one: the lists of NebulaStudio name themselves, **Plugins** and **Galaxies** |
+| `GroupComponent` | Its `content` under a `title`, in a frame |
+
+Each part is built once it has the `studio`, and destroyed as it loses it, those it was provided to giving it back first: removing the `StudioComponent` empties the window, and a new one bound to the parts fills it again. Bound otherwise, they make another NebulaStudio, its components on the left and its plugins on the right, say, without a line of code. Run by an application, the NebulaStudio of the galaxy lists `StudioPlugin` as loaded, by that application, and its components among the others, which share their list: dropped in its edition zone, they make one more NebulaStudio.
+
 ---
 
 ## 📁 Project File
