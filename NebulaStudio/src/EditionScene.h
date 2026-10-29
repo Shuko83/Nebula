@@ -15,8 +15,11 @@
 #include "InterfaceItem.h"
 
 class ComponentItem;
+class ContextMenu;
 class LinkItem;
 class QGraphicsPathItem;
+class QJsonArray;
+class QMimeData;
 class SettingsItem;
 class StargateItem;
 class ZoneItem;
@@ -109,9 +112,10 @@ class EditionScene : public QGraphicsScene
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
     // Double-clicking a settings file edits it; a stargate edits what it exposes by itself, see StargateItem.
     void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
+    // Not while it is busy, see isBusy().
     void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
     // Delete removes the selected components, settings files and links, unless a name is edited: the key is for what is
-    // typed then.
+    // typed then. Not while it is busy either, see isBusy().
     void keyPressEvent(QKeyEvent* event) override;
     // A grid, and a hint while nothing is in the edition zone.
     void drawBackground(QPainter* painter, const QRectF& rect) override;
@@ -119,23 +123,123 @@ class EditionScene : public QGraphicsScene
   private:
     // Whether what it shows is edited: while the application does not run.
     [[nodiscard]] bool isEditable() const;
+    // Whether it is editable; tells why it is not through refused() when it is not.
+    bool checkEditable();
     // Lets the mouse move its items, or keeps it from doing so, see isEditable().
     void setEditable(bool editable);
     // Tells through refused() why what was asked is not done: the application runs.
     void refuseEdition();
+    // Whether a link is drawn or an item is dragged: what is dragged could be removed from under the cursor.
+    [[nodiscard]] bool isBusy() const;
+
+    // Shows the galaxy as its file holds it now, and takes that as saved, see isModified().
+    void showGalaxy();
+    // Removes its items before the galaxy is read again from its file, keeping the names of the components selected.
+    void hideGalaxy();
     // Shows the galaxy again, once it was read again from its file, with the same components selected.
     void showGalaxyAgain();
+    // The names of the components selected.
+    [[nodiscard]] QStringList selectedNames() const;
+    // Selects the components named one of names.
+    void selectNamed(const QStringList& names);
+    // Selects item alone.
+    void selectOnly(QGraphicsItem& item);
+    // What shows component; nullptr when nothing does.
+    [[nodiscard]] ComponentItem* itemOf(const Nebula::Component& component) const;
+    // The settings files of what it shows: those of the galaxy, or of the application.
+    [[nodiscard]] const std::vector<std::unique_ptr<Nebula::SettingsFile>>& shownFiles() const;
+    // Writes where items, the settings files shown, are in project, in the order of shownFiles().
+    void placeSettings(QJsonObject& project, const QList<SettingsItem*>& items) const;
+
     // Shows components, with their links, files and the zones of project, which tells where they are.
     void show(const std::vector<std::unique_ptr<Nebula::Component>>& components,
               const std::vector<std::unique_ptr<Nebula::SettingsFile>>& files, const QJsonObject& project);
+    // Shows component where json, what a project holds of it, tells, in the color it tells.
+    void showSaved(Nebula::Component& component, const QJsonObject& json);
+    // Has the stargates shown draw the lines to the components of the properties they expose.
+    void refreshStargateLinks();
+    // Shows files where settings, what a project holds of them, tells: one each, in their order.
+    void showSettingsFiles(const std::vector<std::unique_ptr<Nebula::SettingsFile>>& files, const QJsonArray& settings);
+    // Adds the zones a project holds.
+    void showZones(const QJsonArray& zones);
+    // Shows item at position, a new item of the edition zone.
+    void place(QGraphicsItem& item, const QPointF& position);
+
+    // Instantiates what data, dropped, carries in what it shows: a galaxy or a component. nullptr when it cannot be.
+    Nebula::Component* dropped(const QMimeData& data);
+    // Places the galaxy of filePath in what it shows, and tells what it misses; tells why, and returns nullptr, when
+    // it cannot be.
+    Nebula::Galaxy* placeGalaxy(const QString& filePath);
+    // Tells what galaxy, just placed, misses of its file, when it misses anything.
+    void tellProblems(const Nebula::Galaxy& galaxy);
+
+    // Starts drawing a link from source.
+    void startLink(InterfaceItem& source);
+    // Shows what hovered, the dot under the cursor where event is, is: no tooltip shows by itself while a button is
+    // pressed, and its type is what tells whether the link being drawn can end there.
+    void showTypeOf(const InterfaceItem* hovered, const QGraphicsSceneMouseEvent& event) const;
+    // Draws the link being drawn to hovered, the dot under the cursor, when it would be bound to it, which tells that
+    // releasing there binds them; to cursor otherwise.
+    void drawPendingLink(const InterfaceItem* hovered, const QPointF& cursor);
+    // Ends the link being drawn, and binds its interfaces when it ends at position on one it can be bound to.
+    void finishLink(const QPointF& position);
+    // Stops drawing a link.
+    void endLink();
     // The interface whose dot is at position; nullptr when there is none.
     [[nodiscard]] InterfaceItem* interfaceAt(const QPointF& position) const;
     // The interface the link being drawn would be bound to if released at position; nullptr when there is none.
     [[nodiscard]] InterfaceItem* linkTargetAt(const QPointF& position) const;
     // Dims the interfaces a link drawn from source cannot be bound to; none when source is nullptr.
     void dimLinkTargets(const InterfaceItem* source);
+
+    // Shows the menu of where event is: about the component, the settings file or the link there, or about the edition
+    // zone when there is none, then about the zone there.
+    void showMenu(const QGraphicsSceneContextMenuEvent& event);
+    // Adds to menu what is done to component, at position, with dialogs of parent; false when component is nullptr.
+    bool addComponentEntries(ContextMenu& menu, ComponentItem* component, const QPointF& position, QWidget* parent);
+    // Adds to menu what is done to component as what it is: exposing the interface at position, opening a galaxy,
+    // editing a stargate.
+    void addKindEntries(ContextMenu& menu, ComponentItem& component, const QPointF& position, QWidget* parent);
+    // Adds to menu exposing exposed, an interface of a component that is not a stargate; nothing when it is nullptr.
+    void addExposeEntry(ContextMenu& menu, const InterfaceItem* exposed);
+    // Adds to menu opening galaxy; nothing when it is nullptr.
+    void addOpenEntry(ContextMenu& menu, Nebula::Galaxy* galaxy);
+    // Adds to menu editing what stargate exposes in a dialog of parent; nothing when it is nullptr.
+    void addEditEntry(ContextMenu& menu, StargateItem* stargate, QWidget* parent);
+    // Adds to menu renaming, recoloring and removing component.
+    void addComponentActions(ContextMenu& menu, ComponentItem& component, QWidget* parent);
+    // Adds to menu what is done to settings; false when it is nullptr.
+    bool addSettingsEntries(ContextMenu& menu, SettingsItem* settings, QWidget* parent);
+    // Adds to menu editing settings, writing its default values and removing it.
+    void addSettingsActions(ContextMenu& menu, SettingsItem& settings, QWidget* parent);
+    // Adds to menu removing link; false when it is nullptr.
+    bool addLinkEntries(ContextMenu& menu, LinkItem* link);
+    // Adds to menu what is added at position: a zone, a settings file or a stargate.
+    void addSceneEntries(ContextMenu& menu, const QPointF& position, QWidget* parent);
+    // Adds to menu what is done to the zone at position; nothing when there is none.
+    void addZoneEntries(ContextMenu& menu, const QPointF& position, QWidget* parent);
+    // Asks in a dialog of parent for the color of component, its opacity too, from the one it has: the one of the
+    // style until it is given one.
+    void recolor(ComponentItem& component, QWidget* parent);
+    // Asks in a dialog of parent for the color of zone.
+    static void recolor(ZoneItem& zone, QWidget* parent);
+    // Removes zone, not what is in it.
+    void removeZone(ZoneItem& zone);
+    // Adds a settings file to what it shows, at position, and chooses what it holds at once in a dialog of parent.
+    void addSettingsFileAt(const QPointF& position, QWidget* parent);
+    // Adds a stargate to what it shows, at position, and chooses what it exposes at once in a dialog of parent.
+    void addStargateAt(const QPointF& position, QWidget* parent);
+
+    // Removes what is selected: its links, its settings files and its components, with their links.
+    void removeSelected();
+    // Removes each of removed, see remove().
+    template <typename Item> void removeAll(const QList<Item*>& removed);
     // Shows component, one of the application, at position.
     ComponentItem* showComponent(Nebula::Component& component, const QPointF& position);
+    // A new item that shows component as what it is: a stargate, a galaxy or a component of a plugin.
+    [[nodiscard]] ComponentItem* newItem(Nebula::Component& component);
+    [[nodiscard]] ComponentItem* newStargateItem(Nebula::Stargate& stargate);
+    [[nodiscard]] ComponentItem* newGalaxyItem(Nebula::Galaxy& galaxy);
     // The component shown at position, or whose interface is; nullptr when there is none.
     [[nodiscard]] ComponentItem* componentAt(const QPointF& position) const;
     // Names component name, as typed in place of its name; tells why through refused() when it cannot be.
@@ -168,16 +272,27 @@ class EditionScene : public QGraphicsScene
     void remove(SettingsItem& item);
     // Draws a link for each binding of the components shown, and none other: those already drawn stay.
     void refreshLinks();
+    // Draws the links of consumed to provided, the interfaces shown it is bound to, and none other: those already
+    // drawn stay.
+    void drawLinks(InterfaceItem& consumed, const QList<InterfaceItem*>& provided);
     // Edits what the stargate of item exposes in a dialog of parent, see StargateDialog, which is left open once this
     // returns; tells why it is not when the scene is not editable.
     void editStargate(const StargateItem& item, QWidget* parent);
     // Adds a stargate that exposes interfaceItem, an interface of a component, bound to it, next to it, and edits the
     // name it exposes it as.
     void expose(const InterfaceItem& interfaceItem);
+    // Shows stargate at position, which exposes as name an interface of kind, and edits that name at once: the dot of
+    // the stargate is on the edge across from the one of the interface.
+    void showExposing(Nebula::Stargate& stargate, const QString& name, InterfaceItem::Kind kind,
+                      const QPointF& position);
     // Names name, an interface of stargate of kind, as its item shows it, newName, as typed in place of its name;
     // tells why through refused() when it cannot be.
     void renameExposed(Nebula::Stargate& stargate, InterfaceItem::Kind kind, const QString& name,
                        const QString& newName);
+    // Draws the grid of the edition zone across rect.
+    void drawGrid(QPainter& painter, const QRectF& rect) const;
+    // Draws how to fill the edition zone, while nothing is in it.
+    void drawHint(QPainter& painter) const;
 
     Nebula::Universe& m_application;
     const Nebula::ComponentFactory& m_factory;
