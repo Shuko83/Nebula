@@ -82,4 +82,5 @@ endfunction()
 
 add_subdirectory(Core)
 add_subdirectory(NebulaStudio)
+add_subdirectory(StudioPlugin)
 add_subdirectory(exemple)
