@@ -82,7 +82,7 @@ class CORE_EXPORT Component : public QObject, public IComponent
     // interface, see Stargate.
     void interfaceRenamed(const QString& name, const QString& newName);
     // name, which it provided, is no longer one of its interfaces: what was bound to it is unbound, once it was told it
-    // unavailable. Only a stargate removes an interface, see Stargate.
+    // unavailable. See removeProvidedInterface().
     void interfaceRemoved(const QString& name);
     // It declared, renamed or removed an interface, one it consumes was bound or unbound, or one it provides or
     // consumes became available or unavailable.
@@ -95,7 +95,8 @@ class CORE_EXPORT Component : public QObject, public IComponent
 
     // Provides pointer as the interface name, of type T: providedInterface<T>(name) returns it. Without a pointer, the
     // interface is declared, or withdrawn: it is listed, but unavailable. A component declares its interfaces when it
-    // is built, so that they are known before it runs.
+    // is built, so that they are known before it runs, or when one of its properties is set, for those that depend on
+    // it: a project sets its properties before it binds its interfaces. See removeProvidedInterface().
     // Replacing the pointer of an available interface emits interfaceUnavailable() first, then interfaceAvailable()
     // once it is replaced: what the previous pointer refers to must still exist during this call.
     // Returns false, with a warning, when name is already provided with another type.
@@ -170,11 +171,21 @@ class CORE_EXPORT Component : public QObject, public IComponent
             cast(std::move(onInserted)), cast(std::move(onRemoved)));
     }
 
+    // Withdraws name, which it provides, and forgets it: what was bound to it is told it unavailable, then unbound, see
+    // interfaceRemoved(); what the pointer refers to must still exist during this call. The interfaces of a component
+    // can depend on one of its properties: the widgets it provides, as many as its count, say, which removes the last
+    // ones as it decreases. Does nothing when it provides no name.
+    void removeProvidedInterface(const QString& name);
+    // Unbinds name, which it consumes, telling it unavailable, and forgets it. Does nothing when it consumes no name.
+    void removeConsumedInterface(const QString& name);
+
     // Has the properties of object, see PropertyObject::properties(), edited and saved with its own: NebulaStudio edits
     // them under those of the component, and a project holds their values. Under name when it is not empty, as a group
     // of their own; the objects added with the same name share a group. For as long as object lives: it need not
     // outlive the component. A component adds its objects when it is built, so that a project finds them when it is
-    // opened. Does nothing, with a warning, when object is nullptr, the component itself, or already added.
+    // opened, or when one of its properties is set, for those that depend on it: a project sets the properties of the
+    // component before those of its objects. Destroying object takes its properties away. Does nothing, with a warning,
+    // when object is nullptr, the component itself, or already added.
     void addPropertiesForQObject(QObject* object, const QString& name = {});
 
     // Returning false from onStart() leaves the state unchanged.
@@ -185,7 +196,7 @@ class CORE_EXPORT Component : public QObject, public IComponent
     friend class ComponentFactory;
     template <typename P> friend class Plugin; // Calls releaseInterfaces()
     // Provide and consume interfaces of a type they are told when they run only, the interfaces a galaxy exposes
-    // through its stargates, rename and remove those of a stargate, and release theirs before they go.
+    // through its stargates, rename and remove those of a stargate and of a galaxy, and release theirs before they go.
     friend class Galaxy;
     friend class Stargate;
 
@@ -254,11 +265,6 @@ class CORE_EXPORT Component : public QObject, public IComponent
     // Names name, which it consumes, newName: it is still bound to what it was. Returns false, changing nothing, when
     // it consumes no name, or consumes newName already.
     bool renameConsumedInterface(const QString& name, const QString& newName);
-    // Withdraws name, which it provides, and forgets it: what was bound to it is no longer, see interfaceRemoved().
-    // Does nothing when it provides no name.
-    void removeProvidedInterface(const QString& name);
-    // Unbinds name, which it consumes, and forgets it. Does nothing when it consumes no name.
-    void removeConsumedInterface(const QString& name);
     // Whether name, which it consumes, can be bound to providedName of provider: of the same type, another
     // component, and not bound to it yet when name is a list.
     [[nodiscard]] bool canBind(const QString& name, const Component& provider, const QString& providedName) const;

@@ -56,6 +56,16 @@ QObject* Probe::consumed(const QString& name) const
     return timer != m_timers.end() ? timer->second : nullptr;
 }
 
+void Probe::removeProvided(const QString& name)
+{
+    removeProvidedInterface(name);
+}
+
+void Probe::removeConsumed(const QString& name)
+{
+    removeConsumedInterface(name);
+}
+
 void Probe::addObject(QObject* object, const QString& name)
 {
     addPropertiesForQObject(object, name);

@@ -54,6 +54,9 @@ class Probe : public Nebula::Component
     // has the pointer, as it should.
     bool consumeObjects(const QString& name,
                         Nebula::InterfaceRequirement requirement = Nebula::InterfaceRequirement::Optional);
+    // removeProvidedInterface() and removeConsumedInterface().
+    void removeProvided(const QString& name);
+    void removeConsumed(const QString& name);
     // The member of name, which it consumes; nullptr while it has no pointer, or when it does not consume name.
     [[nodiscard]] QObject* consumed(const QString& name) const;
     // The member of name, which it consumes as a list; empty when it does not.
