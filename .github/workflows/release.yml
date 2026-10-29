@@ -79,8 +79,17 @@ jobs:
         # Not installed by the build: the licenses the files of the package are under, and how to use them.
         Copy-Item LICENSE, README.md -Destination $prefix
         Copy-Item CMakeUtils/LICENSE -Destination "$prefix/Core/cmake/CMakeUtils"
-        # The font of its titles is in NebulaStudio.exe: its license goes with it.
-        Copy-Item NebulaStudio/resources/fonts/OFL.txt -Destination "$prefix/NebulaStudio/SpaceGrotesk-OFL.txt"
+        # The font of its titles is in NebulaStudio.exe, and in StudioPlugin.nbdl, in plugins/ next to each
+        # application: its license goes with them.
+        foreach ($application in 'NebulaStudio', 'ExampleApp', 'ExampleUniverseApp') {
+          Copy-Item NebulaStudio/resources/fonts/OFL.txt -Destination "$prefix/$application/SpaceGrotesk-OFL.txt"
+        }
+        # The galaxy of NebulaStudio, in scene/ next to the applications that list it and run it.
+        foreach ($application in 'NebulaStudio', 'ExampleUniverseApp') {
+          $scene = "$prefix/$application/$env:BUILD_TYPE/bin/scene"
+          New-Item -ItemType Directory -Force -Path $scene | Out-Null
+          Copy-Item StudioPlugin/NebulaStudio.nbp -Destination $scene
+        }
 
     - name: Zip the package
       working-directory: dist

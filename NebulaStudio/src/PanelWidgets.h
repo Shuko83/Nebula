@@ -50,8 +50,9 @@ void showCurrentIn(const QAbstractItemView& view, int role, Viewer* viewer, void
 [[nodiscard]] QWidget* createBar(QWidget* stretched, QWidget* other);
 // A button telling text, and what it does as its tool tip.
 [[nodiscard]] QPushButton* createButton(const QString& text, const QString& toolTip);
-// Adds page to tabs, under its window title, with its window icon when it was given one: a panel names itself.
-void addPage(QTabWidget& tabs, QWidget& page);
+// Inserts page in tabs at index, after the others when it is not one of theirs, under its window title, beside its
+// window icon when it was given one: a panel names itself.
+void insertPage(QTabWidget& tabs, QWidget& page, int index = -1);
 // Disables action while application runs, from now on.
 void disableWhileRunning(const Nebula::Universe& application, QAction& action);
 // Gives field the keys with its text selected, even when it already has them: what is typed replaces the last search.

@@ -92,8 +92,8 @@ QWidget* MainWindow::createSources()
     connect(plugins, &PluginPanel::removing, m_zone, &EditionZone::remove);
     auto* galaxies = new GalaxyPanel(m_studio);
     connect(galaxies, &GalaxyPanel::openRequested, m_project, &Project::openGalaxy);
-    addPage(*sources, *plugins);
-    addPage(*sources, *galaxies);
+    insertPage(*sources, *plugins);
+    insertPage(*sources, *galaxies);
     return sources;
 }
 

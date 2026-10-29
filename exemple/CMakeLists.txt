@@ -12,9 +12,10 @@ add_subdirectory(ExternalPlugin)
 add_subdirectory(ExampleUniverseApp)
 
 # The application loads the plugins without linking to them: build them with the application.
-add_dependencies(ExampleApp ExamplePlugin WidgetsPlugin)
+add_dependencies(ExampleApp ExamplePlugin WidgetsPlugin StudioPlugin)
 # NebulaStudio neither: without this, building NebulaStudio alone rebuilds Core and leaves these plugins as they were
 # built, against the Core of before. Their components then crash as soon as they are created.
-add_dependencies(NebulaStudio ExamplePlugin WidgetsPlugin ExternalPlugin)
-# Nor does the application of a project, whichever of these plugins its components are from.
-add_dependencies(ExampleUniverseApp ExamplePlugin WidgetsPlugin ExternalPlugin)
+add_dependencies(NebulaStudio ExamplePlugin WidgetsPlugin ExternalPlugin StudioPlugin StudioGalaxy)
+# Nor does the application of a project, whichever of these plugins its components are from, the galaxy of
+# NebulaStudio included.
+add_dependencies(ExampleUniverseApp ExamplePlugin WidgetsPlugin ExternalPlugin StudioPlugin StudioGalaxy)

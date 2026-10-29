@@ -27,16 +27,16 @@ class GalaxyPanel : public QWidget
 
     // The directory listed, absolute.
     [[nodiscard]] QString directory() const;
-    // Lists the galaxies of directory, tells which one above them, and shows the first one in its viewer; see
-    // directoryChanged(). scene/ next to the application when directory is empty.
+    // Lists the galaxies of directory, tells which one above them, and shows the first one in its viewer: scene/ next
+    // to the application when directory is empty, and a relative directory read from the one of the application.
     void setDirectory(const QString& directory);
 
   signals:
     // The galaxy of the file filePath, whose plugins the application knows, is asked to be opened: the panel does not
     // open it by itself.
     void openRequested(const QString& filePath);
-    // It lists the galaxies of directory now, absolute, given or chosen.
-    void directoryChanged(const QString& directory);
+    // The user chose to list the galaxies of directory, absolute, which it lists now.
+    void directoryChosen(const QString& directory);
 
   private:
     // The galaxies, those the application knows the plugins of opened from their viewer, or activated, and dragged
