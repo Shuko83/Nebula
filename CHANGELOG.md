@@ -20,6 +20,9 @@ to it.
 - The style of the links in NebulaStudio (#84): **View** > **Links** draws them as **Curves**, as before, **Straight
   Lines** or **Right Angles**, in the application and in the galaxies opened. It is not saved with the project, but
   kept for the next launch of NebulaStudio.
+- The links an interface can have, suggested in NebulaStudio (#82): **Bind to**, in the context menu of the dot of a
+  consumed interface, lists the interfaces of its type the other instances of the scene provide, those it is bound to
+  checked; choosing one binds them, or unbinds them when it is checked.
 
 ### Changed
 
