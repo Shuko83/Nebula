@@ -70,8 +70,8 @@ QStringList offered(ComponentFinder& finder)
     const QAbstractItemModel* completions = finder.completer()->completionModel();
     for(int row = 0; row < completions->rowCount(); ++row)
     {
-        rows.append(completions->index(row, 0).data().toString() + u": " +
-                    completions->index(row, 1).data().toString());
+        rows.append(QStringLiteral("%1: %2").arg(completions->index(row, 0).data().toString(),
+                                                 completions->index(row, 1).data().toString()));
     }
     return rows;
 }
