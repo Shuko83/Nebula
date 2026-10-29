@@ -33,7 +33,7 @@ qu'avec des tests verts.
 | `tests/Components/` | Bibliothèque statique `TestComponents` : les composants écrits pour les tests |
 | `tests/Plugins/` | Les plugins écrits pour les tests, chargés depuis leur fichier : `FirstPlugin`, `SecondPlugin`, `ThirdPlugin` |
 | `tests/Core/` | Un test par classe de Core : `TestComponent`, `TestComponentFactory`, `TestPluginManager`, `TestUniverse`, `TestGalaxy` (une galaxy posée, ses interfaces, ses propriétés exposées, son édition et sa relecture compris), `TestStargate`, `TestSettingsFile` |
-| `tests/NebulaStudio/` | Les classes de NebulaStudio qui se passent de sa fenêtre : `TestColors`, `TestTheme`, `TestPluginModel`, `TestComponentModel`, `TestEditionView`, `TestPreferences` (les préférences, dans un fichier ini temporaire), `TestEditionScene` (la zone d'édition : tracé d'un lien dans chaque style, sélection et suppression d'un lien, liens d'une interface retirée, sous-menu **Bind to** d'une interface consommée), `TestPropertyEditor` (ses groupes, qui suivent les objets qu'une propriété ajoute ou détruit), `TestGalaxyModel` |
+| `tests/NebulaStudio/` | Les classes de NebulaStudio qui se passent de sa fenêtre : `TestColors`, `TestTheme`, `TestPluginModel`, `TestComponentModel`, `TestEditionView`, `TestPreferences` (les préférences, dans un fichier ini temporaire), `TestEditionScene` (la zone d'édition : tracé d'un lien dans chaque style, sélection et suppression d'un lien, liens d'une interface retirée, sous-menu **Bind to** d'une interface consommée, ancres d'un lien), `TestPropertyEditor` (ses groupes, qui suivent les objets qu'une propriété ajoute ou détruit), `TestGalaxyModel` |
 | `tests/exemple/` | Les composants d'un plugin d'exemple, chargés depuis son fichier comme le fait une application : `TestWidgetsPlugin` (la fenêtre principale, sa barre, les actions et le compteur, assemblés par leurs interfaces), le seul test qui dépend d'un exemple, celui qu'il teste |
 
 Les tests et leurs plugins ne sont ni installés ni copiés dans le paquet.
@@ -184,7 +184,9 @@ void TestUniverse::rename()
 - Une vue se pilote en envoyant des `QMouseEvent` à son `viewport()` (`TestEditionView`). Un déplacement sans bouton
   n'y arrive que si la vue suit la souris, ce que fait une `QGraphicsView` dès qu'un item de sa scène accepte le
   survol ou a un curseur, comme ceux de NebulaStudio. Un clic qu'aucun item ne prend s'envoie de même, plutôt que par
-  `QTest::mouseClick()`, qui avertit que la vue n'a pas accepté le relâchement.
+  `QTest::mouseClick()`, qui avertit que la vue n'a pas accepté le relâchement. La position d'un tel événement arrive
+  à la scène arrondie au pixel : un test qui la compare à celle qu'il voulait la fait d'abord passer par
+  `mapFromScene()` puis `mapToScene()` (`onPixel()` de `TestEditionScene`).
 - Un menu contextuel bloque dans `exec()` : le test programme d'abord, par `QTimer::singleShot(0, …)`, ce qui le lit
   (`QApplication::activePopupWidget()`) puis le ferme, par Entrée sur l'action choisie (`setActiveAction()`) ou par
   Échap, puis envoie le `QContextMenuEvent` au `viewport()` (`TestEditionScene::contextMenu()`). Une entrée d'un
