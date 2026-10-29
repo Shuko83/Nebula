@@ -95,7 +95,11 @@ class TestWidgetsPlugin : public QObject
     void counterCountsWhileItRuns();
     void counterText_data();
     void counterText();
+    void labelsFollowTheirCount_data();
+    void labelsFollowTheirCount();
+    void labelsInTheTopBar();
     void projectRoundTrip();
+    void labelsProjectRoundTrip();
 
   private:
     // An instance of the component name of WidgetsPlugin.
@@ -364,6 +368,71 @@ void TestWidgetsPlugin::counterText()
     QCOMPARE(qobject_cast<QLabel*>(counter->providedInterface<QWidget>(u"display"_s))->text(), shown);
 }
 
+void TestWidgetsPlugin::labelsFollowTheirCount_data()
+{
+    QTest::addColumn<int>("count");
+    QTest::addColumn<QStringList>("names"); // Of its interfaces, and of the groups of their texts
+
+    QTest::newRow("more") << 3 << QStringList{u"label1"_s, u"label2"_s, u"label3"_s};
+    QTest::newRow("none") << 0 << QStringList{};
+    QTest::newRow("below none") << -1 << QStringList{};
+    QTest::newRow("above the most") << 11
+                                    << QStringList{u"label1"_s, u"label2"_s, u"label3"_s, u"label4"_s, u"label5"_s,
+                                                   u"label6"_s, u"label7"_s, u"label8"_s, u"label9"_s, u"label10"_s};
+}
+
+void TestWidgetsPlugin::labelsFollowTheirCount()
+{
+    QFETCH(int, count);
+    QFETCH(QStringList, names);
+
+    Component* labels = instantiate(u"LabelsComponent"_s);
+    QCOMPARE(labels->property("count").toInt(), 1);
+    QVERIFY(labels->setProperty("count", count));
+    QCOMPARE(labels->property("count").toInt(), names.size());
+    QStringList provided;
+    QStringList groups;
+    for(qsizetype index = 0; index < names.size(); ++index)
+    {
+        provided.append(labels->providedInterfaces().at(index).name);
+        groups.append(labels->propertyObjects().at(index).name);
+    }
+    QCOMPARE(provided, names);
+    QCOMPARE(groups, names);
+    if(!names.isEmpty())
+    {
+        auto* last = qobject_cast<QLabel*>(labels->providedInterface<QWidget>(names.last()));
+        QCOMPARE(last->text(), u"Label %1"_s.arg(names.size()));
+        QVERIFY(labels->propertyObjects().last().object->setProperty("text", u"Last"_s));
+        QCOMPARE(last->text(), u"Last"_s);
+    }
+}
+
+void TestWidgetsPlugin::labelsInTheTopBar()
+{
+    Component* mainWindow = instantiate(u"MainWindowComponent"_s);
+    Component* topBar = instantiate(u"TopBarComponent"_s);
+    Component* labels = instantiate(u"LabelsComponent"_s);
+    QVERIFY(topBar->bindInterface(u"mainWindow"_s, *mainWindow, u"mainWindow"_s));
+    QToolBar* bar = barIn(*windowOf(*mainWindow));
+    QVERIFY(labels->setProperty("count", 3));
+    const QPointer<QWidget> first = labels->providedInterface<QWidget>(u"label1"_s);
+    const QPointer<QWidget> third = labels->providedInterface<QWidget>(u"label3"_s);
+    QVERIFY(topBar->bindInterface(u"widgets"_s, *labels, u"label3"_s));
+    QVERIFY(topBar->bindInterface(u"widgets"_s, *labels, u"label1"_s));
+    QCOMPARE(placeIn(*bar, *third), 0);
+    QCOMPARE(placeIn(*bar, *first), 1);
+
+    // The third one leaves the bar before it goes, and the bar keeps the others.
+    QVERIFY(labels->setProperty("count", 2));
+    QVERIFY(third == nullptr);
+    QCOMPARE(topBar->bindings(u"widgets"_s).size(), 1);
+    QCOMPARE(placeIn(*bar, *first), 0);
+    // Back, it is a new one, bound to nothing.
+    QVERIFY(labels->setProperty("count", 3));
+    QCOMPARE(placeIn(*bar, *labels->providedInterface<QWidget>(u"label3"_s)), -1);
+}
+
 void TestWidgetsPlugin::projectRoundTrip()
 {
     Component* mainWindow = instantiate(u"MainWindowComponent"_s);
@@ -389,6 +458,26 @@ void TestWidgetsPlugin::projectRoundTrip()
     QVERIFY(bar != nullptr);
     QCOMPARE(actionTexts(*bar), QStringList{u"Add one"_s});
     QCOMPARE(bar->actions().constFirst()->shortcut(), QKeySequence(Qt::CTRL | Qt::Key_N));
+}
+
+void TestWidgetsPlugin::labelsProjectRoundTrip()
+{
+    Component* mainWindow = instantiate(u"MainWindowComponent"_s);
+    Component* topBar = instantiate(u"TopBarComponent"_s);
+    Component* labels = instantiate(u"LabelsComponent"_s);
+    QVERIFY(topBar->bindInterface(u"mainWindow"_s, *mainWindow, u"mainWindow"_s));
+    QVERIFY(labels->setProperty("count", 3));
+    QVERIFY(labels->propertyObjects().at(2).object->setProperty("text", u"Third"_s));
+    QVERIFY(topBar->bindInterface(u"widgets"_s, *labels, u"label3"_s));
+    const QJsonObject project = m_universe->save();
+
+    // Its count first: the third label is there to be given its text and bound.
+    QCOMPARE(m_universe->load(project), QStringList{});
+    labels = m_universe->component(u"LabelsComponent1"_s);
+    QCOMPARE(labels->property("count").toInt(), 3);
+    auto* third = qobject_cast<QLabel*>(labels->providedInterface<QWidget>(u"label3"_s));
+    QCOMPARE(third->text(), u"Third"_s);
+    QCOMPARE(placeIn(*barIn(*windowOf(*m_universe->component(u"MainWindowComponent1"_s))), *third), 0);
 }
 
 QTEST_MAIN(TestWidgetsPlugin)

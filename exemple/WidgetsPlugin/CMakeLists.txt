@@ -5,7 +5,7 @@
 # class only gathers its components, in src/: each of them creates the objects it is made of.
 nebula_add_plugin(
     NAME WidgetsPlugin
-    DESCRIPTION "Example plugin: a main window, its top bar and its actions, each a component"
+    DESCRIPTION "Example plugin: a main window, its top bar, actions and labels, each a component"
     VERSION 1.0.0
     # Its components are made of widgets.
     LINK_LIBRARIES PRIVATE Qt6::Widgets
