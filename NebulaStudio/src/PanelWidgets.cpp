@@ -80,15 +80,15 @@ QPushButton* createButton(const QString& text, const QString& toolTip)
     return button;
 }
 
-void addPage(QTabWidget& tabs, QWidget& page)
+void insertPage(QTabWidget& tabs, QWidget& page, int index)
 {
     // Without an icon of its own, a widget has the one of its window, or of the application.
     if(page.testAttribute(Qt::WA_SetWindowIcon))
     {
-        tabs.addTab(&page, page.windowIcon(), page.windowTitle());
+        tabs.insertTab(index, &page, page.windowIcon(), page.windowTitle());
         return;
     }
-    tabs.addTab(&page, page.windowTitle());
+    tabs.insertTab(index, &page, page.windowTitle());
 }
 
 void disableWhileRunning(const Nebula::Universe& application, QAction& action)

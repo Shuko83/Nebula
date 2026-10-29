@@ -3,6 +3,7 @@
 
 #include "GalaxyPanel.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFileDialog>
 #include <QLineEdit>
@@ -68,10 +69,11 @@ QString GalaxyPanel::directory() const
 void GalaxyPanel::setDirectory(const QString& directory)
 {
     // Where the projects are saved unless told otherwise.
-    m_model->setDirectory(directory.isEmpty() ? defaultProjectDirectory() : directory);
+    m_model->setDirectory(directory.isEmpty()
+                              ? defaultProjectDirectory()
+                              : QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(directory));
     m_directory->setText(QDir::toNativeSeparators(m_model->directory()));
     m_view->setCurrentIndex(m_model->index(0, 0));
-    emit directoryChanged(m_model->directory());
 }
 
 void GalaxyPanel::chooseDirectory()
@@ -80,6 +82,7 @@ void GalaxyPanel::chooseDirectory()
     if(!directory.isEmpty())
     {
         setDirectory(directory);
+        emit directoryChosen(m_model->directory());
     }
 }
 

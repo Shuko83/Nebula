@@ -22,6 +22,8 @@ endif()
 
 add_subdirectory(Core)
 add_subdirectory(NebulaStudio)
+# The parts of NebulaStudio, each a component, and the galaxy that assembles them.
+add_subdirectory(StudioPlugin)
 add_subdirectory(exemple)
 
 # The QTest executables of tests/, run by ctest from the build directory: see docs/testing.md.
