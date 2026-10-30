@@ -1044,13 +1044,17 @@ void EditionScene::keyPressEvent(QKeyEvent* event)
 
 void EditionScene::removeSelected()
 {
+    // Sorted before any goes: unlinking destroys the links, which are among the items selected.
     const QList<QGraphicsItem*> selected = selectedItems();
+    const QList<LinkItem*> links = itemsAmong<LinkItem>(selected);
+    const QList<SettingsItem*> files = objectsAmong<SettingsItem>(selected);
+    const QList<ComponentItem*> components = objectsAmong<ComponentItem>(selected);
     clearSelection(); // Told once, rather than as each of them goes
     // The links before the components, which they would go with.
-    unlink(itemsAmong<LinkItem>(selected));
+    unlink(links);
     // The files first: they would otherwise join themselves again to what is left as each of their components goes.
-    removeAll(objectsAmong<SettingsItem>(selected));
-    removeAll(objectsAmong<ComponentItem>(selected));
+    removeAll(files);
+    removeAll(components);
 }
 
 bool EditionScene::isEditable() const
