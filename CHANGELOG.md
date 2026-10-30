@@ -7,6 +7,8 @@ to it.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-30
+
 ### Added
 
 - Lists of interfaces (#67): `Component::consumeInterfaceList<T>()` consumes a `QList<T*>` to which several provided
@@ -34,17 +36,18 @@ to it.
 
 - `TopBarComponent` of `WidgetsPlugin` consumes the lists `actions` and `widgets` in place of `action1` to `action4`,
   `widget1` and `widget2`.
-- `Component.h` changes: plugins built against 1.0.0 must be built again.
 - `nebula_add_plugin()` generates the class of the plugin (#85), `<NAME>` in `<NAME>.h`, which its components include
   to register in it: a plugin no longer writes it, and `NEBULA_PLUGIN` no longer compiles, telling to remove the
   class written for 1.0.0.
 - A plugin is the factory of its components (#94): `IPlugin` lists them, `components()`, and creates them,
   `create(name)`, the name being `Nebula::componentName()` of their class. The generated class of the plugin is its
   root object, deriving from `Nebula::Plugin<itself>`, and `ComponentFactory` has the plugin of a component create
-  it (`add(pluginId, IPlugin&)`). Plugins built against 1.0.0 must be built again.
+  it (`add(pluginId, IPlugin&)`).
 - A project gives a component its properties in the order the component declares them, rather than in the order of
   their names, and a galaxy the properties it exposes in the order it exposes them (#86): a property that tells what
   a component has is set before those that depend on it.
+- Plugins built against 1.0.0 are refused: build them again. `IPlugin`, `Plugin.h` and `Component.h` change, and so
+  does the major version of Core.
 
 ### Removed
 
@@ -128,6 +131,7 @@ First published version.
 - The package for other projects: `find_package(AppForge 0.2 REQUIRED COMPONENTS Core)`.
 - Examples: `ExamplePlugin`, `ExternalPlugin`, `ExampleApp` and `ExampleForgeApp`.
 
+[2.0.0]: https://github.com/Shuko83/Nebula/releases/tag/2.0.0
 [1.0.0]: https://github.com/Shuko83/Nebula/releases/tag/1.0.0
 [0.3.0]: https://github.com/Shuko83/Nebula/releases/tag/0.3.0
 [0.2.0]: https://github.com/Shuko83/Nebula/releases/tag/0.2.0
