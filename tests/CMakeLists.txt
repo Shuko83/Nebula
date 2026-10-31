@@ -81,6 +81,7 @@ function(nebula_add_test NAME)
 endfunction()
 
 add_subdirectory(Core)
+add_subdirectory(Application)
 add_subdirectory(NebulaStudio)
 add_subdirectory(StudioPlugin)
 add_subdirectory(exemple)

@@ -627,12 +627,23 @@ void Universe::applyCommandLine(const QCommandLineParser& parser)
 {
     for(const QString& directory : parser.values(PluginDirOption))
     {
-        scanDirectory(directory);
+        scanPluginDirectory(directory);
     }
     if(parser.isSet(PluginRootOption))
     {
         setPluginRoot(parser.value(PluginRootOption));
     }
+}
+
+void Universe::scanPluginDirectory(const QString& directory)
+{
+    if(!QFileInfo(directory).isDir())
+    {
+        qCWarning(lcPlugins).noquote() << "Skipping" << QDir::toNativeSeparators(directory)
+                                       << "- it is not a directory";
+        return;
+    }
+    m_plugins.scan(directory);
 }
 
 std::optional<QJsonObject> Universe::read(const QString& filePath, QString& error)
@@ -948,17 +959,6 @@ bool Universe::refuse(const QString& why)
 {
     m_errorString = why;
     return false;
-}
-
-void Universe::scanDirectory(const QString& directory)
-{
-    if(!QFileInfo(directory).isDir())
-    {
-        qCWarning(lcPlugins).noquote() << "Skipping" << QDir::toNativeSeparators(directory)
-                                       << "- it is not a directory";
-        return;
-    }
-    m_plugins.scan(directory);
 }
 
 bool Universe::loadPlugin(const QString& pluginId)

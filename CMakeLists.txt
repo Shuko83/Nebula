@@ -21,6 +21,8 @@ if(NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
 endif()
 
 add_subdirectory(Core)
+# The QApplication of an executable whose content is a galaxy, which it loads and runs.
+add_subdirectory(Application)
 add_subdirectory(NebulaStudio)
 # The parts of NebulaStudio, each a component, and the galaxy that assembles them.
 add_subdirectory(StudioPlugin)
