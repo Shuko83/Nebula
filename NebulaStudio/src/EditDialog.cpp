@@ -4,28 +4,39 @@
 #include "EditDialog.h"
 
 #include <QDialogButtonBox>
-#include <QLabel>
 #include <QPushButton>
+#include <QVBoxLayout>
 
-EditDialog::EditDialog(QObject& edited, QWidget* parent)
-    : QDialog(parent), m_buttons(new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel))
+#include "DialogHeader.h"
+
+EditDialog::EditDialog(QObject& edited, const QIcon& icon, QWidget* parent)
+    : QDialog(parent), m_header(new DialogHeader(icon)),
+      m_buttons(new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel))
 {
+    setWindowIcon(icon);
     connect(m_buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(m_buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(this, &QDialog::accepted, this, [this] { apply(); });
     connect(&edited, &QObject::destroyed, this, &QDialog::reject);
 }
 
-QLabel* EditDialog::newHint(const QString& text)
+DialogHeader& EditDialog::header() const
 {
-    auto* hint = new QLabel(text);
-    hint->setWordWrap(true);
-    return hint;
+    return *m_header;
 }
 
 QDialogButtonBox* EditDialog::buttons() const
 {
     return m_buttons;
+}
+
+void EditDialog::layOut(QWidget* content)
+{
+    auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins({}); // The header across the dialog
+    layout->setSpacing(0);
+    layout->addWidget(m_header);
+    layout->addWidget(content, 1);
 }
 
 void EditDialog::setAcceptable(bool acceptable)
