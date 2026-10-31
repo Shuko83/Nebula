@@ -14,11 +14,23 @@ to it.
   editor, its problems and its window) or a layout (`SplitterComponent`, `TabsComponent`, `GroupComponent`). Copied to
   `scene/` by each build, it is listed in the **Galaxies** tab, opened and started from NebulaStudio, or run on its own:
   `ExampleUniverseApp scene/NebulaStudio.nbp`. The package has it next to NebulaStudio and `ExampleUniverseApp`.
+- `Nebula::Application` (#73), a library of its own: `NebulaApplication`, the `QApplication` of an executable whose
+  content is a galaxy, loads it as it is built and runs it with `exec()`, which returns the code of the application.
+  `ApplicationOptions`, given by the code, and its command line, when it is given a `QCommandLineParser`, tell it the
+  directories of the plugins and of the galaxy, what the executable tells of itself, and where the messages go: their
+  level, the console, a log file and a logger (`--plugin-dir`, `--plugin-root`, `--galaxy-dir`, `--log-level`,
+  `--log-file`, `--console`). `find_package(Nebula 2.0 REQUIRED COMPONENTS Application)`.
+- `Universe::scanPluginDirectory()`, which lists the plugins of a directory as `--plugin-dir` does (#73).
+- The `file` of `ProjectComponent` (#73): the project file it opens each time it starts.
 
 ### Changed
 
-- NebulaStudio: `MainWindow` assembles parts that stand on their own, which the galaxy of NebulaStudio assembles too
-  (#103): `Studio`, what they share, `EditionZone`, `Project`, `PluginPanel`, `GalaxyPanel` and `ComponentPanel`.
+- NebulaStudio is made of parts that stand on their own, which its galaxy assembles (#103): `Studio`, what they
+  share, `EditionZone`, `Project`, `PluginPanel`, `GalaxyPanel` and `ComponentPanel`.
+- NebulaStudio runs its galaxy (#73): `NebulaStudio.exe` is a `NebulaApplication` of `scene/NebulaStudio.nbp`, whose
+  `Project` opens the project file of its command line, its splash screen shown over its window; `MainWindow` is
+  removed. It takes the options of `NebulaApplication`, `--help` and `--version` among them, and tells in a box why its
+  galaxy cannot be loaded. It lists `StudioPlugin` as loaded, by the application that runs it.
 - The dialog of a settings file in NebulaStudio (#105): a header tells the name of the file and what it is for;
   checking an instance, or a group of objects, checks all its properties, and tells whether all, some or none of them
   are held; the properties are filtered by a text, or restricted to those held, whose number is told; a name refused

@@ -25,6 +25,9 @@ It enables developers to construct software systems by combining reusable buildi
 - 💾 **Project serialization**  
   Save and load full application state using `.nbp` files.
 
+- ▶️ **Applications of a galaxy**  
+  `NebulaApplication` loads a project file and runs it: the `main` of an application is three lines.
+
 - 🗂️ **User settings**  
   Keep the values the user of an application gives some properties, from one run to the next, in settings files.
 
@@ -264,7 +267,9 @@ void LabelsComponent::removeLabel() // As its count decreases: the last one firs
 
 `NebulaStudio` is the application that assembles applications from the components of the plugins, live.
 
-It starts with a splash screen, in the colors of its theme: the version of Nebula, the Qt and the compiler NebulaStudio was built with and when, its copyright and its license. Its main window takes its place after two seconds, or as soon as it is clicked.
+It is a `NebulaApplication`, see Running an Application below, that runs its own galaxy, `scene/NebulaStudio.nbp` next to it, see [NebulaStudio, a galaxy](#nebulastudio-a-galaxy) below: it takes the options of any, `--plugin-dir`, `--plugin-root`, `--galaxy-dir`, `--log-level`, `--log-file`, `--console`, `--help` and `--version`, then the project file to open. When its galaxy cannot be found or loaded, a box tells why, and NebulaStudio ends.
+
+It starts with a splash screen, in the colors of its theme: the version of Nebula, the Qt and the compiler NebulaStudio was built with and when, its copyright and its license. It stays over its main window for two seconds, or until it is clicked.
 
 For now, it lists:
 
@@ -300,13 +305,13 @@ The logo of Nebula, a nebula crossed by three astres bound to one another, is on
 
 ### NebulaStudio, a galaxy
 
-NebulaStudio is a galaxy as well: `StudioPlugin/NebulaStudio.nbp` assembles its window from the components of `StudioPlugin`, in `StudioPlugin/`, each a part of NebulaStudio made of its own classes, bound to one another as the window of NebulaStudio binds them. The galaxy is copied to `scene/` next to the applications by each build, `<build>/bin/scene` (`<build>/bin/<config>/scene` with Visual Studio): NebulaStudio lists it in its **Galaxies** tab, opens it to show how its parts are bound, and runs it with **Start**, which shows a NebulaStudio of its own; `ExampleUniverseApp scene/NebulaStudio.nbp`, from `<build>/bin`, runs it as an application, until its window is closed. The copy is given the content of the one of `StudioPlugin/` again by each build: that one is the galaxy to edit.
+NebulaStudio is a galaxy as well: `StudioPlugin/NebulaStudio.nbp` assembles its window from the components of `StudioPlugin`, in `StudioPlugin/`, each a part of NebulaStudio made of its own classes, bound to one another as the window of NebulaStudio binds them. The galaxy is copied to `scene/` next to the applications by each build, `<build>/bin/scene` (`<build>/bin/<config>/scene` with Visual Studio): `NebulaStudio.exe` runs it, NebulaStudio lists it in its **Galaxies** tab, opens it to show how its parts are bound, and runs it with **Start**, which shows a NebulaStudio of its own; `ExampleUniverseApp scene/NebulaStudio.nbp`, from `<build>/bin`, runs it as well, until its window is closed. The copy is given the content of the one of `StudioPlugin/` again by each build: that one is the galaxy to edit. What is saved to the copy is the NebulaStudio that runs next, until the next build.
 
 | Component | What it is |
 | --- | --- |
 | `StudioComponent` | What the parts share, provided as `studio`: the application they assemble, with the plugins of `plugins/` next to the application that runs it and of the directories its command line gives with `--plugin-dir`, the preferences of the user of NebulaStudio, the style of the links say, and what the parts tell one another. The first one gives the application that runs it the theme of NebulaStudio, and stopping it stops the application it assembles |
 | `EditionZoneComponent` | The edition zone, as `widget` and as `zone`, with its **View** menu, `viewMenu`, its **Run** menu, `runMenu`, and the label of its zoom level, `zoomLabel` |
-| `ProjectComponent` | The project file of the application, as `project`, with its **File** menu, `fileMenu`; it needs the `zone` the application is shown in |
+| `ProjectComponent` | The project file of the application, as `project`, with its **File** menu, `fileMenu`; it needs the `zone` the application is shown in. Each time it starts, it opens its `file`, when it has one, once the changes of the application are saved or given up: `NebulaStudio my.nbp` gives it `my.nbp` |
 | `PluginListComponent` | The plugins, as `widget`: unloading one removes its instances from the `zone`, when it has one |
 | `GalaxyListComponent` | The galaxies of its `directory`, as `widget`: `scene/` next to the application that runs it while it is empty, a relative one read from the directory of that application; one is opened by the `project`, when it has one. A directory chosen in the list while it runs is its `directory` until it is stopped, which a settings file can keep |
 | `ComponentListComponent` | The components of the loaded plugins, as `widget` |
@@ -317,7 +322,7 @@ NebulaStudio is a galaxy as well: `StudioPlugin/NebulaStudio.nbp` assembles its 
 | `TabsComponent` | Its `pages` in tabs, each under its window title, beside its window icon when it has one: the lists of NebulaStudio name themselves, **Plugins** and **Galaxies** |
 | `GroupComponent` | Its `content` under a `title`, in a frame |
 
-Each part is built once it has the `studio`, and destroyed as it loses it, those it was provided to giving it back first: removing the `StudioComponent` empties the window, and a new one bound to the parts fills it again. Bound otherwise, they make another NebulaStudio, its components on the left and its plugins on the right, say, without a line of code. Run by an application, the NebulaStudio of the galaxy lists `StudioPlugin` as loaded, by that application, and its components among the others, which share their list: dropped in its edition zone, they make one more NebulaStudio.
+Each part is built once it has the `studio`, and destroyed as it loses it, those it was provided to giving it back first: removing the `StudioComponent` empties the window, and a new one bound to the parts fills it again. Bound otherwise, they make another NebulaStudio, its components on the left and its plugins on the right, say, without a line of code. NebulaStudio lists `StudioPlugin` as loaded, by the application that runs its galaxy, which its **Unload** refuses, and its components among the others, which share their list: dropped in its edition zone, they make one more NebulaStudio.
 
 ---
 
@@ -429,7 +434,53 @@ Opening a project tells what could not be restored, a plugin that is no longer w
 
 ## ▶️ Running an Application
 
-A project is an application: `Nebula::Universe` instantiates its components as the project defines them and runs them. This is what NebulaStudio does when it starts one, and all the `main` of an application has to do:
+A project is an application: a galaxy, whose components run. `Nebula::NebulaApplication`, of the `Nebula::Application` library, is the `QApplication` of an executable whose content is a galaxy: it loads it as it is built, and runs it with `exec()`. This is all the `main` of an application has to do:
+
+```cpp
+#include <QCommandLineParser>
+
+#include "Nebula/Application/NebulaApplication.h"
+
+int main(int argc, char* argv[])
+{
+    QCommandLineParser parser; // With the options and the arguments of the application, if it has some
+    Nebula::NebulaApplication app(argc, argv, parser, QStringLiteral("Clock.nbp"));
+    return app.exec();
+}
+```
+
+Built, it gives `QCoreApplication` what the executable tells of itself, writes the messages as it is asked to, lists the plugins of `plugins/` next to the executable and of the directories it is given, then opens the galaxy, the name of its file or its path, looked for in `scene/` next to the executable unless other directories are given: its plugins are loaded, its components instantiated, set and bound, as `Universe::open()` does below. `exec()` starts it, processes the events until the application quits, once its last window is closed say, stops it, which has its settings files written, and returns the code the application quit with. When the galaxy cannot be found or loaded, all of it, `exec()` returns `NebulaApplication::LoadFailed` at once, and `StartFailed` when one of its components refuses to start: why is logged as a critical message, and told by `errorString()`. `isLoaded()`, `galaxyFile()` and `universe()`, the `Nebula::Universe` it runs, tell the rest: `app.universe().component(QStringLiteral("Clock1"))` reaches one of its components, before `exec()` say. There is one at a time, as there is one `QApplication`.
+
+Its options are given by the code, a `Nebula::ApplicationOptions`, and by the command line when it is given a `QCommandLineParser`: it adds its own options after those the `main` declared, then processes the command line, whose options and arguments the `main` reads from the same parser afterwards. `--help` and `--version` are among them, which the `main` does not add. Without a parser, the command line is not read.
+
+| Option | On the command line | What it is |
+| --- | --- | --- |
+| `pluginDirectories` | `--plugin-dir <directory>`, as many times as needed | Directories of plugins, scanned after `plugins/` next to the executable, those of the code first: a plugin found again is skipped, and a directory that does not exist is skipped with a warning |
+| `pluginRoot` | `--plugin-root <directory>`, which replaces it | The directory the files of the plugins are relative to in a project file: the directory of the executable when it is empty |
+| `galaxyDirectories` | `--galaxy-dir <directory>`, as many times as needed | Where the galaxy is looked for, those of the command line first: the first one that has it is the one. `scene` until it is given others |
+| `executable` | | What the executable tells of itself, given to `QCoreApplication`: its `name`, its `version`, which `--version` shows, its `organization`, part of the directory settings files are written to by default, and its `organizationDomain`. Those left empty stay as Qt has them |
+| `logLevel` | `--log-level <level>`, `debug`, `info`, `warning`, `critical` or `fatal`, which replaces it | The least severe messages written: `QtDebugMsg`, all those Qt writes, until it is given another one. The rules of `QT_LOGGING_RULES` take precedence over it, and an unknown level is refused as a galaxy not found is |
+| `console` | `--console` | Whether the messages are written to the error output, rather than where Qt writes them: an application without a console of its own on Windows writes them to the console of the terminal it is started from |
+| `logFile` | `--log-file <file>`, which replaces it | A file the messages are added to as well, its directory created: one that cannot be opened is refused |
+| `logger` | | A function the messages are given to as well, as a `QtMessageHandler` is, one at a time, in the thread that logs them, to show them in a window, say: one it logs itself is written by Qt to the error output, not given to it again |
+
+A relative directory or file is read from the directory of the executable in the code, and from the current directory on the command line. Once the application is destroyed, Qt writes the messages as it did before.
+
+```cpp
+#include "Clock_info.h" // Generated by CMakeUtils for the executable Clock
+
+Nebula::NebulaApplication app(argc, argv, parser, QStringLiteral("Clock.nbp"),
+                              {.pluginDirectories = {QStringLiteral("extensions")},
+                               .executable = {.name = QString::fromUtf8(ClockInfo::name),
+                                              .version = QString::fromUtf8(ClockInfo::version)},
+                               .logLevel = QtInfoMsg});
+```
+
+It links to `Nebula::Application`, which links to `Nebula::Core` and Qt Widgets: outside Nebula, `find_package(Nebula 2.0 REQUIRED COMPONENTS Application)` defines both. The plugins of the galaxy are loaded as it is opened, found by their id among those listed, or from the file the project gives them, relative to the plugin root.
+
+### The Universe of an application
+
+`Nebula::Universe` is what a `NebulaApplication` loads its galaxy in, and what NebulaStudio assembles in its edition zone: an application can use it on its own, with its own `QApplication`. `Universe` instantiates the components of a project as it defines them and runs them:
 
 ```cpp
 #include <QApplication>
@@ -474,6 +525,7 @@ application.applyCommandLine(parser); // Before open(): the plugins of the proje
 | `components()`, `component(name)` | Its instances, to reach one from the `main`: `application.component(QStringLiteral("Greeter1"))` |
 | `setPluginRoot(directory)` | The directory the files of the plugins are relative to in a project; the directory of the application by default |
 | `addCommandLineOptions(parser)`, `applyCommandLine(parser)` | Add `--plugin-dir` and `--plugin-root` to a `QCommandLineParser`, then do what they ask once it processed the command line: a `--plugin-dir` that is not a directory is skipped, with a warning |
+| `scanPluginDirectory(directory)` | Lists the plugins of a directory after those it found already, as `--plugin-dir` does: one that is not a directory is skipped, with a warning |
 
 An application can also be assembled without a project, while it does not run: `instantiate(componentId)` creates a component in it, `rename(component, name)` names it, unless the name is empty or the one of another instance, `Component::bindInterface()` binds it, `remove(component)` destroys it, which unbinds what was bound to its interfaces, `componentsChanged()` being emitted once a component is instantiated or removed, `unloadPlugin(pluginId)` removes the components of a plugin, those `componentsOf(pluginId)` lists, then unloads it, unless the application runs, and `save()` returns the project of what was assembled. `read()` and `load()` are the two halves of `open()`, for who needs the project itself, as NebulaStudio does for what it adds to it. `description()` and `setDescription()` are the description the project holds, replaced by `load()`, emptied by `clear()`.
 
