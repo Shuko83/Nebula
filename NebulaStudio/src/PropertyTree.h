@@ -55,6 +55,17 @@ void addIfFilled(QTreeWidget& tree, QTreeWidgetItem* row);
 void openAbove(QTreeWidget& tree, const std::function<bool(const QTreeWidgetItem&)>& isChosen);
 // Makes row checkable in column, checked or not, with flags besides.
 void makeCheckable(QTreeWidgetItem& row, int column, bool checked, Qt::ItemFlags flags = {});
+// Makes the rows of tree that group others, a component or the objects of a name, checkable in column when rows under
+// them are, checked when all those are, unchecked when none is, partially checked otherwise: once the rows are listed.
+void makeGroupsCheckable(QTreeWidget& tree, int column);
+// Once row, checked or unchecked in column, changed: the rows under it, when it groups them, follow it, those that can
+// be checked, then each group above it tells what is checked under it. Without telling it to the tree.
+void followCheck(QTreeWidgetItem& row, int column);
+// Shows the rows of tree whose text in column contains text, whatever its case, or is under a row whose text does, and
+// that accepts accepts, with the rows above them; hides the others, and the groups without a row shown under them.
+// While text is not empty, the groups above the rows shown are open. Returns whether a row is shown.
+bool filterRows(QTreeWidget& tree, int column, const QString& text,
+                const std::function<bool(const QTreeWidgetItem&)>& accepts);
 
 // The names of the objects among objects that have one, each once, in the order they were added: the groups their
 // properties are shown in, after those of the objects without a name.

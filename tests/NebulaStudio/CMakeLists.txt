@@ -34,7 +34,8 @@ set(_scene
     "${_studio}/src/InterfaceItem.cpp" "${_studio}/src/LinkItem.cpp" "${_studio}/src/AnchorItem.cpp"
     "${_studio}/src/LinkAnchors.cpp" "${_studio}/src/DashedLinkItem.cpp" "${_studio}/src/NameEditor.cpp"
     "${_studio}/src/ZoneItem.cpp" "${_studio}/src/Theme.cpp" "${_studio}/src/EditDialog.cpp"
-    "${_studio}/src/PropertyTree.cpp" "${_studio}/src/WarningLabel.cpp"
+    "${_studio}/src/PropertyTree.cpp" "${_studio}/src/WarningLabel.cpp" "${_studio}/src/DialogHeader.cpp"
+    "${_studio}/src/PlaceholderStack.cpp"
     "${_studio}/src/Galaxy/StargateItem.cpp" "${_studio}/src/Galaxy/StargateDialog.cpp"
     "${_studio}/src/Settings/SettingsItem.cpp" "${_studio}/src/Settings/SettingsDialog.cpp"
     ${_resources})
@@ -50,6 +51,14 @@ nebula_add_test(TestComponentFinder
 nebula_add_test(TestPropertyEditor
     SOURCES
         "${_studio}/src/PropertyEditor.cpp" "${_studio}/src/PlaceholderStack.cpp" "${_studio}/src/PropertyTree.cpp"
+        "${_studio}/src/Theme.cpp" ${_resources}
+    INCLUDE_DIRECTORIES "${_studio}/src"
+    LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
+# The dialog of a settings file.
+nebula_add_test(TestSettingsDialog
+    SOURCES
+        "${_studio}/src/Settings/SettingsDialog.cpp" "${_studio}/src/EditDialog.cpp" "${_studio}/src/DialogHeader.cpp"
+        "${_studio}/src/PlaceholderStack.cpp" "${_studio}/src/PropertyTree.cpp" "${_studio}/src/WarningLabel.cpp"
         "${_studio}/src/Theme.cpp" ${_resources}
     INCLUDE_DIRECTORIES "${_studio}/src"
     LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
