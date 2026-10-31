@@ -70,6 +70,9 @@ class CORE_EXPORT Universe : public QObject
     // each --plugin-dir after plugins/, in their order, skipping with a warning one that is not a directory, then sets
     // the plugin root to --plugin-root when it is given. Before a project is loaded, for its plugins to be found there.
     void applyCommandLine(const QCommandLineParser& parser);
+    // Lists the plugins of directory after those it knows, see PluginManager::scan(); skips it, with a warning, when it
+    // is not a directory.
+    void scanPluginDirectory(const QString& directory);
 
     // The project the file filePath holds; nullopt, with error set, when it cannot be read or is not a project of the
     // version this Core reads.
@@ -241,8 +244,6 @@ class CORE_EXPORT Universe : public QObject
 
     // Sets errorString() to why and returns false.
     bool refuse(const QString& why);
-    // Scans directory, given on the command line; skips it, with a warning, when it is not one.
-    void scanDirectory(const QString& directory);
     // Loads the plugin pluginId, unless it is loaded already; false, with PluginManager::errorString() set, when it
     // cannot be.
     bool loadPlugin(const QString& pluginId);
