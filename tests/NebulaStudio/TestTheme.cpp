@@ -3,8 +3,12 @@
 
 #include <QApplication>
 #include <QFile>
+#include <QImage>
+#include <QPainter>
 #include <QPalette>
+#include <QProxyStyle>
 #include <QStyle>
+#include <QStyleOption>
 #include <QTest>
 
 #include "Colors.h"
@@ -49,6 +53,8 @@ class TestTheme : public QObject
     void contrast();
     void unknownSchemeIsDark();
     void applyTheme();
+    void edges_data();
+    void edges();
     void titleFont();
     void icon_data();
     void icon();
@@ -118,15 +124,66 @@ void TestTheme::unknownSchemeIsDark()
 void TestTheme::applyTheme()
 {
     ::applyTheme();
-    QCOMPARE(QApplication::style()->name().toLower(), QStringLiteral("fusion"));
+    const auto* style = qobject_cast<const QProxyStyle*>(QApplication::style());
+    QVERIFY(style != nullptr);
+    QCOMPARE(style->baseStyle()->name().toLower(), QStringLiteral("fusion"));
     const ThemeColors& colors = currentThemeColors();
     const QPalette palette = QApplication::palette();
     QCOMPARE(palette.color(QPalette::Window), colors.space);
     QCOMPARE(palette.color(QPalette::Base), colors.field);
+    QCOMPARE(palette.color(QPalette::Mid), colors.edge);
     QCOMPARE(palette.color(QPalette::Text), colors.text);
     QCOMPARE(palette.color(QPalette::Highlight), colors.accent);
     QCOMPARE(palette.color(QPalette::HighlightedText), colors.onAccent);
     QCOMPARE(palette.color(QPalette::Disabled, QPalette::Text), colors.disabledText);
+}
+
+void TestTheme::edges_data()
+{
+    QTest::addColumn<Qt::ColorScheme>("scheme");
+    QTest::addColumn<QStyle::PrimitiveElement>("element");
+    QTest::addColumn<QStyle::State>("state");
+
+    const QStyle::State enabled = QStyle::State_Enabled;
+    for(const auto& [scheme, schemeName] :
+        {std::pair{Qt::ColorScheme::Dark, "dark"}, std::pair{Qt::ColorScheme::Light, "light"}})
+    {
+        QTest::addRow("%s: check box", schemeName)
+            << scheme << QStyle::PE_IndicatorCheckBox << (enabled | QStyle::State_Off);
+        QTest::addRow("%s: check box checked", schemeName)
+            << scheme << QStyle::PE_IndicatorCheckBox << (enabled | QStyle::State_On);
+        QTest::addRow("%s: check box partially checked", schemeName)
+            << scheme << QStyle::PE_IndicatorCheckBox << (enabled | QStyle::State_NoChange);
+        // That of a row of a list, which Fusion draws as a check box.
+        QTest::addRow("%s: check box of a list", schemeName)
+            << scheme << QStyle::PE_IndicatorItemViewItemCheck << (enabled | QStyle::State_Off);
+        QTest::addRow("%s: field", schemeName) << scheme << QStyle::PE_FrameLineEdit << enabled;
+    }
+}
+
+// Fusion draws the edges of the check boxes and of the fields from the color of the windows, which the dark fields
+// hide: the style of the theme draws them in its edge, which meets WCAG AA on the fields, see contrast().
+void TestTheme::edges()
+{
+    QFETCH(Qt::ColorScheme, scheme);
+    QFETCH(QStyle::PrimitiveElement, element);
+    QFETCH(QStyle::State, state);
+
+    ::applyTheme();
+    const ThemeColors& colors = themeColors(scheme);
+    constexpr int Size = 16;
+    QStyleOptionButton option;
+    option.rect = QRect(0, 0, Size, Size);
+    option.state = state;
+    option.palette.setColor(QPalette::Window, colors.space);
+    option.palette.setColor(QPalette::Base, colors.field);
+    option.palette.setColor(QPalette::Mid, colors.edge);
+    QImage image(Size, Size, QImage::Format_ARGB32);
+    image.fill(colors.field);
+    QPainter painter(&image);
+    QApplication::style()->drawPrimitive(element, &option, &painter);
+    painter.end();
+    QCOMPARE(image.pixelColor(0, Size / 2), colors.edge); // The middle of its left edge
 }
 
 void TestTheme::titleFont()
