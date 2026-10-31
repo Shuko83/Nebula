@@ -23,8 +23,7 @@ namespace Nebula
 class Universe;
 }
 
-// The widgets the panels of NebulaStudio are made of: those MainWindow assembles, which the galaxy of NebulaStudio
-// assembles too, see StudioPlugin/.
+// The widgets the panels of NebulaStudio are made of: those the galaxy of NebulaStudio assembles, see StudioPlugin/.
 
 // A list of the rows of model, one selected at a time.
 [[nodiscard]] QTreeView* createView(QAbstractItemModel& model);

@@ -71,7 +71,7 @@ void TestEditionView::init()
     QTest::failOnWarning(); // What is expected is told with QTest::ignoreMessage()
     m_scene = std::make_unique<QGraphicsScene>(SceneRect);
     m_view = std::make_unique<EditionView>(m_scene.get());
-    // As MainWindow shows it.
+    // As the edition zone shows it.
     m_view->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     m_view->setDragMode(QGraphicsView::RubberBandDrag);
     m_view->resize(400, 300);

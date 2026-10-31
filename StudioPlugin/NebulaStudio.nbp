@@ -27,7 +27,9 @@
             "type": "FabienDG.Nebula.StudioPlugin.ProjectComponent",
             "x": 1310,
             "y": 1740,
-            "properties": {}
+            "properties": {
+                "file": ""
+            }
         },
         {
             "name": "Plugins",

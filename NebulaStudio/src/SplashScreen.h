@@ -11,8 +11,7 @@ class QShowEvent;
 
 // Shown while NebulaStudio starts: the logo, the name and the version of Nebula, the Qt and compiler NebulaStudio was
 // built with and when, its copyright and its license, in the colors of the palette. It tells when it has been read, a
-// while after it was shown or as soon as it is clicked, and leaves it to the main window to replace it then, with
-// finish().
+// while after it was shown or as soon as it is clicked, and leaves it to what shows it to close it then.
 class SplashScreen : public QSplashScreen
 {
     Q_OBJECT

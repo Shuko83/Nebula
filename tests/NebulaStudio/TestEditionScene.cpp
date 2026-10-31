@@ -424,7 +424,7 @@ void TestEditionScene::init()
     m_scene = std::make_unique<EditionScene>(*m_application, Nebula::ComponentFactory::instance());
     QCOMPARE(m_scene->load(project), QStringList());
 
-    // As MainWindow shows it.
+    // As the edition zone shows it.
     m_view = std::make_unique<QGraphicsView>(m_scene.get());
     m_view->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     m_view->setDragMode(QGraphicsView::RubberBandDrag);

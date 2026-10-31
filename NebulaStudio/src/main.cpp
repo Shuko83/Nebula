@@ -1,63 +1,81 @@
 // Copyright (C) 2026 Fabien Di Grande
 // SPDX-License-Identifier: MPL-2.0
 
-#include <QApplication>
 #include <QCommandLineParser>
+#include <QFileInfo>
 #include <QIcon>
+#include <QMessageBox>
 
-#include "MainWindow.h"
+#include "Nebula/Application/NebulaApplication.h"
+#include "NebulaStudio_info.h"
 #include "SplashScreen.h"
 #include "Theme.h"
 
 namespace
 {
 
-// Reads what the command line of app gives: the options of Universe, and a project file to open.
-void readCommandLine(QCommandLineParser& parser, const QApplication& app)
+// The galaxy NebulaStudio runs, which assembles its window from the components of StudioPlugin: in scene/ next to it,
+// where each build copies the one of StudioPlugin/.
+const QString Galaxy = QStringLiteral("NebulaStudio.nbp");
+
+// What NebulaStudio tells of itself, its name and its version, which --version shows; not its organization, which would
+// move the AppConfigLocation the applications run in it write their settings files to.
+Nebula::ApplicationOptions options()
 {
-    parser.addHelpOption();
-    Nebula::Universe::addCommandLineOptions(parser);
+    return {.executable = {.name = QString::fromUtf8(NebulaStudioInfo::name),
+                           .version = QString::fromUtf8(NebulaStudioInfo::version)}};
+}
+
+// Declares what the command line of NebulaStudio gives beyond the options of NebulaApplication: a project file to open.
+void declareProject(QCommandLineParser& parser)
+{
+    parser.setApplicationDescription(
+        QCoreApplication::translate("main", "Assembles applications from the components of the plugins, live."));
     parser.addPositionalArgument(QStringLiteral("project"),
                                  QCoreApplication::translate("main", "Project file to open."),
                                  QStringLiteral("[project]"));
-    parser.process(app);
 }
 
-// Shows splash while the plugins are scanned, then until it is read: painted before the scan, a click waits for it to
-// end, when read() can be received.
-void showSplash(SplashScreen& splash)
+// Has the galaxy of app open the first of projects, given on the command line, as it starts: the file of its Project.
+void openFirst(Nebula::NebulaApplication& app, const QStringList& projects)
 {
+    Nebula::Component* project = app.universe().component(QStringLiteral("Project"));
+    if(project != nullptr && !projects.isEmpty())
+    {
+        project->setProperty("file", QFileInfo(projects.constFirst()).absoluteFilePath());
+    }
+}
+
+// Runs the galaxy of app, the splash screen shown over its window until it is read. Returns what app.exec() returns.
+int runWithSplash(Nebula::NebulaApplication& app)
+{
+    SplashScreen splash;
+    QObject::connect(&splash, &SplashScreen::read, &splash, &QWidget::close);
     splash.show();
-    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    const int code = app.exec();
+    splash.close(); // Before a box tells why the galaxy did not run
+    return code;
 }
 
-// Shows window once splash is read, and opens the first of projects, given on the command line, as soon as it shows.
-void showOnceRead(SplashScreen& splash, MainWindow& window, const QStringList& projects)
+// Tells in a box why the galaxy of app did not run, when it did not, then returns code, the one app.exec() returned.
+int tellFailure(const Nebula::NebulaApplication& app, int code)
 {
-    QObject::connect(&splash, &SplashScreen::read, &window,
-                     [&splash, &window, projects]
-                     {
-                         window.show();
-                         splash.finish(&window);
-                         if(!projects.isEmpty())
-                         {
-                             window.openProjectFile(projects.constFirst());
-                         }
-                     });
+    if(!app.errorString().isEmpty())
+    {
+        QMessageBox::critical(nullptr, QCoreApplication::translate("main", "NebulaStudio"), app.errorString());
+    }
+    return code;
 }
 
 } // namespace
 
+// NebulaStudio [options of NebulaApplication] [project]: its galaxy, whose window opens the project given, if any.
 int main(int argc, char* argv[])
 {
-    const QApplication app(argc, argv);
-    applyTheme();                                   // Before the splash screen, which is painted in its colors
-    QApplication::setWindowIcon(QIcon(logoPath())); // Of all its windows, and on the taskbar
     QCommandLineParser parser;
-    readCommandLine(parser, app);
-    SplashScreen splash;
-    showSplash(splash);
-    MainWindow window(&parser);
-    showOnceRead(splash, window, parser.positionalArguments());
-    return QApplication::exec();
+    declareProject(parser);
+    Nebula::NebulaApplication app(argc, argv, parser, Galaxy, options()); // Its StudioComponent applies the theme
+    QApplication::setWindowIcon(QIcon(logoPath()));                       // Of all its windows, and on the taskbar
+    openFirst(app, parser.positionalArguments());
+    return tellFailure(app, app.isLoaded() ? runWithSplash(app) : app.exec());
 }

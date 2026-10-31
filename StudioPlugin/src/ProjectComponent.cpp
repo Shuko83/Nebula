@@ -3,6 +3,8 @@
 
 #include "ProjectComponent.h"
 
+#include <QTimer>
+
 #include "EditionZone.h"
 #include "Studio.h"
 #include "StudioPlugin.h"
@@ -20,6 +22,39 @@ ProjectComponent::ProjectComponent()
     consumeInterface<EditionZone>(
         QStringLiteral("zone"), m_zone, Nebula::InterfaceRequirement::Mandatory, [this] { createProject(); },
         [this] { destroyProject(); });
+}
+
+QString ProjectComponent::file() const
+{
+    return m_file;
+}
+
+void ProjectComponent::setFile(const QString& file)
+{
+    if(m_file == file)
+    {
+        return;
+    }
+    m_file = file;
+    emit fileChanged(m_file);
+}
+
+bool ProjectComponent::onStart()
+{
+    if(!m_file.isEmpty())
+    {
+        // Once the window shows, which starts after it: its boxes open over it.
+        QTimer::singleShot(0, this, [this] { openFile(); });
+    }
+    return true;
+}
+
+void ProjectComponent::openFile()
+{
+    if(m_project != nullptr && state() == Nebula::ComponentState::Running && m_project->saveChanges())
+    {
+        m_project->openProjectFile(m_file);
+    }
 }
 
 void ProjectComponent::createProject()

@@ -8,7 +8,7 @@
 class QSettings;
 
 // What NebulaStudio keeps from one launch to the next for the user who runs it, in settings: those of the user for
-// NebulaStudio, see MainWindow, or a file in the tests. Only how things are shown, which a project does not hold.
+// NebulaStudio, see StudioComponent, or a file in the tests. Only how things are shown, which a project does not hold.
 
 // How the links are drawn: curves until another style is written, or when the one written is not known.
 [[nodiscard]] LinkStyle readLinkStyle(const QSettings& settings);
