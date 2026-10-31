@@ -19,6 +19,15 @@ to it.
 
 - NebulaStudio: `MainWindow` assembles parts that stand on their own, which the galaxy of NebulaStudio assembles too
   (#103): `Studio`, what they share, `EditionZone`, `Project`, `PluginPanel`, `GalaxyPanel` and `ComponentPanel`.
+- The dialog of a settings file in NebulaStudio (#105): a header tells the name of the file and what it is for;
+  checking an instance, or a group of objects, checks all its properties, and tells whether all, some or none of them
+  are held; the properties are filtered by a text, or restricted to those held, whose number is told; a name refused
+  is told in amber, and the default values of the properties are named so.
+
+### Fixed
+
+- NebulaStudio: the check boxes and the fields are edged in the edge color of the theme (#105). Fusion drew their
+  edges from the color of the windows, which hid them in the dark scheme.
 
 ## [2.0.0] - 2026-10-30
 
