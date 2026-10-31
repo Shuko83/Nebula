@@ -181,6 +181,7 @@ class TestStudioPlugin : public QObject
     void partsInTheWindow();
     void partsGoWithTheStudio();
     void stoppingStopsTheApplicationAssembled();
+    void projectFileOpensAsItStarts();
     void galaxyDirectory_data();
     void galaxyDirectory();
     void splitterInTheOrderOfItsBindings();
@@ -330,6 +331,25 @@ void TestStudioPlugin::stoppingStopsTheApplicationAssembled()
     QVERIFY(!start->isEnabled() && stop->isEnabled());
     m_universe->stop();
     QVERIFY(start->isEnabled() && !stop->isEnabled());
+}
+
+void TestStudioPlugin::projectFileOpensAsItStarts()
+{
+    const QTemporaryDir directory;
+    const QString project = directory.filePath(u"Clock.nbp"_s);
+    QFile file(project);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(QJsonDocument(QJsonObject{{u"version"_s, 1}}).toJson());
+    file.close();
+
+    openGalaxy();
+    QVERIFY(m_universe->component(u"Project"_s)->setProperty("file", project));
+    ignoreSizeHints();
+    QVERIFY(m_universe->start());
+    // Once the window shows, which tells its file.
+    QMainWindow* window = shownWindow();
+    QVERIFY(window != nullptr);
+    QTRY_COMPARE(window->windowTitle(), u"Clock.nbp - NebulaStudio"_s);
 }
 
 void TestStudioPlugin::galaxyDirectory_data()

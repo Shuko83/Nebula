@@ -1,7 +1,8 @@
 # Copyright (C) 2026 Fabien Di Grande
 # SPDX-License-Identifier: MPL-2.0
 
-# The application that assembles applications from the components of the plugins, live.
+# The application that assembles applications from the components of the plugins, live. A NebulaApplication that runs
+# the galaxy of NebulaStudio, which StudioPlugin/ assembles from the parts made of the classes of src/.
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
@@ -12,7 +13,7 @@ cmu_add_executable(
     NAME NebulaStudio
     NAMESPACE Nebula
     SOURCES ../resources/nebulastudio.qrc
-    LINK_LIBRARIES PRIVATE Nebula::Core Qt6::Widgets Qt6::Svg
+    LINK_LIBRARIES PRIVATE Nebula::Application Nebula::Core Qt6::Widgets Qt6::Svg
 )
 set_target_properties(NebulaStudio PROPERTIES WIN32_EXECUTABLE ON)
 # And the icon of NebulaStudio.exe: nebula.ico, rendered from the logo, through nebulastudio.rc.

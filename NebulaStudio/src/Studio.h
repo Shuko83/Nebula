@@ -18,7 +18,7 @@ class QCommandLineParser;
 // opens one from its file, tells it with refreshPlugins(), for the lists of plugins and of components to read them
 // again; one that writes a project file tells it with refreshGalaxies(), for the list of galaxies to read it again;
 // tell() is for a sentence the status bar of the window shows, as are the settings files of the application that
-// failed. MainWindow assembles these parts around a Studio, and so does the galaxy of NebulaStudio, see StudioPlugin/.
+// failed. The galaxy of NebulaStudio assembles these parts around a Studio, see StudioPlugin/.
 class Studio : public QObject
 {
     Q_OBJECT

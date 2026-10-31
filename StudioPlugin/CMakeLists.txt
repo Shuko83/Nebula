@@ -3,12 +3,11 @@
 
 # The parts of NebulaStudio, each a component, which its galaxy, NebulaStudio.nbp, assembles into the window of
 # NebulaStudio. They are made of its classes: NebulaStudio is an executable, which nothing links to, so these are
-# compiled again here, all but its window, its splash screen and its main, which the galaxy and the application that
-# runs it replace. The icons and the font of its theme come with them.
+# compiled again here, all but its splash screen and its main, which runs the galaxy. The icons and the font of its
+# theme come with them.
 set(_studio "${PROJECT_SOURCE_DIR}/NebulaStudio")
 file(GLOB_RECURSE _studio_sources CONFIGURE_DEPENDS "${_studio}/src/*.cpp")
-list(REMOVE_ITEM _studio_sources
-    "${_studio}/src/main.cpp" "${_studio}/src/MainWindow.cpp" "${_studio}/src/SplashScreen.cpp")
+list(REMOVE_ITEM _studio_sources "${_studio}/src/main.cpp" "${_studio}/src/SplashScreen.cpp")
 nebula_add_plugin(
     NAME StudioPlugin
     DESCRIPTION "The parts of NebulaStudio, each a component, which its galaxy assembles"
