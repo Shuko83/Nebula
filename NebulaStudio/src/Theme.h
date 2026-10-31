@@ -38,9 +38,10 @@ struct ThemeColors
 // The colors of the scheme the system has now, those applyTheme() gave the palette.
 [[nodiscard]] const ThemeColors& currentThemeColors();
 
-// Gives the application the style that paints everything in the colors of its palette, the font of the titles, and the
-// palette of the color scheme of the system, then again each time that scheme changes. Called once, after the
-// QApplication is created and before any widget is.
+// Gives the application the style that paints everything in the colors of its palette, Fusion, the edges of its check
+// boxes and of its fields drawn in the edge of the theme, the font of the titles, and the palette of the color scheme
+// of the system, then again each time that scheme changes. Called once, after the QApplication is created and before
+// any widget is.
 void applyTheme();
 
 // font, in the family of the titles, Space Grotesk, bold: for the name of what the edition zone shows, and the one of

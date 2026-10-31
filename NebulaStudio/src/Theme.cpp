@@ -5,8 +5,12 @@
 
 #include <QApplication>
 #include <QFontDatabase>
+#include <QPainter>
 #include <QPalette>
+#include <QProxyStyle>
 #include <QStyleHints>
+#include <QStyleOption>
+#include <memory>
 
 namespace
 {
@@ -133,6 +137,61 @@ void applyColorScheme(Qt::ColorScheme scheme)
     QApplication::setPalette(palette(themeColors(scheme)));
 }
 
+// The radius of the corners of a field, as Fusion draws them.
+constexpr qreal FieldRadius = 2;
+
+// Whether Fusion draws the edge of element, a check box or a field, in the accent: it has the focus, of the keyboard
+// for a check box.
+bool hasAccentEdge(QStyle::PrimitiveElement element, const QStyleOption& option)
+{
+    const bool focus = option.state.testFlag(QStyle::State_HasFocus);
+    return element == QStyle::PE_FrameLineEdit ? focus
+                                               : focus && option.state.testFlag(QStyle::State_KeyboardFocusChange);
+}
+
+// Draws the outline of element, a check box or a field, around rect, with the pen of painter.
+void drawOutline(QStyle::PrimitiveElement element, const QRect& rect, QPainter& painter)
+{
+    if(element == QStyle::PE_FrameLineEdit)
+    {
+        painter.drawRoundedRect(rect, FieldRadius, FieldRadius);
+        return;
+    }
+    painter.drawRect(rect);
+}
+
+// Draws again the edge of element, a check box or a field, where Fusion draws it, in the edge of the theme.
+void drawEdge(QStyle::PrimitiveElement element, const QStyleOption& option, QPainter& painter)
+{
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.translate(0.5, 0.5); // As Fusion does: on the pixels, not between them
+    painter.setPen(option.palette.color(QPalette::Mid));
+    painter.setBrush(Qt::NoBrush);
+    drawOutline(element, option.rect.adjusted(0, 0, -1, -1), painter);
+    painter.restore();
+}
+
+// Fusion, but for the edges of the check boxes, those of the item views and of the menus included, and of the fields:
+// it draws them from the color of the windows, darker, which the dark fields hide. They are drawn again in the edge of
+// the theme, as are those of what can be used, unless Fusion draws them in the accent.
+class ThemeStyle : public QProxyStyle
+{
+  public:
+    ThemeStyle() : QProxyStyle(QStringLiteral("Fusion")) {}
+
+    void drawPrimitive(PrimitiveElement element, const QStyleOption* option, QPainter* painter,
+                       const QWidget* widget) const override
+    {
+        QProxyStyle::drawPrimitive(element, option, painter, widget);
+        const bool edged = element == PE_IndicatorCheckBox || element == PE_FrameLineEdit;
+        if(edged && !hasAccentEdge(element, *option))
+        {
+            drawEdge(element, *option, *painter);
+        }
+    }
+};
+
 } // namespace
 
 const ThemeColors& themeColors(Qt::ColorScheme scheme)
@@ -147,8 +206,8 @@ const ThemeColors& currentThemeColors()
 
 void applyTheme()
 {
-    // The one style of Qt that paints all it draws in the colors of the palette, on every platform.
-    QApplication::setStyle(QStringLiteral("Fusion"));
+    // Fusion, the one style of Qt that paints all it draws in the colors of the palette, on every platform.
+    QApplication::setStyle(std::make_unique<ThemeStyle>().release()); // Which the application owns
     QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/SpaceGrotesk-Bold.ttf"));
 
     QStyleHints* hints = QGuiApplication::styleHints();
