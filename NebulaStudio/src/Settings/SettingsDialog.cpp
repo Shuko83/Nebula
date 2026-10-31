@@ -3,6 +3,7 @@
 
 #include "SettingsDialog.h"
 
+#include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFileDialog>
@@ -15,13 +16,17 @@
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
 
+#include "DialogHeader.h"
 #include "Nebula/Application/Universe.h"
+#include "PlaceholderStack.h"
 #include "PropertyTree.h"
 #include "Theme.h"
+#include "WarningLabel.h"
 
 namespace
 {
@@ -33,20 +38,10 @@ enum Column : std::uint8_t
     FileColumn,
 };
 
-// The name of file, telling in its tooltip what it is in a galaxy.
-QLineEdit* newNameEdit(const Nebula::SettingsFile& file)
-{
-    auto* edit = new QLineEdit(file.name());
-    if(file.galaxy() != nullptr)
-    {
-        edit->setToolTip(SettingsDialog::tr("The name the file of the galaxy gives it: each instance of the galaxy "
-                                            "writes its own, named after it, %1 for this one")
-                             .arg(file.fileName()));
-    }
-    return edit;
-}
+// The space between the fields and the properties.
+constexpr int SectionSpacing = 12;
 
-// The directory of a file, directory, telling what an empty or a relative one is.
+// The directory of a file, directory, telling what an empty or a relative one is; a button empties it.
 QLineEdit* newDirectoryEdit(const QString& directory)
 {
     auto* edit = new QLineEdit(directory);
@@ -54,16 +49,51 @@ QLineEdit* newDirectoryEdit(const QString& directory)
     edit->setToolTip(
         SettingsDialog::tr("Empty: the configuration directory of the user, for the application that runs\n"
                            "Relative: from the directory of the application that runs"));
+    edit->setClearButtonEnabled(true);
     return edit;
+}
+
+// A text in the muted color of the theme.
+QLabel* newMutedLabel()
+{
+    auto* label = new QLabel;
+    label->setForegroundRole(QPalette::PlaceholderText);
+    return label;
 }
 
 // Where a file is written.
 QLabel* newPathLabel()
 {
-    auto* label = new QLabel;
+    QLabel* label = newMutedLabel();
     label->setWordWrap(true);
     label->setTextInteractionFlags(Qt::TextSelectableByMouse);
     label->setToolTip(SettingsDialog::tr("Where the application writes it when it runs here, in NebulaStudio"));
+    return label;
+}
+
+// What filters the properties; a button empties it.
+QLineEdit* newFilterEdit()
+{
+    auto* edit = new QLineEdit;
+    edit->setPlaceholderText(SettingsDialog::tr("Filter properties"));
+    edit->setToolTip(SettingsDialog::tr("Shows the properties whose name, or the one of their instance or of their "
+                                        "group, contains this text"));
+    edit->setClearButtonEnabled(true);
+    return edit;
+}
+
+QCheckBox* newHeldOnlyBox()
+{
+    auto* box = new QCheckBox(SettingsDialog::tr("Held only"));
+    box->setToolTip(SettingsDialog::tr("Shows only the properties the file holds"));
+    return box;
+}
+
+// The title of a part of the dialog.
+QLabel* newSectionTitle(const QString& text)
+{
+    auto* label = new QLabel(text);
+    label->setFont(titleFont(label->font()));
     return label;
 }
 
@@ -72,12 +102,19 @@ void disableFor(QTreeWidgetItem& row, const QString& holder)
 {
     row.setFlags(Qt::NoItemFlags);
     row.setText(FileColumn, holder);
+    row.setIcon(FileColumn, icon(GlossaryTerm::Comet));
+    row.setToolTip(FileColumn, SettingsDialog::tr("A property is held by a single settings file"));
+}
+
+bool isChecked(const QTreeWidgetItem& row)
+{
+    return row.checkState(PropertyColumn) == Qt::Checked;
 }
 
 // Whether row is of a property a file holds: the one of the dialog, or another one.
 bool isHeld(const QTreeWidgetItem& row)
 {
-    return row.checkState(PropertyColumn) == Qt::Checked || !row.text(FileColumn).isEmpty();
+    return isChecked(row) || !row.text(FileColumn).isEmpty();
 }
 
 } // namespace
@@ -85,34 +122,61 @@ bool isHeld(const QTreeWidgetItem& row)
 SettingsDialog::SettingsDialog(Nebula::SettingsFile& file, const Nebula::Universe& application,
                                const Nebula::ComponentFactory& factory, QWidget* parent)
     : EditDialog(file, parent), m_file(file), m_application(application),
-      m_tree(newChoiceTree({tr("Property"), tr("Value"), tr("Held by")}))
+      m_header(new DialogHeader(icon(GlossaryTerm::Comet))),
+      m_tree(newChoiceTree({tr("Property"), tr("Default value"), tr("Held by")}))
 {
     setWindowTitle(tr("Settings file"));
     setWindowIcon(icon(GlossaryTerm::Comet));
     createFields();
+    createFilter();
     fill(application, factory);
     layOut();
-    refreshPath();
-    resize(560, 520);
+    refreshFields();
+    refreshCount();
+    filter();
+    resize(640, 640);
 }
 
 void SettingsDialog::createFields()
 {
-    m_fileName = newNameEdit(m_file);
+    m_fileName = new QLineEdit(m_file.name());
     m_directory = newDirectoryEdit(m_file.directory());
     m_path = newPathLabel();
-    connect(m_fileName, &QLineEdit::textChanged, this, &SettingsDialog::refreshPath);
-    connect(m_directory, &QLineEdit::textChanged, this, &SettingsDialog::refreshPath);
+    m_refusal = new WarningLabel;
+    connect(m_fileName, &QLineEdit::textChanged, this, &SettingsDialog::refreshFields);
+    connect(m_directory, &QLineEdit::textChanged, this, &SettingsDialog::refreshFields);
+}
+
+void SettingsDialog::createFilter()
+{
+    m_filter = newFilterEdit();
+    m_heldOnly = newHeldOnlyBox();
+    m_count = newMutedLabel();
+    connect(m_filter, &QLineEdit::textChanged, this, &SettingsDialog::filter);
+    connect(m_heldOnly, &QCheckBox::toggled, this, &SettingsDialog::filter);
 }
 
 void SettingsDialog::layOut()
 {
     auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins({}); // The header across the dialog
+    layout->setSpacing(0);
+    layout->addWidget(m_header);
+    layout->addWidget(newContent(), 1);
+}
+
+QWidget* SettingsDialog::newContent()
+{
+    auto* content = new QWidget;
+    auto* layout = new QVBoxLayout(content);
     layout->addLayout(newForm());
-    layout->addWidget(newHint(tr("The properties checked keep the values the user of the application gives them, "
-                                 "from one run to the next. The values of the project are their default values.")));
-    layout->addWidget(m_tree, 1);
+    layout->addWidget(m_refusal);
+    layout->addSpacing(SectionSpacing);
+    layout->addLayout(newPropertiesTitle());
+    layout->addLayout(newFilterRow());
+    layout->addWidget(newPropertyArea(), 1);
     layout->addWidget(buttons());
+    return content;
 }
 
 QFormLayout* SettingsDialog::newForm()
@@ -134,6 +198,31 @@ QHBoxLayout* SettingsDialog::newDirectoryRow()
     return row;
 }
 
+QHBoxLayout* SettingsDialog::newPropertiesTitle()
+{
+    auto* row = new QHBoxLayout;
+    row->addWidget(newSectionTitle(tr("Properties")));
+    row->addStretch();
+    row->addWidget(m_count);
+    return row;
+}
+
+QHBoxLayout* SettingsDialog::newFilterRow()
+{
+    auto* row = new QHBoxLayout;
+    row->addWidget(m_filter, 1);
+    row->addWidget(m_heldOnly);
+    return row;
+}
+
+QWidget* SettingsDialog::newPropertyArea()
+{
+    auto* area = new QWidget;
+    m_properties = new PlaceholderStack(m_tree, *area);
+    m_properties->placeholder()->setForegroundRole(QPalette::PlaceholderText);
+    return area;
+}
+
 void SettingsDialog::fill(const Nebula::Universe& application, const Nebula::ComponentFactory& factory)
 {
     // Those of its galaxy: it holds no other.
@@ -142,12 +231,16 @@ void SettingsDialog::fill(const Nebula::Universe& application, const Nebula::Com
         addIfFilled(*m_tree, componentRow(*component, factory));
     }
     openAbove(*m_tree, isHeld);
+    makeGroupsCheckable(*m_tree, PropertyColumn);
+    connect(m_tree, &QTreeWidget::itemChanged, this, &SettingsDialog::checkChanged);
 }
 
 QTreeWidgetItem* SettingsDialog::componentRow(Nebula::Component& component, const Nebula::ComponentFactory& factory)
 {
     QTreeWidgetItem* row = groupRow(component.objectName());
     row->setToolTip(PropertyColumn, component.componentId());
+    row->setIcon(PropertyColumn, icon(GlossaryTerm::Astre));
+    row->setFont(PropertyColumn, titleFont(m_tree->font()));
     const ListProperties list = std::bind_front(&SettingsDialog::addProperties, this, std::ref(component));
     list(row, &component, ownProperties(factory, component));
     addObjectGroups(*row, component, list);
@@ -197,11 +290,27 @@ QString SettingsDialog::nameRefusal() const
                                                   : QString();
 }
 
-void SettingsDialog::refreshPath()
+QString SettingsDialog::about() const
 {
-    const QString refusal = nameRefusal();
+    QString about = tr("Keeps the values the user of the application gives the properties checked below, from one run "
+                       "to the next. Those of the project are their default values.");
+    if(m_file.galaxy() == nullptr)
+    {
+        return about;
+    }
+    return about + u' ' +
+           tr("Each instance of the galaxy writes its own file, named after it: %1 for this one.").arg(fileName());
+}
+
+void SettingsDialog::refreshFields()
+{
+    const QString name = m_fileName->text().trimmed();
+    m_header->setTitle(name.isEmpty() ? tr("Settings file") : name);
+    m_header->setText(about());
     const QString filePath = Nebula::SettingsFile::filePath(fileName(), m_directory->text().trimmed());
-    m_path->setText(refusal.isEmpty() ? QDir::toNativeSeparators(filePath) : refusal);
+    m_path->setText(QDir::toNativeSeparators(filePath));
+    const QString refusal = nameRefusal();
+    m_refusal->setText(refusal);
     setAcceptable(refusal.isEmpty());
 }
 
@@ -216,6 +325,41 @@ void SettingsDialog::browse()
     {
         m_directory->setText(directory);
     }
+}
+
+void SettingsDialog::checkChanged(QTreeWidgetItem* row, int column)
+{
+    if(column == PropertyColumn)
+    {
+        followCheck(*row, column);
+        refreshCount();
+    }
+}
+
+void SettingsDialog::refreshCount()
+{
+    const QList<const QTreeWidgetItem*> rows = m_entries.keys();
+    const auto held = std::ranges::count_if(rows, [](const QTreeWidgetItem* row) { return isChecked(*row); });
+    m_count->setText(tr("%1 of %2 held").arg(held).arg(rows.size()));
+}
+
+void SettingsDialog::filter()
+{
+    const bool heldOnly = m_heldOnly->isChecked();
+    const bool found = filterRows(*m_tree, PropertyColumn, m_filter->text().trimmed(),
+                                  [heldOnly](const QTreeWidgetItem& row) { return !heldOnly || isChecked(row); });
+    m_properties->placeholder()->setText(whyNoProperty());
+    m_properties->showPageIf(found);
+}
+
+QString SettingsDialog::whyNoProperty() const
+{
+    if(m_tree->topLevelItemCount() == 0)
+    {
+        return tr("None of the instances has a property a settings file can hold");
+    }
+    // Only those held are shown, then.
+    return m_filter->text().trimmed().isEmpty() ? tr("The file holds no property yet") : tr("No property found");
 }
 
 void SettingsDialog::apply()

@@ -4,6 +4,7 @@
 #include "PropertyTree.h"
 
 #include <QHeaderView>
+#include <QSignalBlocker>
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
 #include <algorithm>
@@ -50,6 +51,77 @@ void openParents(const QTreeWidgetItem& row)
     {
         parent->setExpanded(true);
     }
+}
+
+// Whether row can be checked.
+bool isCheckable(const QTreeWidgetItem& row)
+{
+    return row.flags().testFlag(Qt::ItemIsUserCheckable);
+}
+
+// Whether row is a property that can be checked: it can be, and groups none.
+bool isCheckableProperty(const QTreeWidgetItem& row)
+{
+    return row.childCount() == 0 && isCheckable(row);
+}
+
+// The states in column of the rows under row, at any depth, that can be checked and group none.
+QList<Qt::CheckState> statesUnder(const QTreeWidgetItem& row, int column)
+{
+    QList<Qt::CheckState> states;
+    for(int index = 0; index < row.childCount(); ++index)
+    {
+        const QTreeWidgetItem& child = *row.child(index);
+        states.append(isCheckableProperty(child) ? QList{child.checkState(column)} : statesUnder(child, column));
+    }
+    return states;
+}
+
+// Checked when all of states are, unchecked when none is, partially checked otherwise.
+Qt::CheckState stateOfAll(const QList<Qt::CheckState>& states)
+{
+    if(!states.contains(Qt::Unchecked) && !states.contains(Qt::PartiallyChecked))
+    {
+        return Qt::Checked;
+    }
+    return states.contains(Qt::Checked) ? Qt::PartiallyChecked : Qt::Unchecked;
+}
+
+// Gives the rows under row, at any depth, that can be checked, state in column.
+void checkUnder(QTreeWidgetItem& row, int column, Qt::CheckState state)
+{
+    for(int index = 0; index < row.childCount(); ++index)
+    {
+        QTreeWidgetItem& child = *row.child(index);
+        if(isCheckable(child))
+        {
+            child.setCheckState(column, state);
+        }
+        checkUnder(child, column, state);
+    }
+}
+
+// What filterRows() shows.
+struct RowFilter
+{
+    int column = 0;
+    QString text;
+    std::function<bool(const QTreeWidgetItem&)> accepts;
+};
+
+// Shows row, as filterRows() does, when its text is found, or found is, the text of a row above it being found, or
+// when a row under it is shown; hides it otherwise. Returns whether it is shown.
+bool filterRow(QTreeWidgetItem& row, const RowFilter& filter, bool found)
+{
+    found = found || row.text(filter.column).contains(filter.text, Qt::CaseInsensitive);
+    bool shown = row.childCount() == 0 && found && filter.accepts(row);
+    for(int index = 0; index < row.childCount(); ++index)
+    {
+        shown = filterRow(*row.child(index), filter, found) || shown; // Each child, shown or not
+    }
+    row.setHidden(!shown);
+    row.setExpanded(row.isExpanded() || (shown && !filter.text.isEmpty()));
+    return shown;
 }
 
 } // namespace
@@ -123,6 +195,44 @@ void makeCheckable(QTreeWidgetItem& row, int column, bool checked, Qt::ItemFlags
 {
     row.setFlags(Qt::ItemIsEnabled | Qt::ItemIsUserCheckable | flags);
     row.setCheckState(column, checked ? Qt::Checked : Qt::Unchecked);
+}
+
+void makeGroupsCheckable(QTreeWidget& tree, int column)
+{
+    for(QTreeWidgetItemIterator row(&tree); *row != nullptr; ++row)
+    {
+        const QList<Qt::CheckState> states = statesUnder(**row, column);
+        if(!states.isEmpty())
+        {
+            (*row)->setFlags((*row)->flags() | Qt::ItemIsUserCheckable);
+            (*row)->setCheckState(column, stateOfAll(states));
+        }
+    }
+}
+
+void followCheck(QTreeWidgetItem& row, int column)
+{
+    const QSignalBlocker blocker(row.treeWidget()); // What it changes is told by row
+    if(row.childCount() > 0)
+    {
+        checkUnder(row, column, row.checkState(column));
+    }
+    for(QTreeWidgetItem* parent = row.parent(); parent != nullptr && isCheckable(*parent); parent = parent->parent())
+    {
+        parent->setCheckState(column, stateOfAll(statesUnder(*parent, column)));
+    }
+}
+
+bool filterRows(QTreeWidget& tree, int column, const QString& text,
+                const std::function<bool(const QTreeWidgetItem&)>& accepts)
+{
+    const RowFilter filter{.column = column, .text = text, .accepts = accepts};
+    bool shown = false;
+    for(int index = 0; index < tree.topLevelItemCount(); ++index)
+    {
+        shown = filterRow(*tree.topLevelItem(index), filter, false) || shown; // Each row, shown or not
+    }
+    return shown;
 }
 
 QStringList groupNames(const QList<Nebula::PropertyObject>& objects)
