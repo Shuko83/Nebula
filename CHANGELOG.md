@@ -23,6 +23,10 @@ to it.
   checking an instance, or a group of objects, checks all its properties, and tells whether all, some or none of them
   are held; the properties are filtered by a text, or restricted to those held, whose number is told; a name refused
   is told in amber, and the default values of the properties are named so.
+- The dialog of a stargate in NebulaStudio (#116), as the one of a settings file: a header tells the name of the
+  stargate and what it is for; checking an instance, or a group of objects, checks all it has to expose, each under its
+  name, and tells whether all, some or none of it is exposed; the interfaces and the properties are filtered by a text,
+  or restricted to those exposed, whose number is told; what another stargate exposes has the icon of the Stargate.
 
 ### Fixed
 
