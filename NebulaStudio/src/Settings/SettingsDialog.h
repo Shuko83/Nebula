@@ -11,9 +11,7 @@
 #include "EditDialog.h"
 #include "Nebula/Settings/SettingsFile.h"
 
-class DialogHeader;
-class PlaceholderStack;
-class QCheckBox;
+class ChoicePanel;
 class QFormLayout;
 class QHBoxLayout;
 class QLabel;
@@ -34,9 +32,9 @@ class Universe;
 // and what the file is for, then where it is written, or why that name is refused. Checking a component, or a group
 // of objects, checks all the properties under it that the file can hold; it tells whether all, some or none of them
 // are held. The properties are filtered by a text, found in their names or in those of their components or groups,
-// and can be restricted to those held, whose number is told; when none is shown, a text tells why. A property another
-// file holds is listed with the name of that file, and cannot be checked. What was edited is given to the file once the
-// dialog is accepted.
+// and can be restricted to those held, whose number is told; when none is shown, a text tells why, see ChoicePanel. A
+// property another file holds is listed with the name of that file, and cannot be checked. What was edited is given to
+// the file once the dialog is accepted.
 class SettingsDialog : public EditDialog
 {
     Q_OBJECT
@@ -49,20 +47,11 @@ class SettingsDialog : public EditDialog
   private:
     // The fields of its name and its directory, where it is written, which follows them, and why its name is refused.
     void createFields();
-    // The filter of the properties, and the number of those held.
-    void createFilter();
-    void layOut();
     // Under the header: the fields, then the properties.
     [[nodiscard]] QWidget* newContent();
     [[nodiscard]] QFormLayout* newForm();
     // Its directory, with a button to choose another one.
     [[nodiscard]] QHBoxLayout* newDirectoryRow();
-    // The title of the properties, and how many are held.
-    [[nodiscard]] QHBoxLayout* newPropertiesTitle();
-    // The filter of the properties, and whether to show those held only.
-    [[nodiscard]] QHBoxLayout* newFilterRow();
-    // Where the properties are listed, or why none is.
-    [[nodiscard]] QWidget* newPropertyArea();
     // Lists the properties of the components of application, or of the galaxy of the file.
     void fill(const Nebula::Universe& application, const Nebula::ComponentFactory& factory);
     // The row of component, with those of the properties a file can hold under it.
@@ -87,12 +76,6 @@ class SettingsDialog : public EditDialog
     void browse();
     // Once row is checked or unchecked: the rows under it or above it follow, and the number of those held is told.
     void checkChanged(QTreeWidgetItem* row, int column);
-    // Tells how many properties are held, among those the file can hold.
-    void refreshCount();
-    // Shows the properties the filter finds, those held only when asked to, or why it shows none.
-    void filter();
-    // Why no property is shown: no instance has one a file can hold, the file holds none, or the filter finds none.
-    [[nodiscard]] QString whyNoProperty() const;
     // Gives the file what was edited.
     void apply() override;
     // Has the file hold the property of row, or no longer, as row is checked.
@@ -101,14 +84,10 @@ class SettingsDialog : public EditDialog
     Nebula::SettingsFile& m_file;
     const Nebula::Universe& m_application;
     QHash<const QTreeWidgetItem*, Nebula::SettingsEntry> m_entries; // The entry each property of the tree is
-    DialogHeader* m_header = nullptr;
     QLineEdit* m_fileName = nullptr;
     QLineEdit* m_directory = nullptr;
     QLabel* m_path = nullptr;
     WarningLabel* m_refusal = nullptr; // Why its name is refused, when it is
-    QLineEdit* m_filter = nullptr;
-    QCheckBox* m_heldOnly = nullptr;
-    QLabel* m_count = nullptr; // How many properties are held
     QTreeWidget* m_tree = nullptr;
-    PlaceholderStack* m_properties = nullptr; // m_tree, or why it shows no property
+    ChoicePanel* m_properties = nullptr; // Shows m_tree
 };

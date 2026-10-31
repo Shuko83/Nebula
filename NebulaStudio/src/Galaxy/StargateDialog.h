@@ -79,7 +79,10 @@ class StargateDialog : public EditDialog
         void record(const Nebula::Stargate& stargate, const Nebula::Stargate& self, const QString& name);
     };
 
-    void layOut();
+    // The header tells its name, and what it is for.
+    void tellAbout();
+    // Under the header: the tree, why it cannot be accepted, and the buttons.
+    [[nodiscard]] QWidget* newContent();
     // Checks row, when it is a choice, then edits the name it is exposed as.
     void editName(QTreeWidgetItem* row);
 

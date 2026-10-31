@@ -4,7 +4,6 @@
 #include "StargateDialog.h"
 
 #include <QDialogButtonBox>
-#include <QLabel>
 #include <QSignalBlocker>
 #include <QStringList>
 #include <QTreeWidget>
@@ -15,6 +14,7 @@
 #include <memory>
 #include <ranges>
 
+#include "DialogHeader.h"
 #include "InterfaceItem.h"
 #include "Nebula/Application/Universe.h"
 #include "Nebula/Galaxy/Galaxy.h"
@@ -116,33 +116,40 @@ void StargateDialog::Exposed::record(const Nebula::Stargate& stargate, const Neb
 
 StargateDialog::StargateDialog(Nebula::Stargate& stargate, const Nebula::Universe& application,
                                const Nebula::ComponentFactory& factory, QWidget* parent)
-    : EditDialog(stargate, parent), m_stargate(stargate), m_application(application),
+    : EditDialog(stargate, icon(GlossaryTerm::Stargate), parent), m_stargate(stargate), m_application(application),
       m_tree(newChoiceTree({tr("Interface or property"), tr("Type"), tr("Exposed as"), tr("Exposed by")})),
       m_problem(new WarningLabel)
 {
     setWindowTitle(tr("Stargate %1").arg(stargate.objectName()));
-    setWindowIcon(icon(GlossaryTerm::Stargate));
+    tellAbout();
     m_tree->setEditTriggers(QAbstractItemView::NoEditTriggers); // Its name only, see editName()
     fill(factory);
     connect(m_tree, &QTreeWidget::itemChanged, this, &StargateDialog::edited);
     connect(m_tree, &QTreeWidget::itemDoubleClicked, this, &StargateDialog::editName);
-    layOut();
+    layOut(newContent());
     check();
     resize(680, 560);
 }
 
-void StargateDialog::layOut()
+void StargateDialog::tellAbout()
 {
-    auto* layout = new QVBoxLayout(this);
-    layout->addWidget(newHint(
+    header().setTitle(m_stargate.objectName());
+    header().setText(
         tr("What the galaxy of this project has through %1 once it is placed in another one: the interfaces and the "
            "properties checked, each under the name next to it. Double-clicking one checks it and edits that name. "
            "What the galaxy provides, one of its components provides; what it consumes, it gives to those of its "
            "components that consume it, the same pointer to each of those checked under the same name.")
-            .arg(m_stargate.objectName())));
+            .arg(m_stargate.objectName()));
+}
+
+QWidget* StargateDialog::newContent()
+{
+    auto* content = new QWidget;
+    auto* layout = new QVBoxLayout(content);
     layout->addWidget(m_tree, 1);
     layout->addWidget(m_problem);
     layout->addWidget(buttons());
+    return content;
 }
 
 void StargateDialog::editName(QTreeWidgetItem* row)
