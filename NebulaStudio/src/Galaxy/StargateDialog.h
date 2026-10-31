@@ -17,6 +17,8 @@
 #include "EditDialog.h"
 #include "Nebula/Galaxy/Stargate.h"
 
+class ChoicePanel;
+class QIcon;
 class QTreeWidget;
 class QTreeWidgetItem;
 class WarningLabel;
@@ -29,13 +31,17 @@ class Universe;
 } // namespace Nebula
 
 // Chooses what a stargate of the application, or of one of its galaxies, exposes, as the dialog of a settings file
-// chooses what it holds: under each component where the stargate is, its interfaces, then its properties, those a
-// project holds, or those a galaxy among them exposes, which it exposes again. Next to what is checked, the name it is
-// exposed as: the one of the interface or of the property until another one is typed. Double-clicking a row checks it
-// and edits that name. Two interfaces consumed, of the same type, checked under the same name, are given what the
-// galaxy consumes through the same interface of the stargate. What another stargate exposes is listed with its name,
-// and cannot be checked; what the stargate exposes that is bound to none of the components listed is listed last, to
-// keep or not. What was chosen is given to the stargate, which is bound accordingly, once the dialog is accepted.
+// chooses what it holds. A header tells its name and what it is for; then, under each component where the stargate is,
+// its interfaces, then its properties, those a project holds, or those a galaxy among them exposes, which it exposes
+// again. Next to what is checked, the name it is exposed as: the one of the interface or of the property until another
+// one is typed. Double-clicking a row checks it and edits that name. Checking a component, or a group of objects,
+// checks all it has to expose, each given its name; it tells whether all, some or none of it is exposed. The rows are
+// filtered by a text, found in their names or in those of their components or groups, and can be restricted to what
+// is exposed, whose number is told; when none is shown, a text tells why, see ChoicePanel. Two
+// interfaces consumed, of the same type, checked under the same name, are given what the galaxy consumes through the
+// same interface of the stargate. What another stargate exposes is listed with its name, and cannot be checked; what
+// the stargate exposes that is bound to none of the components listed is listed last, to keep or not. What was chosen
+// is given to the stargate, which is bound accordingly, once the dialog is accepted.
 class StargateDialog : public EditDialog
 {
     Q_OBJECT
@@ -79,9 +85,9 @@ class StargateDialog : public EditDialog
         void record(const Nebula::Stargate& stargate, const Nebula::Stargate& self, const QString& name);
     };
 
-    // The header tells its name, and what it is for.
-    void tellAbout();
-    // Under the header: the tree, why it cannot be accepted, and the buttons.
+    // What the stargate is for, and the galaxy it is in when it is not the one of the project.
+    [[nodiscard]] QString about() const;
+    // Under the header: what it can expose, why it cannot be accepted, and the buttons.
     [[nodiscard]] QWidget* newContent();
     // Checks row, when it is a choice, then edits the name it is exposed as.
     void editName(QTreeWidgetItem* row);
@@ -109,11 +115,14 @@ class StargateDialog : public EditDialog
     // What the stargate exposes that none of the rows of components tells: bound to nothing, as the component it was
     // bound to went.
     [[nodiscard]] QTreeWidgetItem* keptRow();
+    void addKeptChoices(QTreeWidgetItem* parent);
     void addKeptChoice(QTreeWidgetItem* parent, const Nebula::ExposedInterface& exposed);
     // Adds the row of choice under parent, checked as exposed.as tells, disabled when exposed.by, another stargate,
     // exposes it; returns it.
     QTreeWidgetItem* addChoice(QTreeWidgetItem* parent, const QString& text, const QString& kind, const Choice& choice,
                                const Exposed& exposed);
+    // A row of the top of the tree, which groups others: text, in the font of the titles, beside icon.
+    [[nodiscard]] QTreeWidgetItem* topRow(const QString& text, const QIcon& icon) const;
 
     // Who exposes name, which component provides.
     [[nodiscard]] Exposed providedExposure(const Nebula::Component& component, const QString& name) const;
@@ -128,8 +137,14 @@ class StargateDialog : public EditDialog
     // same way, unless they share it.
     [[nodiscard]] bool isNameTaken(const Rows& rows, const QTreeWidgetItem* row, const Choice& choice,
                                    const QString& name) const;
-    // A checked row is given its name when it has none; an unchecked one loses it. Then what can be accepted is told.
+    // Once row is checked or unchecked, see checkChanged(), or its name edited, which is tidied. Then what can be
+    // accepted is told.
     void edited(QTreeWidgetItem* row, int column);
+    // The rows under row or above it follow it, see followCheck(); those checked are given a name when they have none,
+    // those unchecked lose theirs; and the number of those exposed is told.
+    void checkChanged(QTreeWidgetItem& row);
+    // Gives row and the rows under it, those that are choices, the name they have once checked or unchecked.
+    void tidyNames(QTreeWidgetItem& row);
     // Gives row the name it has once column is edited, see nameAfterEdit().
     void tidyName(QTreeWidgetItem& row, int column);
     // The name row is given once column is edited: its default one once checked without one, none once unchecked,
@@ -200,5 +215,6 @@ class StargateDialog : public EditDialog
     const Nebula::Universe& m_application;
     QHash<const QTreeWidgetItem*, Choice> m_choices; // What each row of the tree exposes
     QTreeWidget* m_tree = nullptr;
+    ChoicePanel* m_panel = nullptr;    // Shows m_tree
     WarningLabel* m_problem = nullptr; // Why it cannot be accepted, when it cannot
 };

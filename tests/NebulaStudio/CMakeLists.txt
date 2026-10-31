@@ -62,6 +62,11 @@ nebula_add_test(TestSettingsDialog
         "${_studio}/src/ChoicePanel.cpp" "${_studio}/src/Theme.cpp" ${_resources}
     INCLUDE_DIRECTORIES "${_studio}/src"
     LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
+# The dialog of a stargate, with the items whose names it shows.
+nebula_add_test(TestStargateDialog
+    SOURCES ${_scene}
+    INCLUDE_DIRECTORIES "${_studio}/src"
+    LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
 nebula_add_test(TestGalaxyModel
     SOURCES "${_studio}/src/Galaxy/GalaxyModel.cpp" "${_studio}/src/Theme.cpp" ${_resources}
     INCLUDE_DIRECTORIES "${_studio}/src"

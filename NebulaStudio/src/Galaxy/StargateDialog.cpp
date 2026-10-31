@@ -4,6 +4,8 @@
 #include "StargateDialog.h"
 
 #include <QDialogButtonBox>
+#include <QFileInfo>
+#include <QIcon>
 #include <QSignalBlocker>
 #include <QStringList>
 #include <QTreeWidget>
@@ -14,6 +16,7 @@
 #include <memory>
 #include <ranges>
 
+#include "ChoicePanel.h"
 #include "DialogHeader.h"
 #include "InterfaceItem.h"
 #include "Nebula/Application/Universe.h"
@@ -101,6 +104,45 @@ bool isExposed(const QTreeWidgetItem& row)
     return !row.text(NameColumn).isEmpty() || !row.text(ByColumn).isEmpty();
 }
 
+// Disables row, which another stargate exposes, as it tells.
+void disableForOther(QTreeWidgetItem& row)
+{
+    row.setFlags(Qt::NoItemFlags);
+    row.setIcon(ByColumn, icon(GlossaryTerm::Stargate));
+    row.setToolTip(ByColumn, StargateDialog::tr("What a stargate exposes, another one cannot"));
+}
+
+// row, then the rows under it, at any depth, in the order of the tree.
+QList<QTreeWidgetItem*> rowAndUnder(QTreeWidgetItem& row)
+{
+    QList<QTreeWidgetItem*> rows{&row};
+    for(int index = 0; index < row.childCount(); ++index)
+    {
+        rows.append(rowAndUnder(*row.child(index)));
+    }
+    return rows;
+}
+
+// What the panel of what can be exposed shows.
+ChoicePanel::Texts choiceTexts()
+{
+    return {.title = StargateDialog::tr("Interfaces and properties"),
+            .count = StargateDialog::tr("%1 of %2 exposed"),
+            .filter = StargateDialog::tr("Filter interfaces and properties"),
+            .filterToolTip = StargateDialog::tr("Shows the interfaces and the properties whose name, or the one of "
+                                                "their instance or of their group, contains this text"),
+            .checkedOnly = StargateDialog::tr("Exposed only"),
+            .checkedOnlyToolTip = StargateDialog::tr("Shows only what the stargate exposes")};
+}
+
+// Why the panel of what can be exposed shows nothing.
+ChoicePanel::WhyNone whyNoChoice()
+{
+    return {.empty = StargateDialog::tr("None of the instances has an interface or a property to expose"),
+            .noneChecked = StargateDialog::tr("The stargate exposes nothing yet"),
+            .noneFound = StargateDialog::tr("Nothing found")};
+}
+
 } // namespace
 
 void StargateDialog::Exposed::record(const Nebula::Stargate& stargate, const Nebula::Stargate& self,
@@ -121,32 +163,36 @@ StargateDialog::StargateDialog(Nebula::Stargate& stargate, const Nebula::Univers
       m_problem(new WarningLabel)
 {
     setWindowTitle(tr("Stargate %1").arg(stargate.objectName()));
-    tellAbout();
+    header().setTitle(stargate.objectName());
+    header().setText(about());
     m_tree->setEditTriggers(QAbstractItemView::NoEditTriggers); // Its name only, see editName()
     fill(factory);
-    connect(m_tree, &QTreeWidget::itemChanged, this, &StargateDialog::edited);
     connect(m_tree, &QTreeWidget::itemDoubleClicked, this, &StargateDialog::editName);
     layOut(newContent());
     check();
-    resize(680, 560);
+    resize(720, 640);
 }
 
-void StargateDialog::tellAbout()
+QString StargateDialog::about() const
 {
-    header().setTitle(m_stargate.objectName());
-    header().setText(
-        tr("What the galaxy of this project has through %1 once it is placed in another one: the interfaces and the "
-           "properties checked, each under the name next to it. Double-clicking one checks it and edits that name. "
-           "What the galaxy provides, one of its components provides; what it consumes, it gives to those of its "
-           "components that consume it, the same pointer to each of those checked under the same name.")
-            .arg(m_stargate.objectName()));
+    const Nebula::Galaxy* galaxy = m_application.galaxyOf(m_stargate);
+    const QString owner =
+        galaxy == nullptr
+            ? tr("The galaxy of this project has what the stargate exposes once it is placed in another one.")
+            : tr("The galaxy %1 has what the stargate exposes once it is placed in another one.")
+                  .arg(QFileInfo(galaxy->filePath()).completeBaseName());
+    return owner + u' ' +
+           tr("Check below the interfaces and the properties to expose, each under the name next to it, which "
+              "double-clicking a row edits. What the galaxy provides, one of its instances provides; what it consumes, "
+              "it gives to the instances that consume it, the same pointer to those checked under the same name.");
 }
 
 QWidget* StargateDialog::newContent()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->addWidget(m_tree, 1);
+    m_panel = new ChoicePanel(m_tree, choiceTexts(), whyNoChoice());
+    layout->addWidget(m_panel, 1);
     layout->addWidget(m_problem);
     layout->addWidget(buttons());
     return content;
@@ -169,12 +215,15 @@ void StargateDialog::fill(const Nebula::ComponentFactory& factory)
     }
     addIfFilled(*m_tree, keptRow());
     openAbove(*m_tree, isExposed);
+    makeGroupsCheckable(*m_tree, ExposesColumn);
+    connect(m_tree, &QTreeWidget::itemChanged, this, &StargateDialog::edited);
 }
 
 QTreeWidgetItem* StargateDialog::componentRow(Nebula::Component& component, const Nebula::ComponentFactory& factory)
 {
-    QTreeWidgetItem* row = groupRow(component.objectName());
     const auto* galaxy = qobject_cast<const Nebula::Galaxy*>(&component);
+    QTreeWidgetItem* row =
+        topRow(component.objectName(), icon(galaxy != nullptr ? GlossaryTerm::Galaxy : GlossaryTerm::Astre));
     row->setToolTip(ExposesColumn, galaxy != nullptr ? galaxy->filePath() : component.componentId());
     addConsumedChoices(row, component);
     addProvidedChoices(row, component);
@@ -259,16 +308,23 @@ void StargateDialog::addPropertyChoice(QTreeWidgetItem* parent, Nebula::Componen
 
 QTreeWidgetItem* StargateDialog::keptRow()
 {
-    QTreeWidgetItem* row = groupRow(tr("Bound to none of these components"));
+    QTreeWidgetItem* row = topRow(tr("Bound to none of these instances"), icon(GlossaryTerm::Stargate));
+    row->setToolTip(ExposesColumn, tr("What the stargate exposes, bound to none of the instances above: the one it was "
+                                      "bound to went. Kept while it is checked"));
+    addKeptChoices(row);
+    return row;
+}
+
+void StargateDialog::addKeptChoices(QTreeWidgetItem* parent)
+{
     const QList<std::pair<Nebula::Exposure, QString>> shown = shownInterfaces();
     for(const Nebula::ExposedInterface& exposed : m_stargate.interfaces())
     {
         if(!shown.contains(std::pair{exposed.exposure, exposed.name}))
         {
-            addKeptChoice(row, exposed);
+            addKeptChoice(parent, exposed);
         }
     }
-    return row;
 }
 
 void StargateDialog::addKeptChoice(QTreeWidgetItem* parent, const Nebula::ExposedInterface& exposed)
@@ -285,13 +341,21 @@ QTreeWidgetItem* StargateDialog::addChoice(QTreeWidgetItem* parent, const QStrin
                                            const Choice& choice, const Exposed& exposed)
 {
     auto* row = new QTreeWidgetItem(parent, {text, kind, exposed.as, exposed.by});
-    if(!exposed.by.isEmpty())
+    if(!exposed.by.isEmpty()) // A single stargate exposes it
     {
-        row->setFlags(Qt::NoItemFlags); // A single stargate exposes it
+        disableForOther(*row);
         return row;
     }
     makeCheckable(*row, ExposesColumn, !exposed.as.isEmpty(), Qt::ItemIsSelectable | Qt::ItemIsEditable);
     m_choices.insert(row, choice);
+    return row;
+}
+
+QTreeWidgetItem* StargateDialog::topRow(const QString& text, const QIcon& icon) const
+{
+    QTreeWidgetItem* row = groupRow(text);
+    row->setIcon(ExposesColumn, icon);
+    row->setFont(ExposesColumn, titleFont(m_tree->font()));
     return row;
 }
 
@@ -357,13 +421,35 @@ bool StargateDialog::isNameTaken(const Rows& rows, const QTreeWidgetItem* row, c
 
 void StargateDialog::edited(QTreeWidgetItem* row, int column)
 {
-    if(!m_choices.contains(row))
+    if(column == ExposesColumn)
     {
-        return;
+        checkChanged(*row);
     }
-    tidyName(*row, column);
-    m_tree->viewport()->update(); // What the blocker of tidyName() kept from being shown
+    else if(m_choices.contains(row))
+    {
+        tidyName(*row, column);
+    }
+    m_tree->viewport()->update(); // What the blockers of followCheck() and tidyName() kept from being shown
     check();
+}
+
+void StargateDialog::checkChanged(QTreeWidgetItem& row)
+{
+    followCheck(row, ExposesColumn);
+    tidyNames(row);
+    m_panel->refreshCount();
+}
+
+void StargateDialog::tidyNames(QTreeWidgetItem& row)
+{
+    // In the order of the tree: each is given a name the ones before it do not have.
+    for(QTreeWidgetItem* each : rowAndUnder(row))
+    {
+        if(m_choices.contains(each))
+        {
+            tidyName(*each, ExposesColumn);
+        }
+    }
 }
 
 void StargateDialog::tidyName(QTreeWidgetItem& row, int column)
