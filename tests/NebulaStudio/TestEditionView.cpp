@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
+#include <QHBoxLayout>
 #include <QMouseEvent>
 #include <QScrollBar>
 #include <QSignalSpy>
@@ -22,6 +23,9 @@ constexpr QPoint Scrolled(1000, 1000);
 // In the viewport: where the pans start, and where the item is.
 constexpr QPoint From(200, 150);
 constexpr QPoint ItemAt(100, 100);
+// The size of the view beside a panel, and of the panel on its left.
+constexpr QSize BesideSize(400, 300);
+constexpr int PanelWidth = 100;
 
 // The values of the scroll bars of view.
 QPoint scrolled(const EditionView& view)
@@ -59,11 +63,20 @@ class TestEditionView : public QObject
     void lostRelease_data();
     void lostRelease();
     void panKeepsItsCursor();
+    void shownInPlaceBesideAPanel();
+    void selectionStaysShown_data();
+    void selectionStaysShown();
 
   private:
+    // Another view of the scene, scrolled as the first one, in a window where it is on the right of a panel: hiding
+    // the panel grows the view on its left side, as hiding the lists of NebulaStudio does.
+    EditionView* showBesidePanel();
+
     std::unique_ptr<QGraphicsScene> m_scene;
     std::unique_ptr<EditionView> m_view;
     QGraphicsRectItem* m_item = nullptr; // Selectable and movable, at ItemAt in the viewport
+    std::unique_ptr<QWidget> m_window;   // Of showBesidePanel()
+    QWidget* m_panel = nullptr;          // In m_window
 };
 
 void TestEditionView::init()
@@ -89,6 +102,7 @@ void TestEditionView::init()
 
 void TestEditionView::cleanup()
 {
+    m_window.reset();
     m_view.reset();
     m_scene.reset();
 }
@@ -278,6 +292,76 @@ void TestEditionView::panKeepsItsCursor()
     QCOMPARE(m_view->viewport()->cursor().shape(), Qt::ClosedHandCursor);
     send(*m_view, QEvent::MouseButtonRelease, From + (From - ItemAt), Qt::MiddleButton, Qt::NoButton);
     QCOMPARE(m_view->viewport()->cursor().shape(), Qt::ArrowCursor);
+}
+
+EditionView* TestEditionView::showBesidePanel()
+{
+    m_window = std::make_unique<QWidget>();
+    auto* layout = new QHBoxLayout(m_window.get());
+    layout->setContentsMargins({});
+    layout->setSpacing(0);
+    // The platform of the tests, offscreen, warns as the size of a window is constrained.
+    layout->setSizeConstraint(QLayout::SetNoConstraint);
+    m_panel = new QWidget;
+    m_panel->setFixedWidth(PanelWidth);
+    layout->addWidget(m_panel);
+    auto* view = new EditionView(m_scene.get());
+    view->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    layout->addWidget(view, 1);
+    m_window->resize(BesideSize + QSize(PanelWidth, 0));
+    m_window->show();
+    if(!QTest::qWaitForWindowExposed(m_window.get()))
+    {
+        return nullptr;
+    }
+    view->horizontalScrollBar()->setValue(Scrolled.x());
+    view->verticalScrollBar()->setValue(Scrolled.y());
+    return view;
+}
+
+void TestEditionView::shownInPlaceBesideAPanel()
+{
+    EditionView* view = showBesidePanel();
+    QVERIFY(view != nullptr);
+    const QPointF shown = view->mapToScene(From);
+    const QPoint onScreen = view->viewport()->mapToGlobal(From);
+
+    // The panel uncovers what is under it.
+    m_panel->hide();
+    QTRY_COMPARE(view->width(), BesideSize.width() + PanelWidth);
+    QCOMPARE(view->viewport()->mapToGlobal(view->mapFromScene(shown)), onScreen);
+    QCOMPARE(scrolled(*view), Scrolled - QPoint(PanelWidth, 0));
+    // And covers it again.
+    m_panel->show();
+    QTRY_COMPARE(view->width(), BesideSize.width());
+    QCOMPARE(view->viewport()->mapToGlobal(view->mapFromScene(shown)), onScreen);
+    QCOMPARE(scrolled(*view), Scrolled);
+}
+
+void TestEditionView::selectionStaysShown_data()
+{
+    QTest::addColumn<bool>("selected");
+
+    QTest::newRow("selected: shown") << true;
+    QTest::newRow("not selected: covered") << false;
+}
+
+void TestEditionView::selectionStaysShown()
+{
+    QFETCH(bool, selected);
+
+    EditionView* view = showBesidePanel();
+    QVERIFY(view != nullptr);
+    m_panel->hide();
+    QTRY_COMPARE(view->width(), BesideSize.width() + PanelWidth);
+    // Dropped where the panel comes back, entirely in view.
+    m_item->setPos(view->mapToScene(QPoint(PanelWidth / 2 + 10, From.y())));
+    m_item->setSelected(selected);
+
+    m_panel->show();
+    QTRY_COMPARE(view->width(), BesideSize.width());
+    const QRectF inView = view->mapToScene(view->viewport()->rect()).boundingRect();
+    QCOMPARE(inView.contains(m_item->sceneBoundingRect()), selected);
 }
 
 QTEST_MAIN(TestEditionView)

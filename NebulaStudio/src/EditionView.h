@@ -10,7 +10,10 @@
 // Shows the edition zone, at a zoom level that Ctrl and the mouse wheel change around the point under the cursor, and
 // the + and - keys around the middle of the view, unless the name of an item is edited there: what is typed is then
 // for it. Dragging with the middle button held moves the view, what is under the cursor following it. The zoom and
-// the move only change what is seen, not the scene: they are not saved with the project.
+// the move only change what is seen, not the scene: they are not saved with the project. As the view grows or shrinks
+// on its left or top side, a panel beside it hidden or shown, what it shows stays where it is on the screen: the panel
+// uncovers or covers it. The item selected alone stays in view then, when it was: one just dropped where the panel
+// comes back, say.
 class EditionView : public QGraphicsView
 {
     Q_OBJECT
@@ -38,6 +41,7 @@ class EditionView : public QGraphicsView
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
   private:
     // Scrolls the view by delta, in pixels of the viewport.
@@ -55,7 +59,13 @@ class EditionView : public QGraphicsView
     // Ends the pan once the middle button is no longer held with event, its release or not: the release is lost when
     // another window takes the mouse meanwhile.
     void endPanIfReleased(const QMouseEvent& event);
+    // Scrolls the view by as far as the viewport moved in its window since it was last resized: what it shows stays
+    // where it is on the screen.
+    void keepInPlace();
+    // Keeps the item selected alone in view, when it was entirely in shown, what the view showed before.
+    void keepSelectionShown(const QRectF& shown);
 
     std::optional<QPoint> m_panFrom; // Where the cursor was when the view last moved, while the middle button pans it
     QCursor m_cursor;                // The one of the viewport before the pan
+    std::optional<QPoint> m_origin;  // Of the viewport in its window, when it was last resized
 };
