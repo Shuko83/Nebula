@@ -7,9 +7,11 @@
 #include <QContextMenuEvent>
 #include <QFontDatabase>
 #include <QGraphicsPathItem>
+#include <QGraphicsTextItem>
 #include <QGraphicsView>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QSignalSpy>
@@ -295,28 +297,56 @@ QList<AnchorItem*> anchorItems(const QGraphicsScene& scene)
     return anchors;
 }
 
-// Opens the context menu of view at at, a position in its scene, and chooses the entry telling chosen there, unless it
-// is empty, not offered or disabled, which closes the menu. Returns what it offers, without its separators.
-QStringList chooseFromMenu(QGraphicsView& view, QPointF at, const QString& chosen)
+// What a context menu offers.
+struct Menu
+{
+    QStringList offered; // Its entries, without its separators
+    QStringList checked; // Those of them checked
+    bool radio = false;  // Whether those that can be checked are radio buttons: one of them at most is checked
+};
+
+// Reads what menu offers.
+Menu readMenu(const QMenu& menu)
+{
+    Menu read;
+    const QList<QAction*> actions = menu.actions();
+    for(const QAction* action : actions)
+    {
+        if(!action->isSeparator())
+        {
+            read.offered.append(action->text());
+        }
+        if(action->isChecked())
+        {
+            read.checked.append(action->text());
+        }
+        if(action->isCheckable())
+        {
+            read.radio = action->actionGroup() != nullptr && action->actionGroup()->isExclusive();
+        }
+    }
+    return read;
+}
+
+// Opens the context menu of view at at, a position in its scene, as the mouse does with modifiers held, and chooses the
+// entry telling chosen there, unless it is empty, not offered or disabled, which closes the menu. Returns what it
+// offers.
+Menu openMenu(QGraphicsView& view, QPointF at, const QString& chosen, Qt::KeyboardModifiers modifiers)
 {
     // What the offscreen platform cannot do for a menu.
     QTest::ignoreMessage(QtWarningMsg, "This plugin does not support raise()");
     QTest::ignoreMessage(QtWarningMsg, "This plugin does not support grabbing the keyboard");
-    QStringList offered;
+    Menu read;
     QTimer::singleShot(0, &view,
-                       [&offered, &chosen]
+                       [&read, &chosen]
                        {
                            auto* menu = qobject_cast<QMenu*>(QApplication::activePopupWidget());
                            QVERIFY(menu != nullptr);
+                           read = readMenu(*menu);
                            const QList<QAction*> actions = menu->actions();
-                           for(const QAction* action : actions)
-                           {
-                               if(!action->isSeparator())
-                               {
-                                   offered.append(action->text());
-                               }
-                           }
-                           const auto entry = std::ranges::find(actions, chosen, &QAction::text);
+                           // Not a separator, which tells no text.
+                           const auto entry =
+                               chosen.isEmpty() ? actions.end() : std::ranges::find(actions, chosen, &QAction::text);
                            if(entry != actions.end() && (*entry)->isEnabled())
                            {
                                menu->setActiveAction(*entry);
@@ -326,21 +356,67 @@ QStringList chooseFromMenu(QGraphicsView& view, QPointF at, const QString& chose
                            QTest::keyClick(menu, Qt::Key_Escape);
                        });
     const QPoint position = view.mapFromScene(at);
-    QContextMenuEvent event(QContextMenuEvent::Mouse, position, view.viewport()->mapToGlobal(position));
+    QContextMenuEvent event(QContextMenuEvent::Mouse, position, view.viewport()->mapToGlobal(position), modifiers);
     QApplication::sendEvent(view.viewport(), &event);
-    return offered;
+    return read;
 }
 
-// The points a link through anchors goes through, from the dot of provided to the dot of consumed, in style: those of
-// its route from each of them to the next one, which ends where the next one starts.
-QList<QPointF> anchoredPoints(LinkStyle style, const QList<QPointF>& stops)
+// Opens the context menu of view at at, a position in its scene, and chooses the entry telling chosen there, unless it
+// is empty, not offered or disabled, which closes the menu. Returns what it offers, without its separators.
+QStringList chooseFromMenu(QGraphicsView& view, QPointF at, const QString& chosen)
 {
-    QList<QPointF> found{stops.constFirst()};
+    return openMenu(view, at, chosen, Qt::NoModifier).offered;
+}
+
+// The points a link through stops goes through, from the dot of provided to the dot of consumed, in style: those of
+// its route from each of them to the next one, which ends where the next one starts.
+QList<QPointF> anchoredPoints(LinkStyle style, const QList<LinkItem::Stop>& stops)
+{
+    QList<QPointF> found{stops.constFirst().point};
     for(qsizetype index = 1; index < stops.size(); ++index)
     {
         found.append(points(LinkItem::route(style, stops.at(index - 1), stops.at(index))).sliced(1));
     }
     return found;
+}
+
+// The stops of a link through anchors, each gone through the way told: leftwards or not.
+QList<LinkItem::Stop> stopsThrough(const LinkItem& link, const QList<QPointF>& anchors, bool leftwards)
+{
+    QList<LinkItem::Stop> stops{LinkItem::stopAt(link.provided())};
+    for(const QPointF& anchor : anchors)
+    {
+        stops.append({.point = anchor, .leftwards = leftwards});
+    }
+    stops.append(LinkItem::stopAt(link.consumed()));
+    return stops;
+}
+
+// The x of the dot of an interface on the edge onRight tells of its component, as InterfaceItem::pos() tells it: on its
+// edges, one pixel inside its bounds, which are 160 wide around its position.
+qreal dotX(bool onRight)
+{
+    return onRight ? 79 : -79;
+}
+
+// The side onRight tells.
+InterfaceItem::Side side(bool onRight)
+{
+    return onRight ? InterfaceItem::Side::Right : InterfaceItem::Side::Left;
+}
+
+// What a project holds of the component named name: its entry in components.
+QJsonObject componentJson(const QJsonObject& project, const QString& name)
+{
+    const QJsonArray components = project.value(u"components").toArray();
+    for(const auto& value : components)
+    {
+        if(value.toObject().value(u"name").toString() == name)
+        {
+            return value.toObject();
+        }
+    }
+    return {};
 }
 
 } // namespace
@@ -388,6 +464,14 @@ class TestEditionScene : public QObject
     void anchorsSaved();
     void anchorsOfALinkDrawnAgain();
     void anchorsOfALinkRemoved();
+    void sideMenu_data();
+    void sideMenu();
+    void noSideMenuWithoutShift();
+    void sideMenuWhileRunning();
+    void sidesSaved();
+    void sidesOfInterfacesShownAgain();
+    void exposeNextToTheDot_data();
+    void exposeNextToTheDot();
 
   private:
     // The middle of the link, moved down by offset: where nothing else is shown, below it.
@@ -454,57 +538,92 @@ void TestEditionScene::route_data()
 {
     QTest::addColumn<LinkStyle>("style");
     QTest::addColumn<QPointF>("provided");
+    QTest::addColumn<bool>("providedOnLeft"); // Whether the dot of the provided interface is on the left edge
     QTest::addColumn<QPointF>("consumed");
+    QTest::addColumn<bool>("consumedOnRight");    // Whether the dot of the consumed interface is on the right edge
     QTest::addColumn<QList<QPointF>>("expected"); // The points it goes through
 
     const QPointF left(0, 0);
     const QPointF right(200, 100);
-    QTest::newRow("straight line") << LinkStyle::Straight << left << right << QList<QPointF>{left, right};
-    QTest::newRow("straight line, backwards")
-        << LinkStyle::Straight << QPointF(200, 0) << QPointF(0, 100) << QList<QPointF>{{200, 0}, {0, 100}};
+    QTest::newRow("straight line") << LinkStyle::Straight << left << false << right << false
+                                   << QList<QPointF>{left, right};
+    QTest::newRow("straight line, backwards") << LinkStyle::Straight << QPointF(200, 0) << false << QPointF(0, 100)
+                                              << false << QList<QPointF>{{200, 0}, {0, 100}};
+    QTest::newRow("straight line, out of the left edge")
+        << LinkStyle::Straight << QPointF(200, 0) << true << QPointF(0, 100) << true
+        << QList<QPointF>{{200, 0}, {0, 100}};
     // Across halfway between them.
-    QTest::newRow("right angles") << LinkStyle::RightAngled << left << right
+    QTest::newRow("right angles") << LinkStyle::RightAngled << left << false << right << false
                                   << QList<QPointF>{left, {100, 0}, {100, 100}, right};
     // Out of the provider and into the consumer, 40 at least each, and across halfway between their heights.
-    QTest::newRow("right angles, close") << LinkStyle::RightAngled << left << QPointF(60, 100)
+    QTest::newRow("right angles, close") << LinkStyle::RightAngled << left << false << QPointF(60, 100) << false
                                          << QList<QPointF>{left, {40, 0}, {40, 50}, {20, 50}, {20, 100}, {60, 100}};
     QTest::newRow("right angles, backwards")
-        << LinkStyle::RightAngled << QPointF(200, 0) << QPointF(0, 100)
+        << LinkStyle::RightAngled << QPointF(200, 0) << false << QPointF(0, 100) << false
         << QList<QPointF>{{200, 0}, {240, 0}, {240, 50}, {-40, 50}, {-40, 100}, {0, 100}};
+    // Out of the left edge of the provider, into the right edge of the consumer: the other way round.
+    QTest::newRow("right angles, leftwards") << LinkStyle::RightAngled << QPointF(200, 0) << true << QPointF(0, 100)
+                                             << true << QList<QPointF>{{200, 0}, {100, 0}, {100, 100}, {0, 100}};
+    QTest::newRow("right angles, leftwards, close")
+        << LinkStyle::RightAngled << QPointF(60, 0) << true << QPointF(0, 100) << true
+        << QList<QPointF>{{60, 0}, {20, 0}, {20, 50}, {40, 50}, {40, 100}, {0, 100}};
+    // Out of one, past the other one, and back into it.
+    QTest::newRow("right angles, both on their right edges")
+        << LinkStyle::RightAngled << left << false << QPointF(100, 100) << true
+        << QList<QPointF>{left, {140, 0}, {140, 100}, {100, 100}};
+    QTest::newRow("right angles, both on their left edges")
+        << LinkStyle::RightAngled << QPointF(100, 0) << true << QPointF(0, 100) << false
+        << QList<QPointF>{{100, 0}, {-40, 0}, {-40, 100}, {0, 100}};
 }
 
-// A link in straight lines goes from one dot to the other; in right angles, out of the right edge of the provider and
-// into the left edge of the consumer, in horizontal and vertical lines, wherever they are.
+// A link in straight lines goes from one dot to the other; in right angles, out of the edge of the provider its dot is
+// on and into the edge of the consumer its dot is on, in horizontal and vertical lines, wherever they are.
 void TestEditionScene::route()
 {
     QFETCH(LinkStyle, style);
     QFETCH(QPointF, provided);
+    QFETCH(bool, providedOnLeft);
     QFETCH(QPointF, consumed);
+    QFETCH(bool, consumedOnRight);
     QFETCH(QList<QPointF>, expected);
 
-    QCOMPARE(points(LinkItem::route(style, provided, consumed)), expected);
+    QCOMPARE(points(LinkItem::route(style, {.point = provided, .leftwards = providedOnLeft},
+                                    {.point = consumed, .leftwards = consumedOnRight})),
+             expected);
 }
 
 void TestEditionScene::curve_data()
 {
     QTest::addColumn<QPointF>("provided");
+    QTest::addColumn<bool>("providedOnLeft"); // Whether the dot of the provided interface is on the left edge
     QTest::addColumn<QPointF>("consumed");
+    QTest::addColumn<bool>("consumedOnRight");    // Whether the dot of the consumed interface is on the right edge
     QTest::addColumn<QList<QPointF>>("controls"); // The control points of the curve
 
-    QTest::newRow("far apart") << QPointF(0, 0) << QPointF(200, 100) << QList<QPointF>{{100, 0}, {100, 100}};
-    QTest::newRow("close") << QPointF(0, 0) << QPointF(20, 100) << QList<QPointF>{{40, 0}, {-20, 100}};
-    QTest::newRow("backwards") << QPointF(200, 0) << QPointF(0, 100) << QList<QPointF>{{300, 0}, {-100, 100}};
+    QTest::newRow("far apart") << QPointF(0, 0) << false << QPointF(200, 100) << false
+                               << QList<QPointF>{{100, 0}, {100, 100}};
+    QTest::newRow("close") << QPointF(0, 0) << false << QPointF(20, 100) << false
+                           << QList<QPointF>{{40, 0}, {-20, 100}};
+    QTest::newRow("backwards") << QPointF(200, 0) << false << QPointF(0, 100) << false
+                               << QList<QPointF>{{300, 0}, {-100, 100}};
+    QTest::newRow("leftwards") << QPointF(200, 0) << true << QPointF(0, 100) << true
+                               << QList<QPointF>{{100, 0}, {100, 100}};
+    QTest::newRow("both on their right edges")
+        << QPointF(0, 0) << false << QPointF(100, 100) << true << QList<QPointF>{{50, 0}, {150, 100}};
 }
 
-// A curved link, as links were drawn before they had a style: out of the right edge of the provider, into the left
-// edge of the consumer, as far as half the width between them, 40 at least.
+// A curved link, as links were drawn before they had a style: out of the edge of the provider its dot is on, into the
+// edge of the consumer its dot is on, as far as half the width between them, 40 at least.
 void TestEditionScene::curve()
 {
     QFETCH(QPointF, provided);
+    QFETCH(bool, providedOnLeft);
     QFETCH(QPointF, consumed);
+    QFETCH(bool, consumedOnRight);
     QFETCH(QList<QPointF>, controls);
 
-    const QPainterPath path = LinkItem::route(LinkStyle::Curved, provided, consumed);
+    const QPainterPath path = LinkItem::route(LinkStyle::Curved, {.point = provided, .leftwards = providedOnLeft},
+                                              {.point = consumed, .leftwards = consumedOnRight});
     QCOMPARE(path.elementCount(), 4);
     QCOMPARE(QPointF(path.elementAt(0)), provided);
     QVERIFY(path.elementAt(1).isCurveTo());
@@ -532,10 +651,12 @@ void TestEditionScene::linkStyle()
     m_scene->setLinkStyle(style);
     QCOMPARE(m_scene->linkStyle(), style);
     QCOMPARE(m_link->style(), style);
-    QCOMPARE(m_link->path(), LinkItem::route(style, m_link->provided().scenePos(), m_link->consumed().scenePos()));
+    QCOMPARE(m_link->path(),
+             LinkItem::route(style, LinkItem::stopAt(m_link->provided()), LinkItem::stopAt(m_link->consumed())));
 
     componentItem(*m_scene, QStringLiteral("Sink1"))->moveBy(0, 40);
-    QCOMPARE(m_link->path(), LinkItem::route(style, m_link->provided().scenePos(), m_link->consumed().scenePos()));
+    QCOMPARE(m_link->path(),
+             LinkItem::route(style, LinkItem::stopAt(m_link->provided()), LinkItem::stopAt(m_link->consumed())));
     QCOMPARE(m_scene->itemAt(middle(*m_link), QTransform()), m_link); // Nothing is shown over it there
     send(*m_view, QEvent::MouseButtonPress, middle(*m_link), Qt::LeftButton, Qt::LeftButton);
     send(*m_view, QEvent::MouseButtonRelease, middle(*m_link), Qt::LeftButton, Qt::NoButton);
@@ -553,30 +674,43 @@ void TestEditionScene::pendingLinkStyle_data()
 {
     QTest::addColumn<LinkStyle>("style");
     QTest::addColumn<bool>("fromProvided"); // Drawn from the dot of the provided interface, or of the consumed one
+    QTest::addColumn<bool>("otherEdge");    // Whether that dot is on the other edge of its component
 
-    QTest::newRow("curve from the provided one") << LinkStyle::Curved << true;
-    QTest::newRow("straight line from the provided one") << LinkStyle::Straight << true;
-    QTest::newRow("right angles from the provided one") << LinkStyle::RightAngled << true;
-    QTest::newRow("right angles from the consumed one") << LinkStyle::RightAngled << false;
+    QTest::newRow("curve from the provided one") << LinkStyle::Curved << true << false;
+    QTest::newRow("straight line from the provided one") << LinkStyle::Straight << true << false;
+    QTest::newRow("right angles from the provided one") << LinkStyle::RightAngled << true << false;
+    QTest::newRow("right angles from the consumed one") << LinkStyle::RightAngled << false << false;
+    QTest::newRow("curve from the left edge of the provider") << LinkStyle::Curved << true << true;
+    QTest::newRow("right angles from the right edge of the consumer") << LinkStyle::RightAngled << false << true;
 }
 
 // The link being drawn is in the style of the scene, from the provided interface to the consumed one whichever it is
-// drawn from: it is drawn as the link will be.
+// drawn from, out of the edge the dot it is drawn from is on, and into the cursor the same way: it is drawn as the link
+// will be.
 void TestEditionScene::pendingLinkStyle()
 {
     QFETCH(LinkStyle, style);
     QFETCH(bool, fromProvided);
+    QFETCH(bool, otherEdge);
 
     m_scene->setLinkStyle(style);
-    const QPointF start = (fromProvided ? m_link->provided() : m_link->consumed()).scenePos();
+    InterfaceItem& source = fromProvided ? m_link->provided() : m_link->consumed();
+    if(otherEdge)
+    {
+        ComponentItem& component = source.componentItem();
+        component.moveBy(100, 0); // Its left edge in the view as well
+        component.setInterfaceSide(source.kind(), source.name(), side(source.side() == InterfaceItem::Side::Left));
+    }
+    const LinkItem::Stop start = LinkItem::stopAt(source);
+    QCOMPARE(start.leftwards, otherEdge);
     const QPointF cursor(300, 400); // Where nothing is
     QVERIFY(m_scene->items(cursor).isEmpty());
-    send(*m_view, QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
+    send(*m_view, QEvent::MouseButtonPress, start.point, Qt::LeftButton, Qt::LeftButton);
     send(*m_view, QEvent::MouseMove, cursor, Qt::NoButton, Qt::LeftButton);
     const QGraphicsPathItem* pending = pendingLink(*m_scene);
     QVERIFY(pending != nullptr);
-    QCOMPARE(pending->path(),
-             fromProvided ? LinkItem::route(style, start, cursor) : LinkItem::route(style, cursor, start));
+    const LinkItem::Stop end{.point = cursor, .leftwards = otherEdge};
+    QCOMPARE(pending->path(), fromProvided ? LinkItem::route(style, start, end) : LinkItem::route(style, end, start));
 
     send(*m_view, QEvent::MouseButtonRelease, cursor, Qt::LeftButton, Qt::NoButton);
     QCOMPARE(pendingLink(*m_scene), nullptr);
@@ -899,28 +1033,38 @@ QPointF TestEditionScene::belowLink(qreal offset) const
 void TestEditionScene::anchoredPath_data()
 {
     QTest::addColumn<LinkStyle>("style");
-    QTest::addColumn<int>("count"); // Of its anchors, below it, from left to right
+    QTest::addColumn<int>("count");      // Of its anchors, below it, from its provided interface to its consumed one
+    QTest::addColumn<bool>("backwards"); // Whether its consumer is on the left of its provider
 
-    QTest::newRow("straight lines, one anchor") << LinkStyle::Straight << 1;
-    QTest::newRow("straight lines, two anchors") << LinkStyle::Straight << 2;
-    QTest::newRow("right angles, one anchor") << LinkStyle::RightAngled << 1;
-    QTest::newRow("right angles, two anchors") << LinkStyle::RightAngled << 2;
-    QTest::newRow("curves, one anchor") << LinkStyle::Curved << 1;
-    QTest::newRow("curves, two anchors") << LinkStyle::Curved << 2;
+    QTest::newRow("straight lines, one anchor") << LinkStyle::Straight << 1 << false;
+    QTest::newRow("straight lines, two anchors") << LinkStyle::Straight << 2 << false;
+    QTest::newRow("right angles, one anchor") << LinkStyle::RightAngled << 1 << false;
+    QTest::newRow("right angles, two anchors") << LinkStyle::RightAngled << 2 << false;
+    QTest::newRow("curves, one anchor") << LinkStyle::Curved << 1 << false;
+    QTest::newRow("curves, two anchors") << LinkStyle::Curved << 2 << false;
+    // Each gone through leftwards, from the point before it to the one after it.
+    QTest::newRow("right angles, one anchor, backwards") << LinkStyle::RightAngled << 1 << true;
+    QTest::newRow("right angles, two anchors, backwards") << LinkStyle::RightAngled << 2 << true;
 }
 
 // A link goes through its anchors, in their order, from each point to the next one in its style, as it goes from one
-// dot to the other; they are shown where they are.
+// dot to the other, through each of them the way from the point before it to the one after it; they are shown where
+// they are.
 void TestEditionScene::anchoredPath()
 {
     QFETCH(LinkStyle, style);
     QFETCH(int, count);
+    QFETCH(bool, backwards);
 
     m_scene->setLinkStyle(style);
+    if(backwards)
+    {
+        componentItem(*m_scene, QStringLiteral("Source1"))->setPos(SinkAt + QPointF(260, -80));
+    }
     QList<QPointF> anchors;
     for(int index = 0; index < count; ++index)
     {
-        anchors.append(belowLink(80) + QPointF(60 * index, 0));
+        anchors.append(belowLink(80) + QPointF((backwards ? -60 : 60) * index, 0));
     }
     m_link->setAnchors(anchors);
     QCOMPARE(m_link->anchors(), anchors);
@@ -941,8 +1085,7 @@ void TestEditionScene::anchoredPath()
         }
         return;
     }
-    QCOMPARE(points(path), anchoredPoints(style, QList<QPointF>{m_link->provided().scenePos()} + anchors +
-                                                     QList<QPointF>{m_link->consumed().scenePos()}));
+    QCOMPARE(points(path), anchoredPoints(style, stopsThrough(*m_link, anchors, backwards)));
 }
 
 void TestEditionScene::doubleClickAnchors_data()
@@ -1148,6 +1291,221 @@ void TestEditionScene::anchorsOfALinkRemoved()
     QVERIFY(links(*m_scene).constFirst()->anchors().isEmpty());
     QVERIFY(anchorItems(*m_scene).isEmpty());
     QVERIFY(!m_scene->save().value(u"bindings").toArray().at(0).toObject().contains(u"anchors"));
+}
+
+void TestEditionScene::sideMenu_data()
+{
+    QTest::addColumn<QString>("component"); // Whose dot of object is Shift+right-clicked: Source1 provides it
+    QTest::addColumn<QString>("chosen");    // The entry chosen; none when the menu is closed
+    QTest::addColumn<bool>("onRight");      // Whether the dot is on the right edge then
+
+    const QString source = QStringLiteral("Source1");
+    const QString sink = QStringLiteral("Sink1");
+    const QString left = QStringLiteral("Dot on the left edge");
+    const QString right = QStringLiteral("Dot on the right edge");
+    QTest::newRow("consumed, to the right edge") << sink << right << true;
+    QTest::newRow("consumed, left where it is") << sink << left << false;
+    QTest::newRow("provided, to the left edge") << source << left << false;
+    QTest::newRow("provided, nothing chosen") << source << QString() << true;
+}
+
+// Shift+right-clicking the dot of an interface opens a menu of its own, which puts it on the left or the right edge of
+// its component, the one it is on checked, as radio buttons: its name follows it, inside the component, and its link
+// goes out of that edge.
+void TestEditionScene::sideMenu()
+{
+    QFETCH(QString, component);
+    QFETCH(QString, chosen);
+    QFETCH(bool, onRight);
+
+    m_scene->setLinkStyle(LinkStyle::RightAngled);
+    const ComponentItem* item = componentItem(*m_scene, component);
+    InterfaceItem* dot = interfaceItem(*m_scene, component, QStringLiteral("object"));
+    const bool wasOnRight = dot->side() == InterfaceItem::Side::Right;
+    const Menu menu = openMenu(*m_view, dot->scenePos(), chosen, Qt::ShiftModifier);
+    QCOMPARE(menu.offered,
+             (QStringList{QStringLiteral("Dot on the left edge"), QStringLiteral("Dot on the right edge")}));
+    QCOMPARE(menu.checked, QStringList{menu.offered.at(wasOnRight ? 1 : 0)});
+    QVERIFY(menu.radio);
+
+    QCOMPARE(interfaceItem(*m_scene, component, QStringLiteral("object")), dot); // The same, moved
+    QCOMPARE(dot->side(), side(onRight));
+    QCOMPARE(dot->pos(), QPointF(dotX(onRight), dot->y()));
+    QVERIFY(item->boundingRect().contains(dot->mapRectToParent(dot->nameRect())));
+    QCOMPARE(links(*m_scene), QList<LinkItem*>{m_link}); // Still bound
+    QCOMPARE(m_link->path(), LinkItem::route(LinkStyle::RightAngled, LinkItem::stopAt(m_link->provided()),
+                                             LinkItem::stopAt(m_link->consumed())));
+}
+
+// Without Shift, the menu of a dot is the one of its component, which does not put it on another edge.
+void TestEditionScene::noSideMenuWithoutShift()
+{
+    const InterfaceItem* dot = interfaceItem(*m_scene, QStringLiteral("Sink1"), QStringLiteral("object"));
+    const QStringList offered = chooseFromMenu(*m_view, dot->scenePos(), QString());
+    QVERIFY(offered.contains(QStringLiteral("Bind to")));
+    QVERIFY(!offered.contains(QStringLiteral("Dot on the left edge")));
+    QVERIFY(!offered.contains(QStringLiteral("Dot on the right edge")));
+}
+
+// While the application runs, Shift+right-clicking a dot opens no menu, and tells why.
+void TestEditionScene::sideMenuWhileRunning()
+{
+    QVERIFY(m_application->start());
+    const InterfaceItem* dot = interfaceItem(*m_scene, QStringLiteral("Sink1"), QStringLiteral("object"));
+    QSignalSpy refused(m_scene.get(), &EditionScene::refused);
+    // A menu opened is closed, for the test not to wait on it; nothing is told once the test is over.
+    const QObject guard;
+    bool opened = false;
+    QTimer::singleShot(0, &guard,
+                       [&opened]
+                       {
+                           if(QWidget* popup = QApplication::activePopupWidget())
+                           {
+                               opened = true;
+                               popup->close();
+                           }
+                       });
+    const QPoint position = m_view->mapFromScene(dot->scenePos());
+    QContextMenuEvent event(QContextMenuEvent::Mouse, position, m_view->viewport()->mapToGlobal(position),
+                            Qt::ShiftModifier);
+    QApplication::sendEvent(m_view->viewport(), &event);
+    QVERIFY(!opened);
+    QCOMPARE(refused.size(), 1);
+    QCOMPARE(dot->side(), InterfaceItem::Side::Left);
+    m_application->stop();
+}
+
+// A project holds the edges the dots of the interfaces of a component are on, when one is not on the edge of its kind,
+// and puts them there again once opened; an edge it does not know, or an interface the component does not have, is
+// left out.
+void TestEditionScene::sidesSaved()
+{
+    const QString source = QStringLiteral("Source1");
+    const QString sink = QStringLiteral("Sink1");
+    const QString object = QStringLiteral("object");
+    QVERIFY(!componentJson(m_scene->save(), sink).contains(u"sides"));
+    QVERIFY(!componentJson(m_scene->save(), source).contains(u"sides"));
+    componentItem(*m_scene, sink)->setInterfaceSide(InterfaceItem::Kind::Consumed, object, InterfaceItem::Side::Right);
+    componentItem(*m_scene, source)->setInterfaceSide(InterfaceItem::Kind::Provided, object, InterfaceItem::Side::Left);
+    const QJsonObject project = m_scene->save();
+    QCOMPARE(componentJson(project, sink).value(u"sides").toObject(),
+             (QJsonObject{{QStringLiteral("consumed"), QJsonObject{{object, QStringLiteral("right")}}}}));
+    QCOMPARE(componentJson(project, source).value(u"sides").toObject(),
+             (QJsonObject{{QStringLiteral("provided"), QJsonObject{{object, QStringLiteral("left")}}}}));
+
+    QCOMPARE(m_scene->load(project), QStringList()); // Nothing Core does not understand
+    QCOMPARE(interfaceItem(*m_scene, sink, object)->side(), InterfaceItem::Side::Right);
+    QCOMPARE(interfaceItem(*m_scene, source, object)->side(), InterfaceItem::Side::Left);
+    QCOMPARE(links(*m_scene).size(), 1);
+    m_link = links(*m_scene).constFirst();
+    QCOMPARE(m_link->path(), LinkItem::route(LinkStyle::Curved, LinkItem::stopAt(m_link->provided()),
+                                             LinkItem::stopAt(m_link->consumed())));
+    QCOMPARE(m_scene->save(), project);
+
+    // Back on the edge of its kind, it is held no longer.
+    componentItem(*m_scene, sink)->setInterfaceSide(InterfaceItem::Kind::Consumed, object, InterfaceItem::Side::Left);
+    QVERIFY(!componentJson(m_scene->save(), sink).contains(u"sides"));
+
+    QJsonObject odd = project;
+    QJsonArray components = odd.value(u"components").toArray();
+    for(QJsonValueRef value : components)
+    {
+        QJsonObject component = value.toObject();
+        component.insert(u"sides", QJsonObject{{QStringLiteral("consumed"),
+                                                QJsonObject{{object, QStringLiteral("top")},
+                                                            {QStringLiteral("missing"), QStringLiteral("right")}}}});
+        value = component;
+    }
+    odd.insert(u"components", components);
+    QCOMPARE(m_scene->load(odd), QStringList());
+    QCOMPARE(interfaceItem(*m_scene, sink, object)->side(), InterfaceItem::Side::Left);
+    QVERIFY(!componentJson(m_scene->save(), sink).contains(u"sides"));
+    QVERIFY(!componentJson(m_scene->save(), source).contains(u"sides"));
+}
+
+// The dot of an interface stays on its edge while its component shows its interfaces again, as they change, and goes
+// with its interface.
+void TestEditionScene::sidesOfInterfacesShownAgain()
+{
+    Nebula::Component* outlets = m_application->instantiate(testComponentId(QStringLiteral("Outlets")));
+    QVERIFY(outlets->setProperty("count", 3));
+    QCOMPARE(m_scene->load(m_application->save()), QStringList());
+    outlets = m_application->component(QStringLiteral("Outlets1"));
+    ComponentItem* item = componentItem(*m_scene, QStringLiteral("Outlets1"));
+    const auto sideOf = [item](const QString& name)
+    { return item->interfaceItem(InterfaceItem::Kind::Provided, name)->side(); };
+    item->setInterfaceSide(InterfaceItem::Kind::Provided, QStringLiteral("object1"), InterfaceItem::Side::Left);
+    item->setInterfaceSide(InterfaceItem::Kind::Provided, QStringLiteral("object9"), InterfaceItem::Side::Left);
+    QCOMPARE(item->interfaceItem(InterfaceItem::Kind::Provided, QStringLiteral("object9")), nullptr);
+
+    QVERIFY(outlets->setProperty("count", 2)); // Which shows each of its interfaces again
+    QCOMPARE(sideOf(QStringLiteral("object1")), InterfaceItem::Side::Left);
+    QCOMPARE(item->interfaceItem(InterfaceItem::Kind::Provided, QStringLiteral("object1"))->x(), dotX(false));
+    QCOMPARE(sideOf(QStringLiteral("object2")), InterfaceItem::Side::Right);
+    QCOMPARE(
+        componentJson(m_scene->save(), QStringLiteral("Outlets1")).value(u"sides").toObject(),
+        (QJsonObject{{QStringLiteral("provided"), QJsonObject{{QStringLiteral("object1"), QStringLiteral("left")}}}}));
+
+    QVERIFY(outlets->setProperty("count", 0));
+    QVERIFY(outlets->setProperty("count", 1));
+    QCOMPARE(sideOf(QStringLiteral("object1")), InterfaceItem::Side::Right);
+    QVERIFY(!componentJson(m_scene->save(), QStringLiteral("Outlets1")).contains(u"sides"));
+}
+
+void TestEditionScene::exposeNextToTheDot_data()
+{
+    QTest::addColumn<QString>("component"); // Whose interface object is exposed: Source1 provides it
+    QTest::addColumn<bool>("otherEdge");    // Whether its dot is on the other edge of its component
+    QTest::addColumn<bool>("onRight");      // Whether its dot is on the right edge, and the stargate on that side
+
+    QTest::newRow("provided, on the right edge") << QStringLiteral("Source1") << false << true;
+    QTest::newRow("provided, on the left edge") << QStringLiteral("Source1") << true << false;
+    QTest::newRow("consumed, on the left edge") << QStringLiteral("Sink1") << false << false;
+    QTest::newRow("consumed, on the right edge") << QStringLiteral("Sink1") << true << true;
+}
+
+// Expose..., in the menu of the dot of an interface, adds the stargate next to its component on the edge the dot is
+// on, the dot of the stargate facing it, which it keeps facing once its name, edited at once, is typed.
+void TestEditionScene::exposeNextToTheDot()
+{
+    QFETCH(QString, component);
+    QFETCH(bool, otherEdge);
+    QFETCH(bool, onRight);
+
+    ComponentItem* item = componentItem(*m_scene, component);
+    item->moveBy(200, 0); // Its left edge in the view as well
+    InterfaceItem* dot = interfaceItem(*m_scene, component, QStringLiteral("object"));
+    if(otherEdge)
+    {
+        item->setInterfaceSide(dot->kind(), dot->name(), side(dot->side() == InterfaceItem::Side::Left));
+    }
+    QCOMPARE(dot->side(), side(onRight));
+    QVERIFY(
+        chooseFromMenu(*m_view, dot->scenePos(), QStringLiteral("Expose...")).contains(QStringLiteral("Expose...")));
+
+    const ComponentItem* stargate = componentItem(*m_scene, QStringLiteral("Stargate1"));
+    QVERIFY(stargate != nullptr);
+    QCOMPARE(stargate->x() > item->x(), onRight);
+    const InterfaceItem::Kind exposing =
+        dot->kind() == InterfaceItem::Kind::Provided ? InterfaceItem::Kind::Consumed : InterfaceItem::Kind::Provided;
+    const InterfaceItem* facing = stargate->interfaceItem(exposing, QStringLiteral("object"));
+    QVERIFY(facing != nullptr);
+    QCOMPARE(facing->side(), side(!onRight));
+
+    const QList<QGraphicsItem*> children = stargate->childItems();
+    const auto editor =
+        std::ranges::find_if(children, [](const QGraphicsItem* child)
+                             { return child->type() == QGraphicsTextItem::Type && child->isVisible(); });
+    QVERIFY(editor != children.end());
+    auto* nameEditor = static_cast<QGraphicsTextItem*>(*editor);
+    nameEditor->setPlainText(QStringLiteral("renamed"));
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QVERIFY(m_scene->sendEvent(nameEditor, &enter));
+    QCOMPARE(stargate->interfaceItem(exposing, QStringLiteral("object")), nullptr);
+    const InterfaceItem* renamed = stargate->interfaceItem(exposing, QStringLiteral("renamed"));
+    QVERIFY(renamed != nullptr);
+    QCOMPARE(renamed->side(), side(!onRight));
+    QCOMPARE(links(*m_scene).size(), component == QStringLiteral("Source1") ? 2 : 1); // Still bound to it
 }
 
 QTEST_MAIN(TestEditionScene)

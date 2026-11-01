@@ -51,7 +51,7 @@ QPen dottedOutline(const QColor& color)
 InterfaceItem::InterfaceItem(Kind kind, const Nebula::InterfaceInfo& info, qreal nameWidth, ComponentItem& parent)
     : QGraphicsItem(&parent), m_componentItem(parent), m_kind(kind), m_name(info.name), m_type(info.type),
       m_mandatory(info.requirement == Nebula::InterfaceRequirement::Mandatory), m_list(info.list),
-      m_nameWidth(nameWidth)
+      m_nameWidth(nameWidth), m_side(defaultSide(kind))
 {
     setFlag(ItemSendsScenePositionChanges); // For its links to follow it
     setAcceptHoverEvents(true);
@@ -93,6 +93,11 @@ Nebula::Component& InterfaceItem::component() const
     return m_componentItem.component();
 }
 
+ComponentItem& InterfaceItem::componentItem() const
+{
+    return m_componentItem;
+}
+
 bool InterfaceItem::canLinkTo(const InterfaceItem& other) const
 {
     return m_kind != other.m_kind && m_type == other.m_type && &component() != &other.component();
@@ -109,6 +114,32 @@ QString InterfaceItem::typeName(QMetaType type)
     return name;
 }
 
+InterfaceItem::Side InterfaceItem::defaultSide(Kind kind)
+{
+    return kind == Kind::Provided ? Side::Right : Side::Left;
+}
+
+InterfaceItem::Side InterfaceItem::side() const
+{
+    return m_side;
+}
+
+void InterfaceItem::setSide(Side side)
+{
+    if(m_side == side)
+    {
+        return;
+    }
+    prepareGeometryChange(); // Its name, and the circle behind its dot for a list, go to the other side
+    m_side = side;
+    update();
+}
+
+qreal InterfaceItem::outward() const
+{
+    return m_side == Side::Left ? -1 : 1;
+}
+
 void InterfaceItem::setAvailable(bool available)
 {
     m_available = available;
@@ -123,7 +154,9 @@ void InterfaceItem::setMissing(bool missing)
 
 void InterfaceItem::refreshToolTip()
 {
-    setToolTip(QStringLiteral("%1%2\n%3").arg(kindText(), requirementText(), stateText()));
+    setToolTip(QStringLiteral("%1%2\n%3\n%4")
+                   .arg(kindText(), requirementText(), stateText(),
+                        tr("Shift+right-click it to choose the edge of the component it is on")));
     update();
 }
 
@@ -195,7 +228,7 @@ void InterfaceItem::removeLink(LinkItem& link)
 QRectF InterfaceItem::nameRect() const
 {
     const qreal offset = DotRadius + Spacing;
-    return {m_kind == Kind::Provided ? -offset - m_nameWidth : offset, -RowHeight / 2, m_nameWidth, RowHeight};
+    return {m_side == Side::Right ? -offset - m_nameWidth : offset, -RowHeight / 2, m_nameWidth, RowHeight};
 }
 
 QRectF InterfaceItem::boundingRect() const
@@ -203,7 +236,7 @@ QRectF InterfaceItem::boundingRect() const
     // From what shape() takes around its dot, or the circle behind it for a list, to its name, inside the component.
     const qreal dot = DotRadius + HoverMargin + (m_list ? ListOffset : 0);
     const qreal width = dot + DotRadius + Spacing + m_nameWidth;
-    return {m_kind == Kind::Provided ? dot - width : -dot, -RowHeight / 2, width, RowHeight};
+    return {m_side == Side::Right ? dot - width : -dot, -RowHeight / 2, width, RowHeight};
 }
 
 QPainterPath InterfaceItem::shape() const
@@ -244,7 +277,7 @@ void InterfaceItem::paintDot(QPainter& painter, const QColor& color, const QColo
     painter.setBrush(provided && m_available ? color : background);
     if(m_list) // Behind, out of the component, which a list is consumed from
     {
-        painter.drawEllipse(QPointF(-ListOffset, 0), DotRadius, DotRadius);
+        painter.drawEllipse(QPointF(outward() * ListOffset, 0), DotRadius, DotRadius);
     }
     painter.drawEllipse(QPointF(0, 0), DotRadius, DotRadius);
 }
@@ -257,7 +290,7 @@ void InterfaceItem::paintName(QPainter& painter, const QColor& color) const
     const QFontMetricsF metrics(painter.font());
     const QString name = metrics.elidedText(m_name, Qt::ElideRight, rect.width() - metrics.horizontalAdvance(mark));
     painter.setPen(color);
-    const Qt::Alignment side = m_kind == Kind::Provided ? Qt::AlignRight : Qt::AlignLeft;
+    const Qt::Alignment side = m_side == Side::Right ? Qt::AlignRight : Qt::AlignLeft; // Next to its dot
     painter.drawText(rect, side | Qt::AlignVCenter, name + mark);
 }
 
