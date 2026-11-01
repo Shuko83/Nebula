@@ -11,7 +11,10 @@
 
 #include "DraggableView.h"
 
-DragAside::DragAside(QWidget& widget) : m_widget(widget) {}
+DragAside::DragAside(QWidget& widget) : m_widget(widget)
+{
+    widget.installEventFilter(this);
+}
 
 bool DragAside::isActive() const
 {
@@ -23,33 +26,19 @@ void DragAside::setActive(bool active)
     m_active = active;
 }
 
-void DragAside::follow(const QWidget& page)
-{
-    for(const DraggableView* list : page.findChildren<DraggableView*>())
-    {
-        connect(list, &DraggableView::dragStarted, this, &DragAside::watchDrag, Qt::UniqueConnection);
-        connect(list, &DraggableView::dragFinished, this, &DragAside::endDrag, Qt::UniqueConnection);
-    }
-}
-
-void DragAside::forget(const QWidget& page)
-{
-    for(const DraggableView* list : page.findChildren<DraggableView*>())
-    {
-        disconnect(list, nullptr, this, nullptr);
-    }
-}
-
 bool DragAside::eventFilter(QObject* watched, QEvent* event)
 {
-    if(watched == m_window.data() && event->type() == QEvent::DragMove)
+    if(watched == &m_widget && event->type() == DraggableView::dragStartedEvent())
     {
-        setAsideIfOut(static_cast<const QDragMoveEvent*>(event)->position());
+        watchDrag();
     }
-    else if(watched == m_window.data() && event->type() == QEvent::DragLeave)
+    else if(watched == &m_widget && event->type() == DraggableView::dragFinishedEvent())
     {
-        // The window is left, or the drag given up over it: where the cursor is tells which.
-        setAsideIfOut(m_window->mapFromGlobal(QCursor::pos()));
+        endDrag();
+    }
+    else if(watched == m_window.data())
+    {
+        followDrag(*event);
     }
     return QObject::eventFilter(watched, event);
 }
@@ -74,6 +63,19 @@ void DragAside::endDrag()
     if(std::exchange(m_aside, false) && !m_widget.isWindow())
     {
         m_widget.show();
+    }
+}
+
+void DragAside::followDrag(const QEvent& event)
+{
+    if(event.type() == QEvent::DragMove)
+    {
+        setAsideIfOut(static_cast<const QDragMoveEvent&>(event).position());
+    }
+    else if(event.type() == QEvent::DragLeave)
+    {
+        // The window is left, or the drag given up over it: where the cursor is tells which.
+        setAsideIfOut(m_window->mapFromGlobal(QCursor::pos()));
     }
 }
 

@@ -81,6 +81,21 @@ void SplitterComponent::setStretched(int stretched)
     emit stretchedChanged(stretched);
 }
 
+bool SplitterComponent::isHiddenWhileDragging() const
+{
+    return m_aside.isActive();
+}
+
+void SplitterComponent::setHiddenWhileDragging(bool hidden)
+{
+    if(m_aside.isActive() == hidden)
+    {
+        return;
+    }
+    m_aside.setActive(hidden);
+    emit hiddenWhileDraggingChanged(hidden);
+}
+
 void SplitterComponent::showWidget(QWidget* widget)
 {
     if(m_splitter.indexOf(widget) >= 0)
