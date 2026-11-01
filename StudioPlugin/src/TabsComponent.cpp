@@ -34,12 +34,28 @@ void TabsComponent::setDocumentMode(bool documentMode)
     emit documentModeChanged(documentMode);
 }
 
+bool TabsComponent::isHiddenWhileDragging() const
+{
+    return m_aside.isActive();
+}
+
+void TabsComponent::setHiddenWhileDragging(bool hidden)
+{
+    if(m_aside.isActive() == hidden)
+    {
+        return;
+    }
+    m_aside.setActive(hidden);
+    emit hiddenWhileDraggingChanged(hidden);
+}
+
 void TabsComponent::showPage(QWidget* page)
 {
     if(m_tabs.indexOf(page) < 0)
     {
         // Those before it in the list are shown already.
         insertPage(m_tabs, *page, static_cast<int>(m_pages.indexOf(page)));
+        m_aside.follow(*page);
     }
 }
 
@@ -47,6 +63,7 @@ void TabsComponent::hidePage(QWidget* page)
 {
     if(m_pages.count(page) == 1)
     {
+        m_aside.forget(*page);
         m_tabs.removeTab(m_tabs.indexOf(page));
         page->setParent(nullptr);
     }

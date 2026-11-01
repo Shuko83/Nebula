@@ -72,55 +72,38 @@
             "name": "Sources",
             "type": "FabienDG.Nebula.StudioPlugin.TabsComponent",
             "x": 1950,
-            "y": 1320,
+            "y": 1420,
             "properties": {
-                "documentMode": true
-            }
-        },
-        {
-            "name": "ComponentsGroup",
-            "type": "FabienDG.Nebula.StudioPlugin.GroupComponent",
-            "x": 1950,
-            "y": 1620,
-            "properties": {
-                "title": "Components"
+                "documentMode": true,
+                "hiddenWhileDragging": true
             }
         },
         {
             "name": "EditionColumn",
             "type": "FabienDG.Nebula.StudioPlugin.SplitterComponent",
             "x": 1950,
-            "y": 1840,
+            "y": 1820,
             "properties": {
                 "vertical": true,
-                "sizes": "480, 200, 120",
+                "sizes": "620, 120",
                 "stretched": 0
-            }
-        },
-        {
-            "name": "ApplicationGroup",
-            "type": "FabienDG.Nebula.StudioPlugin.GroupComponent",
-            "x": 2250,
-            "y": 1840,
-            "properties": {
-                "title": "Application"
             }
         },
         {
             "name": "Columns",
             "type": "FabienDG.Nebula.StudioPlugin.SplitterComponent",
-            "x": 2550,
+            "x": 2250,
             "y": 1580,
             "properties": {
                 "vertical": false,
-                "sizes": "320, 760, 360",
+                "sizes": "300, 840, 300",
                 "stretched": 1
             }
         },
         {
             "name": "Window",
             "type": "FabienDG.Nebula.StudioPlugin.StudioWindowComponent",
-            "x": 2850,
+            "x": 2550,
             "y": 1580,
             "properties": {
                 "width": 1440,
@@ -214,8 +197,8 @@
             "provided": "widget"
         },
         {
-            "consumer": "ComponentsGroup",
-            "consumed": "content",
+            "consumer": "Sources",
+            "consumed": "pages",
             "provider": "Components",
             "provided": "widget"
         },
@@ -228,19 +211,7 @@
         {
             "consumer": "EditionColumn",
             "consumed": "widgets",
-            "provider": "Properties",
-            "provided": "widget"
-        },
-        {
-            "consumer": "EditionColumn",
-            "consumed": "widgets",
             "provider": "Problems",
-            "provided": "widget"
-        },
-        {
-            "consumer": "ApplicationGroup",
-            "consumed": "content",
-            "provider": "EditionColumn",
             "provided": "widget"
         },
         {
@@ -252,13 +223,13 @@
         {
             "consumer": "Columns",
             "consumed": "widgets",
-            "provider": "ApplicationGroup",
+            "provider": "EditionColumn",
             "provided": "widget"
         },
         {
             "consumer": "Columns",
             "consumed": "widgets",
-            "provider": "ComponentsGroup",
+            "provider": "Properties",
             "provided": "widget"
         },
         {
@@ -326,13 +297,13 @@
             "color": "#ec4899",
             "x": 1830,
             "y": 1220,
-            "width": 880,
+            "width": 580,
             "height": 860
         },
         {
             "title": "Window",
             "color": "#06b6d4",
-            "x": 2750,
+            "x": 2450,
             "y": 1480,
             "width": 200,
             "height": 240

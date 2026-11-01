@@ -24,6 +24,11 @@ nebula_add_test(TestEditionView
     SOURCES "${_studio}/src/EditionView.cpp"
     INCLUDE_DIRECTORIES "${_studio}/src"
     LINK_LIBRARIES Qt6::Widgets)
+# What makes room as rows are dragged from a list.
+nebula_add_test(TestDragAside
+    SOURCES "${_studio}/src/DragAside.cpp" "${_studio}/src/DraggableView.cpp"
+    INCLUDE_DIRECTORIES "${_studio}/src"
+    LINK_LIBRARIES Qt6::Widgets)
 nebula_add_test(TestPreferences
     SOURCES "${_studio}/src/Preferences.cpp"
     INCLUDE_DIRECTORIES "${_studio}/src"

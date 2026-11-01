@@ -4,6 +4,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QDir>
+#include <QDragLeaveEvent>
+#include <QDragMoveEvent>
 #include <QFile>
 #include <QFontDatabase>
 #include <QGraphicsView>
@@ -16,12 +18,15 @@
 #include <QMainWindow>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMimeData>
 #include <QPointer>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTreeView>
+#include <QWindow>
 #include <memory>
 
 #include "Nebula/Application/Universe.h"
@@ -98,11 +103,32 @@ QStringList tabTitles(const QTabWidget& tabs)
     return titles;
 }
 
-// The title of group, a QGroupBox; none when it is not one.
-QString groupTitle(const QWidget& group)
+// The list in widget whose rows are dragged; nullptr when it has none.
+QTreeView* draggableListIn(const QWidget& widget)
 {
-    const auto* box = qobject_cast<const QGroupBox*>(&group);
-    return box != nullptr ? box->title() : QString();
+    for(QTreeView* list : widget.findChildren<QTreeView*>())
+    {
+        if(list->dragEnabled())
+        {
+            return list;
+        }
+    }
+    return nullptr;
+}
+
+// Has the window of widget tell that what is dragged moved to at, in the window, as the window system would.
+void dragTo(const QWidget& widget, QPoint at)
+{
+    const QMimeData data;
+    QDragMoveEvent event(at, Qt::CopyAction, &data, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(widget.windowHandle(), &event);
+}
+
+// Has the window of widget tell that what is dragged left it.
+void leave(const QWidget& widget)
+{
+    QDragLeaveEvent event;
+    QApplication::sendEvent(widget.windowHandle(), &event);
 }
 
 // The field of the Galaxies tab in widget, which tells the directory listed; nullptr when there is none.
@@ -179,6 +205,7 @@ class TestStudioPlugin : public QObject
     void galaxyOpens();
     void windowShowsWhileItRuns();
     void partsInTheWindow();
+    void listsAsideWhileDragging();
     void partsGoWithTheStudio();
     void stoppingStopsTheApplicationAssembled();
     void projectFileOpensAsItStarts();
@@ -237,7 +264,7 @@ QWidget* TestStudioPlugin::widgetOf(const Component& component)
 void TestStudioPlugin::galaxyOpens()
 {
     openGalaxy();
-    QCOMPARE(m_universe->components().size(), 14);
+    QCOMPARE(m_universe->components().size(), 12);
     // Each of its parts has what it needs.
     for(const std::unique_ptr<Component>& component : m_universe->components())
     {
@@ -273,15 +300,50 @@ void TestStudioPlugin::partsInTheWindow()
     const auto* columns = qobject_cast<QSplitter*>(window->centralWidget());
     QVERIFY(columns != nullptr);
     QCOMPARE(columns->count(), 3);
+    // The lists in tabs, one shown at a time.
     const auto* sources = qobject_cast<QTabWidget*>(columns->widget(0));
     QVERIFY(sources != nullptr);
-    QCOMPARE(tabTitles(*sources), QStringList({u"Plugins"_s, u"Galaxies"_s}));
-    QCOMPARE(groupTitle(*columns->widget(1)), u"Application"_s);
-    QCOMPARE(groupTitle(*columns->widget(2)), u"Components"_s);
-    // The edition zone, in the Application group, above the property editor and the problems.
-    QCOMPARE(window->findChildren<QGraphicsView*>().size(), 1);
-    const auto* edition = window->findChild<QSplitter*>();
+    QCOMPARE(tabTitles(*sources), QStringList({u"Plugins"_s, u"Galaxies"_s, u"Components"_s}));
+    // The edition zone above the problems, then the property editor.
+    const auto* edition = qobject_cast<QSplitter*>(columns->widget(1));
     QVERIFY(edition != nullptr);
+    QCOMPARE(edition->orientation(), Qt::Vertical);
+    QCOMPARE(edition->count(), 2);
+    QCOMPARE(edition->widget(0)->findChildren<QGraphicsView*>().size(), 1);
+    QCOMPARE(window->findChildren<QGraphicsView*>().size(), 1);
+    QVERIFY(window->findChildren<QGroupBox*>().isEmpty());
+    // Most of the window, and the room it gains.
+    QTRY_VERIFY(columns->sizes().at(1) > columns->width() / 2);
+    QCOMPARE(edition->sizePolicy().horizontalStretch(), 1);
+}
+
+void TestStudioPlugin::listsAsideWhileDragging()
+{
+    openGalaxy();
+    QVERIFY(m_universe->component(u"Sources"_s)->property("hiddenWhileDragging").toBool());
+    ignoreSizeHints();
+    QVERIFY(m_universe->start());
+    QMainWindow* window = shownWindow();
+    QVERIFY(window != nullptr);
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    auto* sources = qobject_cast<QTabWidget*>(widgetOf(*m_universe->component(u"Sources"_s)));
+    const QGraphicsView* edition = window->findChild<QGraphicsView*>();
+    QTRY_VERIFY(sources->isVisible() && edition->width() > 0);
+    const int width = edition->width();
+    // The list of the components, whose rows are dragged into the edition zone.
+    QTreeView* list = draggableListIn(*widgetOf(*m_universe->component(u"Components"_s)));
+    QVERIFY(list != nullptr);
+
+    QVERIFY(QMetaObject::invokeMethod(list, "dragStarted"));
+    ignoreSizeHints(); // The window can be smaller without them
+    dragTo(*window, edition->mapTo(window, edition->rect().center()));
+    QVERIFY(sources->isHidden());
+    QTRY_VERIFY(edition->width() > width); // Taking the room of the lists
+    ignoreSizeHints();
+    QVERIFY(QMetaObject::invokeMethod(list, "dragFinished"));
+    QVERIFY(sources->isVisible());
+    QTRY_COMPARE(edition->width(), width);
+    leave(*window); // What it was dragged over forgets it
 }
 
 void TestStudioPlugin::partsGoWithTheStudio()
