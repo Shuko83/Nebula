@@ -3,8 +3,10 @@
 
 #include "EditionView.h"
 
+#include <QGraphicsItem>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QResizeEvent>
 #include <QScrollBar>
 #include <QWheelEvent>
 #include <algorithm>
@@ -118,6 +120,15 @@ void EditionView::mouseReleaseEvent(QMouseEvent* event)
     event->accept();
 }
 
+void EditionView::resizeEvent(QResizeEvent* event)
+{
+    // The one of the viewport: the scroll bars have not moved yet.
+    const QRectF shown = mapToScene(QRect({}, event->oldSize())).boundingRect();
+    QGraphicsView::resizeEvent(event);
+    keepInPlace();
+    keepSelectionShown(shown);
+}
+
 void EditionView::scrollBy(QPoint delta)
 {
     horizontalScrollBar()->setValue(horizontalScrollBar()->value() + delta.x());
@@ -181,5 +192,24 @@ void EditionView::endPanIfReleased(const QMouseEvent& event)
         m_panFrom.reset();
         setInteractive(true);
         viewport()->setCursor(m_cursor);
+    }
+}
+
+void EditionView::keepInPlace()
+{
+    const QPoint origin = viewport()->mapTo(window(), QPoint());
+    if(m_origin)
+    {
+        scrollBy(origin - *m_origin);
+    }
+    m_origin = origin;
+}
+
+void EditionView::keepSelectionShown(const QRectF& shown)
+{
+    const QList<QGraphicsItem*> selected = scene() != nullptr ? scene()->selectedItems() : QList<QGraphicsItem*>();
+    if(selected.size() == 1 && shown.contains(selected.first()->sceneBoundingRect()))
+    {
+        ensureVisible(selected.first());
     }
 }
