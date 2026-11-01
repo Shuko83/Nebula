@@ -22,6 +22,8 @@ to it.
   `--log-file`, `--console`). `find_package(Nebula 2.0 REQUIRED COMPONENTS Application)`.
 - `Universe::scanPluginDirectory()`, which lists the plugins of a directory as `--plugin-dir` does (#73).
 - The `file` of `ProjectComponent` (#73): the project file it opens each time it starts.
+- `hiddenWhileDragging` of `TabsComponent` (#104): the tabs are hidden while what is dragged from the lists of their
+  pages is out of them, until it is dropped, what they are beside taking their room.
 
 ### Changed
 
@@ -39,6 +41,11 @@ to it.
   stargate and what it is for; checking an instance, or a group of objects, checks all it has to expose, each under its
   name, and tells whether all, some or none of it is exposed; the interfaces and the properties are filtered by a text,
   or restricted to those exposed, whose number is told; what another stargate exposes has the icon of the Stargate.
+- The window of NebulaStudio gives most of its room to the edition zone (#104): the plugins, the galaxies and the
+  components are in tabs on its left, the properties on its right, the problems under it, without the frames of the
+  Application and Components groups. The tabs are hidden while a component or a galaxy dragged from them is out of
+  them, until it is dropped; what the edition zone shows stays where it is on the screen as they go and come back, and
+  the instance just dropped stays in view. The names in the lists of NebulaStudio are whole however narrow they are.
 
 ### Fixed
 
