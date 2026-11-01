@@ -10,6 +10,7 @@
 #include <QMetaType>
 #include <QString>
 #include <cstdint>
+#include <utility>
 
 class ComponentItem;
 class QPainter;
@@ -44,6 +45,9 @@ class InterfaceItem : public QGraphicsItem
         Left,
         Right,
     };
+    // What tells an interface among those of its component, whose items are made again when one is renamed or removed:
+    // its kind and its name.
+    using Key = std::pair<Kind, QString>;
     // For qgraphicsitem_cast.
     enum
     {
@@ -60,6 +64,7 @@ class InterfaceItem : public QGraphicsItem
     [[nodiscard]] int type() const override;
     [[nodiscard]] Kind kind() const;
     [[nodiscard]] const QString& name() const;
+    [[nodiscard]] Key key() const;
     // Whether it is a list the component consumes: binding it to an interface adds to what it is bound to.
     [[nodiscard]] bool isList() const;
     // The component it is an interface of.

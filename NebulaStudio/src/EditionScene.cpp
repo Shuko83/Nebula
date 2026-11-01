@@ -187,8 +187,64 @@ void readSides(ComponentItem& item, const QJsonObject& json)
     readSides(item, InterfaceItem::Kind::Provided, sides.value(u"provided").toObject());
 }
 
-// json, what a project holds about the component of item, with where it is, the color it was given and the edges the
-// dots of its interfaces are on.
+// The name of kind in a project, as the interfaces of a stargate are listed.
+QString kindName(InterfaceItem::Kind kind)
+{
+    return kind == InterfaceItem::Kind::Provided ? QStringLiteral("provided") : QStringLiteral("consumed");
+}
+
+// What a project holds of the order of rows, the interfaces of a component from the top: the kind and the name of each.
+QJsonArray rowsJson(const QList<InterfaceItem*>& rows)
+{
+    QJsonArray json;
+    for(const InterfaceItem* row : rows)
+    {
+        json.append(QJsonObject{{kindName(row->kind()), row->name()}});
+    }
+    return json;
+}
+
+// Writes to json, what a project holds about the component of item, the order of the rows of its interfaces, when it
+// is not the one of their kinds.
+void writeRows(QJsonObject& json, const ComponentItem& item)
+{
+    const QList<InterfaceItem*> rows = item.interfaceRows();
+    if(rows != item.consumedInterfaces() + item.providedInterfaces())
+    {
+        json.insert(u"rows", rowsJson(rows));
+    }
+}
+
+// The interface row, what a project holds of a row, tells; none when it tells no kind.
+std::optional<InterfaceItem::Key> rowKey(const QJsonObject& row)
+{
+    for(const InterfaceItem::Kind kind : {InterfaceItem::Kind::Consumed, InterfaceItem::Kind::Provided})
+    {
+        if(row.contains(kindName(kind)))
+        {
+            return InterfaceItem::Key{kind, row.value(kindName(kind)).toString()};
+        }
+    }
+    return std::nullopt;
+}
+
+// Shows the interfaces of item in the order json, what a project holds about its component, tells.
+void readRows(ComponentItem& item, const QJsonObject& json)
+{
+    QList<InterfaceItem::Key> keys;
+    const QJsonArray rows = json.value(u"rows").toArray();
+    for(const auto& row : rows)
+    {
+        if(const std::optional<InterfaceItem::Key> key = rowKey(row.toObject()))
+        {
+            keys.append(*key);
+        }
+    }
+    item.setInterfaceOrder(keys);
+}
+
+// json, what a project holds about the component of item, with where it is, the color it was given, and the edges and
+// the rows the dots of its interfaces are on.
 QJsonObject placed(QJsonObject json, const ComponentItem& item)
 {
     writePosition(json, item.pos());
@@ -197,6 +253,7 @@ QJsonObject placed(QJsonObject json, const ComponentItem& item)
         json.insert(u"color", item.color().name(QColor::HexArgb)); // With its opacity
     }
     writeSides(json, item);
+    writeRows(json, item);
     return json;
 }
 
@@ -421,6 +478,26 @@ QString sideText(InterfaceItem::Side side)
                                              : EditionScene::tr("Dot on the right edge");
 }
 
+// What the entry of the menu of a dot that swaps its row with the one of row tells: its name and its kind, which two
+// interfaces of a component can share a name across.
+QString swapText(const InterfaceItem& row)
+{
+    return isProvided(row) ? EditionScene::tr("%1 (provided)").arg(row.name())
+                           : EditionScene::tr("%1 (consumed)").arg(row.name());
+}
+
+// Adds to swapMenu, a submenu of menu, the entry that swaps the rows of dot and row, two interfaces of a component;
+// nothing when row is dot.
+void addSwapEntry(ContextMenu& menu, QMenu& swapMenu, const InterfaceItem& dot, const InterfaceItem& row)
+{
+    if(&row == &dot)
+    {
+        return;
+    }
+    menu.add(swapMenu, swapText(row),
+             [item = &dot.componentItem(), one = dot.key(), other = row.key()] { item->swapInterfaces(one, other); });
+}
+
 // Has stargate expose item, an interface of a component, of type, and returns the name it exposes it as: its own,
 // unless another stargate exposes one so, with the first number free then.
 QString exposeAs(Nebula::Stargate& stargate, const InterfaceItem& item, QMetaType type)
@@ -625,6 +702,7 @@ void EditionScene::showSaved(Nebula::Component& component, const QJsonObject& js
     ComponentItem* item = showComponent(component, readPosition(json));
     item->setColor(QColor::fromString(json.value(u"color").toString())); // Not valid when it has none
     readSides(*item, json);
+    readRows(*item, json);
 }
 
 void EditionScene::refreshStargateLinks()
@@ -887,7 +965,7 @@ void EditionScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
         return;
     }
     event->accept();
-    if(checkEditable() && !showSideMenu(*event)) // Everything it does edits the application
+    if(checkEditable() && !showDotMenu(*event)) // Everything it does edits the application
     {
         showMenu(*event);
     }
@@ -901,7 +979,7 @@ const InterfaceItem* EditionScene::shiftClickedDot(const QGraphicsSceneContextMe
     return shifted ? interfaceAt(event.scenePos()) : nullptr;
 }
 
-bool EditionScene::showSideMenu(const QGraphicsSceneContextMenuEvent& event)
+bool EditionScene::showDotMenu(const QGraphicsSceneContextMenuEvent& event)
 {
     const InterfaceItem* dot = shiftClickedDot(event);
     if(dot == nullptr)
@@ -910,6 +988,7 @@ bool EditionScene::showSideMenu(const QGraphicsSceneContextMenuEvent& event)
     }
     ContextMenu menu(event.widget());
     addSideEntries(menu, *dot);
+    addSwapEntries(menu, *dot);
     menu.exec(event.screenPos());
     return true;
 }
@@ -925,6 +1004,19 @@ void EditionScene::addSideEntries(ContextMenu& menu, const InterfaceItem& dot)
         entry->setChecked(dot.side() == side);
         entry->setActionGroup(&group);
     }
+}
+
+void EditionScene::addSwapEntries(ContextMenu& menu, const InterfaceItem& dot)
+{
+    menu.addSeparator();
+    QMenu& swapMenu = menu.addMenu(tr("Swap with"));
+    const QList<InterfaceItem*> rows = dot.componentItem().interfaceRows();
+    if(rows.size() < 2)
+    {
+        swapMenu.addAction(tr("It has no other interface"))->setEnabled(false);
+    }
+    std::ranges::for_each(rows, [&menu, &swapMenu, &dot](const InterfaceItem* row)
+                          { addSwapEntry(menu, swapMenu, dot, *row); });
 }
 
 void EditionScene::showMenu(const QGraphicsSceneContextMenuEvent& event)

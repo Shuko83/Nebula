@@ -27,6 +27,8 @@
 #include "LinkItem.h"
 #include "Nebula/Application/Universe.h"
 #include "Nebula/Component/ComponentFactory.h"
+#include "Nebula/Galaxy/Stargate.h"
+#include "Probe.h"
 #include "TestComponents.h"
 
 namespace
@@ -173,33 +175,42 @@ void chooseIn(QMenu& menu, QAction& bindTo, const QString& chosen)
     QTest::keyClick(bindTo.menu(), Qt::Key_Return);
 }
 
-// Opens the context menu of view at at, a position in its scene, and reads what it offers under Bind to; then chooses
-// chosen there, unless it is empty or not offered, which closes the menu.
-BindMenu openBindMenu(QGraphicsView& view, QPointF at, const QString& chosen)
+// Opens the context menu of view at at, a position in its scene, as the mouse does with modifiers held, and reads what
+// it offers under the submenu titled title; then chooses chosen there, unless it is empty or not offered, which closes
+// the menu.
+BindMenu openSubmenu(QGraphicsView& view, QPointF at, const QString& title, const QString& chosen,
+                     Qt::KeyboardModifiers modifiers)
 {
     // What the offscreen platform cannot do for a menu.
     QTest::ignoreMessage(QtWarningMsg, "This plugin does not support raise()");
     QTest::ignoreMessage(QtWarningMsg, "This plugin does not support grabbing the keyboard");
     BindMenu read;
     QTimer::singleShot(0, &view,
-                       [&read, &chosen]
+                       [&read, &title, &chosen]
                        {
                            auto* menu = qobject_cast<QMenu*>(QApplication::activePopupWidget());
                            QVERIFY(menu != nullptr);
                            const QList<QAction*> actions = menu->actions();
-                           const auto bindTo = std::ranges::find(actions, QStringLiteral("Bind to"), &QAction::text);
-                           if(bindTo == actions.end())
+                           const auto submenu = std::ranges::find(actions, title, &QAction::text);
+                           if(submenu == actions.end())
                            {
                                QTest::keyClick(menu, Qt::Key_Escape);
                                return;
                            }
-                           read = readBindMenu(*(*bindTo)->menu());
-                           chooseIn(*menu, **bindTo, chosen);
+                           read = readBindMenu(*(*submenu)->menu());
+                           chooseIn(*menu, **submenu, chosen);
                        });
     const QPoint position = view.mapFromScene(at);
-    QContextMenuEvent event(QContextMenuEvent::Mouse, position, view.viewport()->mapToGlobal(position));
+    QContextMenuEvent event(QContextMenuEvent::Mouse, position, view.viewport()->mapToGlobal(position), modifiers);
     QApplication::sendEvent(view.viewport(), &event);
     return read;
+}
+
+// Opens the context menu of view at at, a position in its scene, and reads what it offers under Bind to; then chooses
+// chosen there, unless it is empty or not offered, which closes the menu.
+BindMenu openBindMenu(QGraphicsView& view, QPointF at, const QString& chosen)
+{
+    return openSubmenu(view, at, QStringLiteral("Bind to"), chosen, Qt::NoModifier);
 }
 
 // The names of the components of application, in their order.
@@ -405,6 +416,59 @@ InterfaceItem::Side side(bool onRight)
     return onRight ? InterfaceItem::Side::Right : InterfaceItem::Side::Left;
 }
 
+// Types text in place of the name item edits in place, then presses Enter; false when it edits none.
+bool typeName(QGraphicsScene& scene, const ComponentItem& item, const QString& text)
+{
+    const QList<QGraphicsItem*> children = item.childItems();
+    const auto editor =
+        std::ranges::find_if(children, [](const QGraphicsItem* child)
+                             { return child->type() == QGraphicsTextItem::Type && child->isVisible(); });
+    if(editor == children.end())
+    {
+        return false;
+    }
+    auto* nameEditor = static_cast<QGraphicsTextItem*>(*editor);
+    nameEditor->setPlainText(text);
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    return scene.sendEvent(nameEditor, &enter);
+}
+
+// The names of items, in their order.
+QStringList namesOf(const QList<InterfaceItem*>& items)
+{
+    QStringList names;
+    for(const InterfaceItem* item : items)
+    {
+        names.append(item->name());
+    }
+    return names;
+}
+
+// The names of the interfaces of item, from the top, as their dots are shown.
+QStringList shownRows(const ComponentItem& item)
+{
+    QList<InterfaceItem*> rows = item.consumedInterfaces() + item.providedInterfaces();
+    std::ranges::sort(rows, {}, [](const InterfaceItem* row) { return row->y(); });
+    return namesOf(rows);
+}
+
+// project, with value as key in what it holds of the component named name.
+QJsonObject withEntry(QJsonObject project, const QString& name, const QString& key, const QJsonValue& value)
+{
+    QJsonArray components = project.value(u"components").toArray();
+    for(QJsonValueRef component : components)
+    {
+        QJsonObject json = component.toObject();
+        if(json.value(u"name").toString() == name)
+        {
+            json.insert(key, value);
+            component = json;
+        }
+    }
+    project.insert(u"components", components);
+    return project;
+}
+
 // What a project holds of the component named name: its entry in components.
 QJsonObject componentJson(const QJsonObject& project, const QString& name)
 {
@@ -472,6 +536,11 @@ class TestEditionScene : public QObject
     void sidesOfInterfacesShownAgain();
     void exposeNextToTheDot_data();
     void exposeNextToTheDot();
+    void swapMenu_data();
+    void swapMenu();
+    void rowsSaved();
+    void rowsAcrossKinds();
+    void rowOfAnInterfaceRenamed();
 
   private:
     // The middle of the link, moved down by offset: where nothing else is shown, below it.
@@ -1323,8 +1392,8 @@ void TestEditionScene::sideMenu()
     InterfaceItem* dot = interfaceItem(*m_scene, component, QStringLiteral("object"));
     const bool wasOnRight = dot->side() == InterfaceItem::Side::Right;
     const Menu menu = openMenu(*m_view, dot->scenePos(), chosen, Qt::ShiftModifier);
-    QCOMPARE(menu.offered,
-             (QStringList{QStringLiteral("Dot on the left edge"), QStringLiteral("Dot on the right edge")}));
+    QCOMPARE(menu.offered, (QStringList{QStringLiteral("Dot on the left edge"), QStringLiteral("Dot on the right edge"),
+                                        QStringLiteral("Swap with")}));
     QCOMPARE(menu.checked, QStringList{menu.offered.at(wasOnRight ? 1 : 0)});
     QVERIFY(menu.radio);
 
@@ -1492,20 +1561,159 @@ void TestEditionScene::exposeNextToTheDot()
     QVERIFY(facing != nullptr);
     QCOMPARE(facing->side(), side(!onRight));
 
-    const QList<QGraphicsItem*> children = stargate->childItems();
-    const auto editor =
-        std::ranges::find_if(children, [](const QGraphicsItem* child)
-                             { return child->type() == QGraphicsTextItem::Type && child->isVisible(); });
-    QVERIFY(editor != children.end());
-    auto* nameEditor = static_cast<QGraphicsTextItem*>(*editor);
-    nameEditor->setPlainText(QStringLiteral("renamed"));
-    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
-    QVERIFY(m_scene->sendEvent(nameEditor, &enter));
+    QVERIFY(typeName(*m_scene, *stargate, QStringLiteral("renamed")));
     QCOMPARE(stargate->interfaceItem(exposing, QStringLiteral("object")), nullptr);
     const InterfaceItem* renamed = stargate->interfaceItem(exposing, QStringLiteral("renamed"));
     QVERIFY(renamed != nullptr);
     QCOMPARE(renamed->side(), side(!onRight));
     QCOMPARE(links(*m_scene).size(), component == QStringLiteral("Source1") ? 2 : 1); // Still bound to it
+}
+
+void TestEditionScene::swapMenu_data()
+{
+    QTest::addColumn<QString>("component");   // Whose interface is Shift+right-clicked
+    QTest::addColumn<QString>("dot");         // That interface
+    QTest::addColumn<QStringList>("offered"); // The entries under Swap with
+    QTest::addColumn<QString>("chosen");      // The one chosen; none when the menu is closed
+    QTest::addColumn<QStringList>("rows");    // The interfaces of the component then, from the top
+
+    const QString sink = QStringLiteral("Sink1");
+    const QString object = QStringLiteral("object");
+    const QString timer = QStringLiteral("timer");
+    const QString objects = QStringLiteral("objects");
+    QTest::newRow("first with last") << sink << object
+                                     << QStringList{QStringLiteral("timer (consumed)"),
+                                                    QStringLiteral("objects (consumed)")}
+                                     << QStringLiteral("objects (consumed)") << QStringList{objects, timer, object};
+    QTest::newRow("second with first") << sink << timer
+                                       << QStringList{QStringLiteral("object (consumed)"),
+                                                      QStringLiteral("objects (consumed)")}
+                                       << QStringLiteral("object (consumed)") << QStringList{timer, object, objects};
+    QTest::newRow("nothing chosen") << sink << objects
+                                    << QStringList{QStringLiteral("object (consumed)"),
+                                                   QStringLiteral("timer (consumed)")}
+                                    << QString() << QStringList{object, timer, objects};
+    QTest::newRow("its only interface") << QStringLiteral("Source1") << object
+                                        << QStringList{QStringLiteral("It has no other interface")} << QString()
+                                        << QStringList{object};
+}
+
+// Swap with, in the menu Shift+right-clicking the dot of an interface opens, lists the other interfaces of its
+// component, from the top: choosing one swaps their rows, their links following their dots. A project holds the order
+// of the rows once it is no longer the one of their kinds.
+void TestEditionScene::swapMenu()
+{
+    QFETCH(QString, component);
+    QFETCH(QString, dot);
+    QFETCH(QStringList, offered);
+    QFETCH(QString, chosen);
+    QFETCH(QStringList, rows);
+
+    m_scene->setLinkStyle(LinkStyle::RightAngled);
+    const ComponentItem* item = componentItem(*m_scene, component);
+    const InterfaceItem* clicked = interfaceItem(*m_scene, component, dot);
+    const BindMenu menu =
+        openSubmenu(*m_view, clicked->scenePos(), QStringLiteral("Swap with"), chosen, Qt::ShiftModifier);
+    QVERIFY(menu.offered);
+    QCOMPARE(menu.entries, offered);
+    QVERIFY(menu.checked.isEmpty());
+    QCOMPARE(menu.disabled.isEmpty(), rows.size() > 1);
+
+    QCOMPARE(shownRows(*item), rows);
+    QCOMPARE(namesOf(item->interfaceRows()), rows);
+    QCOMPARE(links(*m_scene), QList<LinkItem*>{m_link}); // Still bound
+    QCOMPARE(m_link->path(), LinkItem::route(LinkStyle::RightAngled, LinkItem::stopAt(m_link->provided()),
+                                             LinkItem::stopAt(m_link->consumed())));
+    QCOMPARE(componentJson(m_scene->save(), component).contains(u"rows"), !chosen.isEmpty());
+}
+
+// A project holds the order of the rows of the interfaces of a component, and shows them so once opened; swapped back
+// in the order of their kinds, they are no longer held. A row of no kind, or of an interface the component does not
+// have, is left out, and those it does not tell come after the others.
+void TestEditionScene::rowsSaved()
+{
+    const QString sink = QStringLiteral("Sink1");
+    const InterfaceItem::Key object{InterfaceItem::Kind::Consumed, QStringLiteral("object")};
+    const InterfaceItem::Key objects{InterfaceItem::Kind::Consumed, QStringLiteral("objects")};
+    componentItem(*m_scene, sink)->swapInterfaces(object, objects);
+    const QJsonObject project = m_scene->save();
+    QCOMPARE(componentJson(project, sink).value(u"rows").toArray(),
+             (QJsonArray{QJsonObject{{QStringLiteral("consumed"), QStringLiteral("objects")}},
+                         QJsonObject{{QStringLiteral("consumed"), QStringLiteral("timer")}},
+                         QJsonObject{{QStringLiteral("consumed"), QStringLiteral("object")}}}));
+
+    QCOMPARE(m_scene->load(project), QStringList());
+    QCOMPARE(shownRows(*componentItem(*m_scene, sink)),
+             (QStringList{QStringLiteral("objects"), QStringLiteral("timer"), QStringLiteral("object")}));
+    QCOMPARE(m_scene->save(), project);
+    componentItem(*m_scene, sink)->swapInterfaces(objects, object);
+    QVERIFY(!componentJson(m_scene->save(), sink).contains(u"rows"));
+
+    const QJsonArray odd{QJsonObject{{QStringLiteral("consumed"), QStringLiteral("timer")}},
+                         QJsonObject{{QStringLiteral("unknown"), QStringLiteral("object")}},
+                         QJsonObject{{QStringLiteral("provided"), QStringLiteral("object")}},
+                         QJsonObject{{QStringLiteral("consumed"), QStringLiteral("timer")}}};
+    QCOMPARE(m_scene->load(withEntry(project, sink, QStringLiteral("rows"), odd)), QStringList());
+    QCOMPARE(shownRows(*componentItem(*m_scene, sink)),
+             (QStringList{QStringLiteral("timer"), QStringLiteral("object"), QStringLiteral("objects")}));
+}
+
+// The rows of a provided interface and of a consumed one are swapped as well, each dot keeping its edge; an interface
+// declared once they are comes last, and one removed leaves its row.
+void TestEditionScene::rowsAcrossKinds()
+{
+    QVERIFY(m_application->instantiate(testComponentId(QStringLiteral("Probe"))) != nullptr);
+    QCOMPARE(m_scene->load(m_application->save()), QStringList());
+    auto* probe = qobject_cast<Probe*>(m_application->component(QStringLiteral("Probe1")));
+    QVERIFY(probe != nullptr);
+    QVERIFY(probe->consumeObject(QStringLiteral("in")));
+    QVERIFY(probe->provideObject(QStringLiteral("out")));
+    QVERIFY(probe->provideObject(QStringLiteral("out2")));
+    ComponentItem* item = componentItem(*m_scene, QStringLiteral("Probe1"));
+    QCOMPARE(shownRows(*item), (QStringList{QStringLiteral("in"), QStringLiteral("out"), QStringLiteral("out2")}));
+
+    item->swapInterfaces({InterfaceItem::Kind::Consumed, QStringLiteral("in")},
+                         {InterfaceItem::Kind::Provided, QStringLiteral("out2")});
+    QCOMPARE(shownRows(*item), (QStringList{QStringLiteral("out2"), QStringLiteral("out"), QStringLiteral("in")}));
+    QCOMPARE(item->interfaceItem(InterfaceItem::Kind::Provided, QStringLiteral("out2"))->x(), dotX(true));
+    QCOMPARE(item->interfaceItem(InterfaceItem::Kind::Consumed, QStringLiteral("in"))->x(), dotX(false));
+
+    QVERIFY(probe->consumeObject(QStringLiteral("late")));
+    QCOMPARE(shownRows(*item), (QStringList{QStringLiteral("out2"), QStringLiteral("out"), QStringLiteral("in"),
+                                            QStringLiteral("late")}));
+    probe->removeProvided(QStringLiteral("out"));
+    QCOMPARE(shownRows(*item), (QStringList{QStringLiteral("out2"), QStringLiteral("in"), QStringLiteral("late")}));
+    QCOMPARE(componentJson(m_scene->save(), QStringLiteral("Probe1")).value(u"rows").toArray(),
+             (QJsonArray{QJsonObject{{QStringLiteral("provided"), QStringLiteral("out2")}},
+                         QJsonObject{{QStringLiteral("consumed"), QStringLiteral("in")}},
+                         QJsonObject{{QStringLiteral("consumed"), QStringLiteral("late")}}}));
+}
+
+// An interface of a stargate renamed in place keeps its row; one renamed as another one is not renamed, and the rows
+// stay as they were.
+void TestEditionScene::rowOfAnInterfaceRenamed()
+{
+    Nebula::Stargate* stargate = m_application->addStargate();
+    QVERIFY(stargate != nullptr);
+    const QMetaType type = QMetaType::fromType<QObject*>();
+    QVERIFY(stargate->exposeInterface(Nebula::Exposure::Consumed, QStringLiteral("first"), type));
+    QVERIFY(stargate->exposeInterface(Nebula::Exposure::Consumed, QStringLiteral("second"), type));
+    QCOMPARE(m_scene->load(m_application->save()), QStringList());
+    ComponentItem* item = componentItem(*m_scene, QStringLiteral("Stargate1"));
+    QVERIFY(item != nullptr);
+    item->swapInterfaces({InterfaceItem::Kind::Provided, QStringLiteral("first")},
+                         {InterfaceItem::Kind::Provided, QStringLiteral("second")});
+    QCOMPARE(shownRows(*item), (QStringList{QStringLiteral("second"), QStringLiteral("first")}));
+
+    item->editInterfaceName(*item->interfaceItem(InterfaceItem::Kind::Provided, QStringLiteral("first")));
+    QVERIFY(typeName(*m_scene, *item, QStringLiteral("renamed")));
+    QCOMPARE(shownRows(*item), (QStringList{QStringLiteral("second"), QStringLiteral("renamed")}));
+
+    QSignalSpy refused(m_scene.get(), &EditionScene::refused);
+    item->editInterfaceName(*item->interfaceItem(InterfaceItem::Kind::Provided, QStringLiteral("second")));
+    QVERIFY(typeName(*m_scene, *item, QStringLiteral("renamed")));
+    QCOMPARE(refused.size(), 1);
+    QCOMPARE(shownRows(*item), (QStringList{QStringLiteral("second"), QStringLiteral("renamed")}));
 }
 
 QTEST_MAIN(TestEditionScene)

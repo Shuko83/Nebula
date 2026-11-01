@@ -28,7 +28,8 @@ class Component;
 
 // A component instantiated in the edition zone: its name above the name of its component, then its interfaces, one
 // InterfaceItem per row: those it consumes, their dots on its left edge, then those it provides, their dots on its
-// right edge, each until it is put on the other one, and rows of text under them when it is given some. A triangle in
+// right edge, each until it is put on the other one or its row swapped with another, and rows of text under them when
+// it is given some. A triangle in
 // its top right corner tells that it runs. An exclamation mark in its top left corner tells that it does not work: an
 // interface it cannot do without is bound to nothing, see Component::unboundMandatoryInterfaces(); its tooltip names
 // them and tells how to bind them. It can be selected, and, while it is editable, moved, and its name edited in place
@@ -56,6 +57,15 @@ class ComponentItem : public QGraphicsObject
     // edge. It stays there while the component has that interface, shown again or not, renamed in place too, and goes
     // with it; nothing when it has none so named.
     void setInterfaceSide(InterfaceItem::Kind kind, const QString& name, InterfaceItem::Side side);
+    // Its interfaces, in the order of their rows, from the top: those it consumes, then those it provides, until rows
+    // are swapped; one it has from then on comes last.
+    [[nodiscard]] QList<InterfaceItem*> interfaceRows() const;
+    // Swaps the rows of two of its interfaces, which keep them as setInterfaceSide() keeps an edge; nothing when it has
+    // not both.
+    void swapInterfaces(const InterfaceItem::Key& one, const InterfaceItem::Key& other);
+    // Shows its interfaces in the order of keys, from the top, those it does not tell after them, in the order of their
+    // rows; a key of an interface it does not have is left out.
+    void setInterfaceOrder(const QList<InterfaceItem::Key>& keys);
     // Not valid until it is given one: it has the colors of the style. As opaque as it was chosen.
     [[nodiscard]] const QColor& color() const;
     void setColor(const QColor& color);
@@ -125,11 +135,18 @@ class ComponentItem : public QGraphicsObject
     [[nodiscard]] InterfaceItem::Side interfaceSide(InterfaceItem::Kind kind, const QString& name) const;
     // Keeps side as the edge the dot of its interface of kind named name is put on, without moving it.
     void keepSide(InterfaceItem::Kind kind, const QString& name, InterfaceItem::Side side);
+    // The rows m_order tells, from the top, of the interfaces it has.
+    [[nodiscard]] QList<InterfaceItem*> orderedRows() const;
+    // Whether it has the interface key tells.
+    [[nodiscard]] bool has(const InterfaceItem::Key& key) const;
     // Tells that the interface whose name was edited is to be named newName, see interfaceNameEdited(): its dot stays
-    // on its edge once it is.
+    // on its edge, and on its row, once it is.
     void nameEditedInterface(const QString& newName);
-    // Forgets the edges the dots of the interfaces it no longer has were put on.
-    void forgetLostSides();
+    // Keeps the edge and the row of the dot of its interface of kind named name for it once it is named newName, as
+    // well as for it now.
+    void keepPlace(InterfaceItem::Kind kind, const QString& name, const QString& newName);
+    // Forgets the edges and the rows of the interfaces it no longer has.
+    void forgetLost();
     // Whether it works: what it misses is drawn in the warning color, and told by its mark and its tooltip.
     void refreshUnbound();
     // What it is, how it opens, and what it misses, unbound, when it does not work.
@@ -185,7 +202,10 @@ class ComponentItem : public QGraphicsObject
     QList<InterfaceItem*> m_providedInterfaces;
     // The edges the dots of its interfaces are put on, by kind and name, when it is not the one of their kind: the
     // items are deleted when an interface is renamed or removed.
-    std::map<std::pair<InterfaceItem::Kind, QString>, InterfaceItem::Side> m_sides;
+    std::map<InterfaceItem::Key, InterfaceItem::Side> m_sides;
+    // The order of the rows of its interfaces, from the top, once some were swapped; empty while they are in the one of
+    // consumedInterfaces() then providedInterfaces().
+    QList<InterfaceItem::Key> m_order;
     NameEditor* m_nameEditor = nullptr;      // Over its name while it is edited; created when first so
     NameEditor* m_interfaceEditor = nullptr; // Over the name of an interface while it is edited, the same way
     InterfaceItem::Kind m_editedKind = InterfaceItem::Kind::Provided; // Of the interface whose name is edited
