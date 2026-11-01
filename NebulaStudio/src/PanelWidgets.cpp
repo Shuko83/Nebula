@@ -13,28 +13,36 @@
 #include <QTreeView>
 #include <QVBoxLayout>
 
+#include "DraggableView.h"
 #include "Nebula/Application/Universe.h"
 
-QTreeView* createView(QAbstractItemModel& model)
+namespace
 {
-    auto* view = new QTreeView;
+
+// view, made a list of the rows of model, one selected at a time. Its columns are as wide as what they show, the last
+// one taking the room left: the names, in the first one, are whole however narrow the list is.
+QTreeView* listRows(QTreeView* view, QAbstractItemModel& model)
+{
     view->setModel(&model);
     view->setRootIsDecorated(false);
     view->setUniformRowHeights(true);
     view->setAllColumnsShowFocus(true);
     view->setSelectionMode(QAbstractItemView::SingleSelection);
-    view->header()->setStretchLastSection(false);
     view->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
-    view->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    view->header()->setStretchLastSection(true);
     return view;
+}
+
+} // namespace
+
+QTreeView* createView(QAbstractItemModel& model)
+{
+    return listRows(new QTreeView, model);
 }
 
 QTreeView* createDraggableView(QAbstractItemModel& model)
 {
-    QTreeView* view = createView(model);
-    view->setDragEnabled(true);
-    view->setDragDropMode(QAbstractItemView::DragOnly);
-    return view;
+    return listRows(new DraggableView, model);
 }
 
 QSplitter* createSplitter(QWidget* view, QWidget* viewer)

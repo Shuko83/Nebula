@@ -27,7 +27,7 @@ class Universe;
 
 // A list of the rows of model, one selected at a time.
 [[nodiscard]] QTreeView* createView(QAbstractItemModel& model);
-// A list of the rows of model, which are dragged from it.
+// A list of the rows of model, which are dragged from it: a DraggableView, which tells when they are.
 [[nodiscard]] QTreeView* createDraggableView(QAbstractItemModel& model);
 
 // Has show, a member of viewer, called with the data of role of each row made current in view.
