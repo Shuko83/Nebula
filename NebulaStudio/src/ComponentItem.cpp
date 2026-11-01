@@ -116,6 +116,17 @@ QFont warningMarkFont(QFont font)
     return font;
 }
 
+// What tells each of items, in their order.
+QList<InterfaceItem::Key> keysOf(const QList<InterfaceItem*>& items)
+{
+    QList<InterfaceItem::Key> keys;
+    for(const InterfaceItem* item : items)
+    {
+        keys.append(item->key());
+    }
+    return keys;
+}
+
 // What the tooltip of an item tells of unbound, the interfaces it misses.
 QString unboundText(const QStringList& unbound)
 {
@@ -167,7 +178,63 @@ InterfaceItem* ComponentItem::interfaceItem(InterfaceItem::Kind kind, const QStr
 void ComponentItem::setInterfaceSide(InterfaceItem::Kind kind, const QString& name, InterfaceItem::Side side)
 {
     keepSide(kind, name, side);
-    forgetLostSides(); // When it has no such interface
+    forgetLost(); // When it has no such interface
+    placeInterfaces();
+}
+
+QList<InterfaceItem*> ComponentItem::interfaceRows() const
+{
+    QList<InterfaceItem*> rows = orderedRows();
+    const QList<InterfaceItem*> all = m_consumedInterfaces + m_providedInterfaces;
+    for(InterfaceItem* item : all)
+    {
+        if(!rows.contains(item)) // Declared once rows were swapped, or none were
+        {
+            rows.append(item);
+        }
+    }
+    return rows;
+}
+
+QList<InterfaceItem*> ComponentItem::orderedRows() const
+{
+    QList<InterfaceItem*> rows;
+    for(const InterfaceItem::Key& key : m_order)
+    {
+        InterfaceItem* item = interfaceItem(key.first, key.second);
+        if(item != nullptr && !rows.contains(item)) // Once, whatever a project tells
+        {
+            rows.append(item);
+        }
+    }
+    return rows;
+}
+
+bool ComponentItem::has(const InterfaceItem::Key& key) const
+{
+    return interfaceItem(key.first, key.second) != nullptr;
+}
+
+void ComponentItem::swapInterfaces(const InterfaceItem::Key& one, const InterfaceItem::Key& other)
+{
+    QList<InterfaceItem::Key> keys = keysOf(interfaceRows());
+    const qsizetype first = keys.indexOf(one);
+    const qsizetype second = keys.indexOf(other);
+    if(first >= 0 && second >= 0)
+    {
+        keys.swapItemsAt(first, second);
+        setInterfaceOrder(keys);
+    }
+}
+
+void ComponentItem::setInterfaceOrder(const QList<InterfaceItem::Key>& keys)
+{
+    m_order = keys;
+    forgetLost(); // The keys of the interfaces it does not have
+    if(interfaceRows() == m_consumedInterfaces + m_providedInterfaces)
+    {
+        m_order.clear(); // In the order of their kinds again, as those it has from then on are
+    }
     placeInterfaces();
 }
 
@@ -417,13 +484,23 @@ NameEditor& ComponentItem::interfaceEditor()
 
 void ComponentItem::nameEditedInterface(const QString& newName)
 {
-    // Under its new name before it is renamed, which shows the interfaces again; not over another one so named.
-    if(interfaceItem(m_editedKind, newName) == nullptr)
+    if(!has({m_editedKind, newName})) // Not over another one so named
     {
-        keepSide(m_editedKind, newName, interfaceSide(m_editedKind, m_editedName));
+        keepPlace(m_editedKind, m_editedName, newName);
     }
     emit interfaceNameEdited(m_editedKind, m_editedName, newName);
-    forgetLostSides(); // Under its new name, when it was not renamed
+    forgetLost(); // Under its new name, when it was not renamed
+}
+
+void ComponentItem::keepPlace(InterfaceItem::Kind kind, const QString& name, const QString& newName)
+{
+    // Before it is renamed, which shows the interfaces again.
+    keepSide(kind, newName, interfaceSide(kind, name));
+    const qsizetype row = m_order.indexOf(InterfaceItem::Key{kind, name});
+    if(row >= 0)
+    {
+        m_order.insert(row + 1, {kind, newName});
+    }
 }
 
 QRectF ComponentItem::nameArea() const
@@ -516,7 +593,7 @@ void ComponentItem::showInterfaces(const QList<Nebula::InterfaceInfo>& consumed,
 {
     showInterfaces(m_consumedInterfaces, consumed, InterfaceItem::Kind::Consumed);
     showInterfaces(m_providedInterfaces, provided, InterfaceItem::Kind::Provided);
-    forgetLostSides(); // Those of the interfaces renamed or removed
+    forgetLost(); // The places of the interfaces renamed or removed
     placeInterfaces();
 }
 
@@ -539,7 +616,7 @@ void ComponentItem::placeInterfaces()
     // The rows start in the padding under the names and leave as much under the last one: lower than they were when an
     // interface was declared above them.
     qreal y = Header.bottom() - Padding / 2 + InterfaceItem::RowHeight / 2;
-    const QList<InterfaceItem*> items = m_consumedInterfaces + m_providedInterfaces;
+    const QList<InterfaceItem*> items = interfaceRows();
     for(InterfaceItem* item : items)
     {
         place(*item, y);
@@ -561,14 +638,10 @@ InterfaceItem::Side ComponentItem::interfaceSide(InterfaceItem::Kind kind, const
     return found != m_sides.end() ? found->second : InterfaceItem::defaultSide(kind);
 }
 
-void ComponentItem::forgetLostSides()
+void ComponentItem::forgetLost()
 {
-    std::erase_if(m_sides,
-                  [this](const auto& entry)
-                  {
-                      const auto& [kind, name] = entry.first;
-                      return interfaceItem(kind, name) == nullptr;
-                  });
+    std::erase_if(m_sides, [this](const auto& entry) { return !has(entry.first); });
+    m_order.removeIf([this](const InterfaceItem::Key& key) { return !has(key); });
 }
 
 void ComponentItem::refreshUnbound()

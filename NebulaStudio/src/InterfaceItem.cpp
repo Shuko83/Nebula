@@ -83,6 +83,11 @@ const QString& InterfaceItem::name() const
     return m_name;
 }
 
+InterfaceItem::Key InterfaceItem::key() const
+{
+    return {m_kind, m_name};
+}
+
 bool InterfaceItem::isList() const
 {
     return m_list;
@@ -156,7 +161,8 @@ void InterfaceItem::refreshToolTip()
 {
     setToolTip(QStringLiteral("%1%2\n%3\n%4")
                    .arg(kindText(), requirementText(), stateText(),
-                        tr("Shift+right-click it to choose the edge of the component it is on")));
+                        tr("Shift+right-click it to choose the edge of the component it is on, or the interface to "
+                           "swap its row with")));
     update();
 }
 

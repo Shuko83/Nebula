@@ -58,7 +58,8 @@ class SettingsFile;
 // Bind to, in the menu of the dot of an interface consumed, binds it to one of the interfaces shown it can be bound to,
 // those it is bound to checked: choosing one of these unbinds it.
 // Shift+right-clicking the dot of an interface opens a menu of its own instead, which puts it on the left or the right
-// edge of its component, the one it is on checked: its links go out of that edge, see LinkItem.
+// edge of its component, the one it is on checked: its links go out of that edge, see LinkItem. Under Swap with, it
+// swaps its row with the one of another interface of its component, whatever their kinds.
 // Double-clicking a link, or Add anchor point in its menu, has it go through that point, an anchor, see AnchorItem,
 // which the mouse drags; double-clicking an anchor, or Remove anchor point in its menu, removes it.
 // None of this is done while the application runs, see Universe: its components can still be selected, but nothing is
@@ -176,7 +177,7 @@ class EditionScene : public QGraphicsScene
     void show(const std::vector<std::unique_ptr<Nebula::Component>>& components,
               const std::vector<std::unique_ptr<Nebula::SettingsFile>>& files, const QJsonObject& project);
     // Shows component where json, what a project holds of it, tells, in the color it tells, the dots of its interfaces
-    // on the edges it tells.
+    // on the edges and the rows it tells.
     void showSaved(Nebula::Component& component, const QJsonObject& json);
     // Draws the links of what components, those shown, bind, through the anchors project holds, and the lines of the
     // stargates.
@@ -224,13 +225,16 @@ class EditionScene : public QGraphicsScene
     // zone when there is none, then about the zone there.
     void showMenu(const QGraphicsSceneContextMenuEvent& event);
     // Shows the menu of the dot of an interface where event is, when the mouse opened it with Shift held: the edge of
-    // its component it is on. Returns whether it did.
-    bool showSideMenu(const QGraphicsSceneContextMenuEvent& event);
+    // its component it is on, and the interface to swap its row with. Returns whether it did.
+    bool showDotMenu(const QGraphicsSceneContextMenuEvent& event);
     // The dot of an interface where event is, when the mouse opened the menu with Shift held; nullptr otherwise.
     [[nodiscard]] const InterfaceItem* shiftClickedDot(const QGraphicsSceneContextMenuEvent& event) const;
     // Adds to menu putting dot on the left or the right edge of its component, as radio buttons, the edge it is on
     // checked.
     static void addSideEntries(ContextMenu& menu, const InterfaceItem& dot);
+    // Adds to menu, in a submenu, swapping the row of dot with the one of each other interface of its component, from
+    // the top; one that tells there is none otherwise.
+    static void addSwapEntries(ContextMenu& menu, const InterfaceItem& dot);
     // Adds to menu what is done to component, at position, with dialogs of parent; false when component is nullptr.
     bool addComponentEntries(ContextMenu& menu, ComponentItem* component, const QPointF& position, QWidget* parent);
     // Adds to menu binding consumed, an interface shown, in a submenu: to one of the interfaces shown it can be bound
