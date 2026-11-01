@@ -55,7 +55,6 @@ void TabsComponent::showPage(QWidget* page)
     {
         // Those before it in the list are shown already.
         insertPage(m_tabs, *page, static_cast<int>(m_pages.indexOf(page)));
-        m_aside.follow(*page);
     }
 }
 
@@ -63,7 +62,6 @@ void TabsComponent::hidePage(QWidget* page)
 {
     if(m_pages.count(page) == 1)
     {
-        m_aside.forget(*page);
         m_tabs.removeTab(m_tabs.indexOf(page));
         page->setParent(nullptr);
     }

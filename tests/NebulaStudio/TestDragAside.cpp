@@ -59,7 +59,8 @@ class TestDragAside : public QObject
     void leavingTheWindow();
     void notWhileInactive();
     void notForAnotherList();
-    void notForAListForgotten();
+    void listAddedLater();
+    void listTakenAway();
     void notShownOnceTakenAway();
 
   private:
@@ -92,7 +93,6 @@ void TestDragAside::init()
 
     m_aside = std::make_unique<DragAside>(*m_panel);
     m_aside->setActive(true);
-    m_aside->follow(*m_panel);
 }
 
 void TestDragAside::cleanup()
@@ -185,9 +185,22 @@ void TestDragAside::notForAnotherList()
     emit other->dragFinished();
 }
 
-void TestDragAside::notForAListForgotten()
+void TestDragAside::listAddedLater()
 {
-    m_aside->forget(*m_panel);
+    auto* later = new DraggableView;
+    m_panel->layout()->addWidget(later);
+    emit later->dragStarted();
+    dragTo(*m_window, BesidePanel);
+    QVERIFY(m_panel->isHidden());
+    emit later->dragFinished();
+    QVERIFY(m_panel->isVisible());
+}
+
+void TestDragAside::listTakenAway()
+{
+    // No longer in the panel, the list does not tell it.
+    const std::unique_ptr<DraggableView> taken(m_list);
+    m_list->setParent(nullptr);
     emit m_list->dragStarted();
     dragTo(*m_window, BesidePanel);
     QVERIFY(m_panel->isVisible());

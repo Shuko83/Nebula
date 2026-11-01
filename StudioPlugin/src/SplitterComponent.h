@@ -7,6 +7,7 @@
 #include <QSplitter>
 #include <QString>
 
+#include "DragAside.h"
 #include "Nebula/Component/Component.h"
 
 class QWidget;
@@ -14,7 +15,9 @@ class QWidget;
 // Widgets side by side, or one above the other, which the user resizes by dragging between them: a QSplitter it
 // creates and provides as "widget", showing the widgets it consumes as the list "widgets", each in the order of its
 // binding and for as long as it has it. Its sizes are those it starts with, in pixels, and the widget it stretches,
-// from 0, the one that takes the room it gains as it grows. It needs a QApplication.
+// from 0, the one that takes the room it gains as it grows. Hidden while dragging, it is set aside while rows dragged
+// from the lists of its widgets are out of it, until they are dropped, what it is beside taking its room: see
+// DragAside. It needs a QApplication.
 class SplitterComponent : public Nebula::Component
 {
     Q_OBJECT
@@ -23,6 +26,8 @@ class SplitterComponent : public Nebula::Component
     Q_PROPERTY(bool vertical READ isVertical WRITE setVertical NOTIFY verticalChanged)
     Q_PROPERTY(QString sizes READ sizes WRITE setSizes NOTIFY sizesChanged)
     Q_PROPERTY(int stretched READ stretched WRITE setStretched NOTIFY stretchedChanged)
+    Q_PROPERTY(bool hiddenWhileDragging READ isHiddenWhileDragging WRITE setHiddenWhileDragging NOTIFY
+                   hiddenWhileDraggingChanged)
 
   public:
     SplitterComponent();
@@ -38,11 +43,15 @@ class SplitterComponent : public Nebula::Component
     // them.
     [[nodiscard]] int stretched() const;
     void setStretched(int stretched);
+    // Whether it is hidden while what is dragged from its widgets is out of it, to be dropped beside it.
+    [[nodiscard]] bool isHiddenWhileDragging() const;
+    void setHiddenWhileDragging(bool hidden);
 
   signals:
     void verticalChanged(bool vertical);
     void sizesChanged(const QString& sizes);
     void stretchedChanged(int stretched);
+    void hiddenWhileDraggingChanged(bool hidden);
 
   private:
     // Shows widget in its place among those it has, once, when it has it twice.
@@ -53,7 +62,8 @@ class SplitterComponent : public Nebula::Component
     void divide();
 
     QSplitter m_splitter;
-    QList<QWidget*> m_widgets; // Consumed
+    DragAside m_aside{m_splitter}; // Follows the drags of the lists of its widgets
+    QList<QWidget*> m_widgets;     // Consumed
     QString m_sizes;
     int m_stretched = -1;
 };

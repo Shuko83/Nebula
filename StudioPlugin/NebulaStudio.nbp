@@ -72,32 +72,46 @@
             "name": "Sources",
             "type": "FabienDG.Nebula.StudioPlugin.TabsComponent",
             "x": 1950,
-            "y": 1420,
+            "y": 1300,
             "properties": {
                 "documentMode": true,
-                "hiddenWhileDragging": true
+                "hiddenWhileDragging": false
             }
         },
         {
             "name": "EditionColumn",
             "type": "FabienDG.Nebula.StudioPlugin.SplitterComponent",
             "x": 1950,
-            "y": 1820,
+            "y": 1800,
             "properties": {
                 "vertical": true,
                 "sizes": "620, 120",
-                "stretched": 0
+                "stretched": 0,
+                "hiddenWhileDragging": false
+            }
+        },
+        {
+            "name": "SideColumn",
+            "type": "FabienDG.Nebula.StudioPlugin.SplitterComponent",
+            "x": 2250,
+            "y": 1360,
+            "properties": {
+                "vertical": true,
+                "sizes": "420, 330",
+                "stretched": 0,
+                "hiddenWhileDragging": true
             }
         },
         {
             "name": "Columns",
             "type": "FabienDG.Nebula.StudioPlugin.SplitterComponent",
             "x": 2250,
-            "y": 1580,
+            "y": 1700,
             "properties": {
                 "vertical": false,
-                "sizes": "300, 840, 300",
-                "stretched": 1
+                "sizes": "1080, 360",
+                "stretched": 0,
+                "hiddenWhileDragging": false
             }
         },
         {
@@ -187,7 +201,7 @@
         {
             "consumer": "Sources",
             "consumed": "pages",
-            "provider": "Plugins",
+            "provider": "Components",
             "provided": "widget"
         },
         {
@@ -199,7 +213,7 @@
         {
             "consumer": "Sources",
             "consumed": "pages",
-            "provider": "Components",
+            "provider": "Plugins",
             "provided": "widget"
         },
         {
@@ -215,9 +229,15 @@
             "provided": "widget"
         },
         {
-            "consumer": "Columns",
+            "consumer": "SideColumn",
             "consumed": "widgets",
             "provider": "Sources",
+            "provided": "widget"
+        },
+        {
+            "consumer": "SideColumn",
+            "consumed": "widgets",
+            "provider": "Properties",
             "provided": "widget"
         },
         {
@@ -229,7 +249,7 @@
         {
             "consumer": "Columns",
             "consumed": "widgets",
-            "provider": "Properties",
+            "provider": "SideColumn",
             "provided": "widget"
         },
         {

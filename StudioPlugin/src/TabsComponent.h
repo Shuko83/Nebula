@@ -46,6 +46,6 @@ class TabsComponent : public Nebula::Component
     void hidePage(QWidget* page);
 
     QTabWidget m_tabs;
-    DragAside m_aside{m_tabs}; // Follows the drags of the pages of m_tabs
+    DragAside m_aside{m_tabs}; // Follows the drags of the lists of its pages
     QList<QWidget*> m_pages;   // Consumed
 };

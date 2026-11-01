@@ -264,7 +264,7 @@ QWidget* TestStudioPlugin::widgetOf(const Component& component)
 void TestStudioPlugin::galaxyOpens()
 {
     openGalaxy();
-    QCOMPARE(m_universe->components().size(), 12);
+    QCOMPARE(m_universe->components().size(), 13);
     // Each of its parts has what it needs.
     for(const std::unique_ptr<Component>& component : m_universe->components())
     {
@@ -299,13 +299,9 @@ void TestStudioPlugin::partsInTheWindow()
     QVERIFY(window != nullptr);
     const auto* columns = qobject_cast<QSplitter*>(window->centralWidget());
     QVERIFY(columns != nullptr);
-    QCOMPARE(columns->count(), 3);
-    // The lists in tabs, one shown at a time.
-    const auto* sources = qobject_cast<QTabWidget*>(columns->widget(0));
-    QVERIFY(sources != nullptr);
-    QCOMPARE(tabTitles(*sources), QStringList({u"Plugins"_s, u"Galaxies"_s, u"Components"_s}));
-    // The edition zone above the problems, then the property editor.
-    const auto* edition = qobject_cast<QSplitter*>(columns->widget(1));
+    QCOMPARE(columns->count(), 2);
+    // The edition zone above the problems.
+    const auto* edition = qobject_cast<QSplitter*>(columns->widget(0));
     QVERIFY(edition != nullptr);
     QCOMPARE(edition->orientation(), Qt::Vertical);
     QCOMPARE(edition->count(), 2);
@@ -313,35 +309,47 @@ void TestStudioPlugin::partsInTheWindow()
     QCOMPARE(window->findChildren<QGraphicsView*>().size(), 1);
     QVERIFY(window->findChildren<QGroupBox*>().isEmpty());
     // Most of the window, and the room it gains.
-    QTRY_VERIFY(columns->sizes().at(1) > columns->width() / 2);
+    QTRY_VERIFY(columns->sizes().at(0) > columns->width() / 2);
     QCOMPARE(edition->sizePolicy().horizontalStretch(), 1);
+    // On its right, the lists in tabs, one shown at a time, the components first, above the property editor.
+    const auto* side = qobject_cast<QSplitter*>(columns->widget(1));
+    QVERIFY(side != nullptr);
+    QCOMPARE(side->orientation(), Qt::Vertical);
+    QCOMPARE(side->count(), 2);
+    const auto* sources = qobject_cast<QTabWidget*>(side->widget(0));
+    QVERIFY(sources != nullptr);
+    QCOMPARE(tabTitles(*sources), QStringList({u"Components"_s, u"Galaxies"_s, u"Plugins"_s}));
+    QCOMPARE(sources->currentIndex(), 0);
+    QCOMPARE(side->widget(1), widgetOf(*m_universe->component(u"Properties"_s)));
 }
 
 void TestStudioPlugin::listsAsideWhileDragging()
 {
     openGalaxy();
-    QVERIFY(m_universe->component(u"Sources"_s)->property("hiddenWhileDragging").toBool());
+    // The side of the lists and of the property editor, not the lists alone.
+    QVERIFY(m_universe->component(u"SideColumn"_s)->property("hiddenWhileDragging").toBool());
+    QVERIFY(!m_universe->component(u"Sources"_s)->property("hiddenWhileDragging").toBool());
     ignoreSizeHints();
     QVERIFY(m_universe->start());
     QMainWindow* window = shownWindow();
     QVERIFY(window != nullptr);
     QVERIFY(QTest::qWaitForWindowExposed(window));
-    auto* sources = qobject_cast<QTabWidget*>(widgetOf(*m_universe->component(u"Sources"_s)));
+    QWidget* side = widgetOf(*m_universe->component(u"SideColumn"_s));
     const QGraphicsView* edition = window->findChild<QGraphicsView*>();
-    QTRY_VERIFY(sources->isVisible() && edition->width() > 0);
+    QTRY_VERIFY(side->isVisible() && edition->width() > 0);
     const int width = edition->width();
     // The list of the components, whose rows are dragged into the edition zone.
     QTreeView* list = draggableListIn(*widgetOf(*m_universe->component(u"Components"_s)));
     QVERIFY(list != nullptr);
 
     QVERIFY(QMetaObject::invokeMethod(list, "dragStarted"));
-    ignoreSizeHints(); // The window can be smaller without them
+    ignoreSizeHints(); // The window can be smaller without it
     dragTo(*window, edition->mapTo(window, edition->rect().center()));
-    QVERIFY(sources->isHidden());
-    QTRY_VERIFY(edition->width() > width); // Taking the room of the lists
+    QVERIFY(side->isHidden());
+    QTRY_VERIFY(edition->width() > width); // Taking its room
     ignoreSizeHints();
     QVERIFY(QMetaObject::invokeMethod(list, "dragFinished"));
-    QVERIFY(sources->isVisible());
+    QVERIFY(side->isVisible());
     QTRY_COMPARE(edition->width(), width);
     leave(*window); // What it was dragged over forgets it
 }
