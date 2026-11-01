@@ -24,10 +24,11 @@ to it.
 - The `file` of `ProjectComponent` (#73): the project file it opens each time it starts.
 - `hiddenWhileDragging` of `SplitterComponent` and `TabsComponent` (#104): the widget is hidden while what is dragged
   from the lists in it is out of it, until it is dropped, what it is beside taking its room.
-- The edge of the dot of an interface in NebulaStudio (#117): Shift+right-clicking the dot opens a menu of its own,
-  **Dot on the left edge** and **Dot on the right edge**, which puts it on that edge of its instance, its name next to
+- The edge and the row of the dot of an interface in NebulaStudio (#117): Shift+right-clicking the dot opens a menu of
+  its own. **Dot on the left edge** and **Dot on the right edge** put it on that edge of its instance, its name next to
   it; its links, the one being drawn included, go out of that edge, and **Expose...** adds the stargate on that side.
-  A project holds it in the `sides` of the component, when the dot is not on the edge of its kind.
+  **Swap with** swaps its row with the one of another interface of the instance, whatever their kinds. A project holds
+  them in the `sides` and the `rows` of the component, when they are not those of their kinds.
 
 ### Changed
 
