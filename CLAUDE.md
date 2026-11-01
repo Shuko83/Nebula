@@ -310,11 +310,11 @@ après les options de `NebulaApplication`) donné, absolu, à la propriété `fi
 puis `runWithSplash()` : le `SplashScreen` montré, fermé sur `read()`, pendant `exec()` ; `tellFailure()` dit dans une
 `QMessageBox` pourquoi la galaxy ne tourne pas (`errorString()`). Le thème vient du `StudioComponent` de la galaxy.
 La galaxy (`StudioPlugin/`, issue #103) assemble les parties de NebulaStudio (`Studio`, `EditionZone`, `Project`,
-`PluginPanel`, `GalaxyPanel`, `ComponentPanel`, `PropertyEditor`, `ProblemList`) par des composants : trois colonnes
-dans un splitter horizontal (issue #104), à gauche un `QTabWidget` en mode document (onglets **Plugins**, **Galaxies**
-et **Components**), masqué tant que ce qu'on glisse de ses listes en est sorti (`DragAside`), au milieu la zone
-d'édition au-dessus de `ProblemList` (splitter vertical), qui prend ce que gagne la fenêtre, à droite le
-`PropertyEditor`.
+`PluginPanel`, `GalaxyPanel`, `ComponentPanel`, `PropertyEditor`, `ProblemList`) par des composants : deux colonnes
+dans un splitter horizontal (issue #104), à gauche la zone d'édition au-dessus de `ProblemList` (splitter vertical),
+qui prend ce que gagne la fenêtre, à droite un splitter vertical, masqué tant que ce qu'on glisse de ses listes en est
+sorti (`DragAside`) : un `QTabWidget` en mode document (onglets **Components**, montré au départ, **Galaxies** et
+**Plugins**) au-dessus du `PropertyEditor`.
 L'exécutable compile toujours toutes les sources de `src/` (`cmu_add_executable`), dont il n'emploie que `SplashScreen`
 et `Theme`. `SettingsItem` et
 `SettingsDialog` sont dans `src/Settings/`, inclus par `"Settings/SettingsItem.h"` ; `GalaxyModel`, `GalaxyViewer`,
@@ -346,11 +346,12 @@ fermé, pour la scène ; `addMenu()` y ajoute un sous-menu, dont `add(sous-menu,
 `PanelWidgets.h` (ce dont les parties sont faites : listes `createView()` / `createDraggableView()`, aux colonnes à la
 taille de leur contenu, la dernière prenant la place qui reste, `showCurrentIn()`, colonnes, barres, boutons,
 `insertPage()` et `disableWhileRunning()`), `DraggableView` (la liste de `createDraggableView()`, d'où l'on glisse
-seulement : `dragStarted()` / `dragFinished()` autour de `startDrag()`, jusqu'au dépôt ou à l'abandon), `DragAside`
-(issue #104 : masque un widget tant que ce qu'on glisse d'une `DraggableView` qu'il suit, `follow()` / `forget()` sur
-une page, en est sorti, d'après les `DragMove` et `DragLeave` qu'un filtre lit sur sa `QWindow` le temps du glisser,
-un `DragLeave` par `QCursor::pos()` : fenêtre quittée ou glisser abandonné ; le remontre à la fin, sauf s'il a quitté
-sa place ; rien tant qu'il n'est pas `setActive()`), `Messages.h` (`tell()` dans une barre d'état,
+seulement : `dragStarted()` / `dragFinished()` autour de `startDrag()`, jusqu'au dépôt ou à l'abandon, chacun envoyant
+aux widgets où elle est alors un événement de type `dragStartedEvent()` / `dragFinishedEvent()`, enregistré une fois),
+`DragAside` (issue #104 : filtre son widget et, sur ces événements, d'une liste ajoutée avant ou après lui, masque ce
+widget tant que ce qu'on glisse en est sorti, d'après les `DragMove` et `DragLeave` qu'il lit sur sa `QWindow` le temps
+du glisser, un `DragLeave` par `QCursor::pos()` : fenêtre quittée ou glisser abandonné ; le remontre à la fin, sauf
+s'il a quitté sa place ; rien tant qu'il n'est pas `setActive()`), `Messages.h` (`tell()` dans une barre d'état,
 `MessageDuration`, `warn()`, `askToSave()`, `createPluginDirectoryLabel()`) et `ProjectFiles.h`
 (`defaultProjectDirectory()`, `writeProjectFile()` par `QSaveFile`).
 
@@ -388,9 +389,10 @@ sa place ; rien tant qu'il n'est pas `setActive()`), `Messages.h` (`tell()` dans
 partir des composants de `StudioPlugin` (catégories NebulaStudio et Layout) ; `NebulaStudio.exe` la fait tourner (issue
 #73, `main.cpp`), NebulaStudio l'ouvre depuis l'onglet **Galaxies** et la lance par **Start** (une seconde fenêtre
 NebulaStudio), et `ExampleUniverseApp scene/NebulaStudio.nbp` la fait tourner aussi. Ses instances : `Studio`, `Edition`, `Project`,
-`Plugins`, `Galaxies`, `Components`, `Properties`, `Problems`, `Sources` (onglets des trois listes, `hiddenWhileDragging`),
-`EditionColumn` (splitter vertical : `Edition` au-dessus de `Problems`), `Columns` (splitter horizontal : `Sources`,
-`EditionColumn`, étirée, et `Properties`, « 300, 840, 300 ») et `Window`, dans quatre zones.
+`Plugins`, `Galaxies`, `Components`, `Properties`, `Problems`, `Sources` (onglets des trois listes, `Components` lié en
+premier), `EditionColumn` (splitter vertical : `Edition` au-dessus de `Problems`), `SideColumn` (splitter vertical :
+`Sources` au-dessus de `Properties`, `hiddenWhileDragging`), `Columns` (splitter horizontal : `EditionColumn`, étirée,
+et `SideColumn`, « 1080, 360 ») et `Window`, dans quatre zones.
 
 | Composant | Rôle |
 | --- | --- |
@@ -401,7 +403,7 @@ NebulaStudio), et `ExampleUniverseApp scene/NebulaStudio.nbp` la fait tourner au
 | `PluginListComponent`, `GalaxyListComponent`, `ComponentListComponent` | `PluginPanel` (son `removing` → `EditionZone::remove()` de la `zone` consommée, s'il y en a une), `GalaxyPanel` (`openRequested` → `Project::openGalaxy()` du `project` consommé ; propriété `directory`, donnée au panneau, que `directoryChosen` change pendant l'exécution) et `ComponentPanel` |
 | `PropertyEditorComponent`, `ProblemListComponent` | `PropertyEditor`, qui suit `selectionChanged` de la `zone` (`Mandatory` ; `setComponent(nullptr)` quand elle part), et `ProblemList` (`componentActivated` → `EditionZone::showComponent()`, si elle a une `zone`) |
 | `StudioWindowComponent` | Sa `QMainWindow`, montrée pendant l'exécution (`width`, `height`, 1440×800), icône du logo, `createPluginDirectoryLabel()` ; consomme `centralWidget` (`Mandatory`), les listes `menus` (barre de menus refaite, `QMenuBar::clear()` ne détruisant que ses propres actions) et `statusWidgets` (widgets permanents, retirés puis remis dans l'ordre), `studio` (`told` → `tell()`) et `project` (titre, `titleChanged`) ; un filtre d'événements refuse la fermeture tant que `Project::saveChanges()` dit non |
-| `SplitterComponent`, `TabsComponent`, `GroupComponent` | Mise en page de widgets quelconques, rendus sans parent à leur départ : `QSplitter` (liste `widgets`, `vertical`, `sizes` « 300, 840, 300 », `stretched` : l'index dont le facteur d'étirement vaut 1), `QTabWidget` (liste `pages`, `insertPage()`, `documentMode` ; `hiddenWhileDragging`, issue #104 : son `DragAside`, qui suit chaque page de son insertion à son retrait), `QGroupBox` (`content`, `Mandatory`, `title` ; la galaxy ne s'en sert plus) |
+| `SplitterComponent`, `TabsComponent`, `GroupComponent` | Mise en page de widgets quelconques, rendus sans parent à leur départ : `QSplitter` (liste `widgets`, `vertical`, `sizes` « 1080, 360 », `stretched` : l'index dont le facteur d'étirement vaut 1), `QTabWidget` (liste `pages`, `insertPage()`, `documentMode` ; la première page insérée est montrée), `QGroupBox` (`content`, `Mandatory`, `title` ; la galaxy ne s'en sert plus) ; `hiddenWhileDragging` du splitter et des onglets (issue #104) : leur `DragAside`, sur leur widget |
 
 Les chaînes affichées passent par `tr()`, en anglais.
 
@@ -520,10 +522,10 @@ inconnu = courbes). Celui de NebulaStudio est `Studio::m_preferences`, construit
   elle perd ce qui n'est pas enregistré. Une partie qui perd puis retrouve son `studio` est refaite à neuf : l'état de
   ses listes (sélection, recherche) est perdu. Dans le paquet, la galaxy et la licence de la police ne sont ajoutées
   que par `release.yml`, que rien d'autre ne vérifie.
-- Disposition de NebulaStudio (#104) : les onglets des listes ne se masquent que le temps d'un glisser qui part d'eux ;
-  rien ne les replie à la demande (on les réduit en tirant la poignée du splitter), et les tailles des colonnes ne sont
-  pas gardées d'un lancement à l'autre. Masqués, ils perdent le clavier, que Qt donne au widget suivant (le champ qui
-  trouve les instances) : rien ne le rend à la liste après un glisser abandonné. Les tests simulent le glisser par les
+- Disposition de NebulaStudio (#104) : le côté droit (listes et propriétés) ne se masque que le temps d'un glisser qui
+  part de lui ; rien ne le replie à la demande (on le réduit en tirant la poignée du splitter), et les tailles des
+  colonnes ne sont pas gardées d'un lancement à l'autre. Masqué, il perd le clavier, que Qt donne au widget suivant (le
+  champ qui trouve les instances) : rien ne le rend à la liste après un glisser abandonné. Les tests simulent le glisser par les
   signaux de `DraggableView` et les événements de la fenêtre : un vrai glisser (OLE sous Windows) n'est vérifié qu'à la
   main.
 - Fichiers de réglages : pas de fenêtre « Préférences » générique où l'utilisateur final éditerait tout un fichier
