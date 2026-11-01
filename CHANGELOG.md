@@ -24,6 +24,10 @@ to it.
 - The `file` of `ProjectComponent` (#73): the project file it opens each time it starts.
 - `hiddenWhileDragging` of `SplitterComponent` and `TabsComponent` (#104): the widget is hidden while what is dragged
   from the lists in it is out of it, until it is dropped, what it is beside taking its room.
+- The edge of the dot of an interface in NebulaStudio (#117): Shift+right-clicking the dot opens a menu of its own,
+  **Dot on the left edge** and **Dot on the right edge**, which puts it on that edge of its instance, its name next to
+  it; its links, the one being drawn included, go out of that edge, and **Expose...** adds the stargate on that side.
+  A project holds it in the `sides` of the component, when the dot is not on the edge of its kind.
 
 ### Changed
 
@@ -47,6 +51,9 @@ to it.
   while a component or a galaxy dragged from it is out of it, until it is dropped; what the edition zone shows stays
   where it is on the screen as it goes and comes back, and the instance just dropped stays in view. The names in the
   lists of NebulaStudio are whole however narrow they are.
+- A link goes through each of its anchors the way from the point before it to the one after it (#117): leftwards when
+  the one after it is on the left, rather than always rightwards, which looped around the anchors of a link going back
+  to the left.
 
 ### Fixed
 
