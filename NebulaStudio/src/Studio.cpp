@@ -4,7 +4,7 @@
 #include "Studio.h"
 
 Studio::Studio(const QString& organization, const QString& name, QObject* parent)
-    : QObject(parent), m_preferences(organization, name)
+    : QObject(parent), m_preferences(preferencesFormat(), QSettings::UserScope, organization, name)
 {
     // In the status bar, as what the edition zone tells, nor in the middle of a run, which goes on without the file.
     connect(&m_application, &Nebula::Universe::settingsFileFailed, this, &Studio::told);
@@ -37,6 +37,18 @@ void Studio::setLinkStyle(LinkStyle style)
     m_linkStyle = style;
     writeLinkStyle(m_preferences, style);
     emit linkStyleChanged(style);
+}
+
+Qt::ColorScheme Studio::colorScheme() const
+{
+    return m_colorScheme;
+}
+
+void Studio::setColorScheme(Qt::ColorScheme scheme)
+{
+    m_colorScheme = scheme;
+    writeColorScheme(m_preferences, scheme);
+    emit colorSchemeChanged(scheme);
 }
 
 void Studio::refreshPlugins()

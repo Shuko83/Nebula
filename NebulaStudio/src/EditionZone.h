@@ -56,7 +56,8 @@ class EditionZone : public QWidget
     [[nodiscard]] QAction* saveGalaxyAction() const;
     // Adds to menu Find Instances, which gives the keys to the field that finds them (Ctrl+Shift+F), what zooms the
     // view in and out, also done with + and -, or with Ctrl and the mouse wheel, then Links: the styles the links of
-    // every scene can be drawn in, the one they are drawn in checked.
+    // every scene can be drawn in, the one they are drawn in checked, and Theme: the color schemes NebulaStudio can be
+    // in, the one of the system, light or dark, the one chosen checked.
     void addViewActions(QMenu& menu);
     // Adds to menu Start and Stop, which start the application and stop it, each enabled when it can be done.
     void addRunActions(QMenu& menu);
@@ -91,6 +92,8 @@ class EditionZone : public QWidget
     void createSaveGalaxyAction();
     // Links: the styles of LinkStyles, one of them checked, the one the links are drawn in.
     void addLinkStyleMenu(QMenu& menu);
+    // Theme: the color schemes of ColorSchemes, one of them checked, the one the studio has.
+    void addThemeMenu(QMenu& menu);
     // Follows what the application of its studio tells, whether it runs and its components, and the style of the
     // links.
     void followStudio();

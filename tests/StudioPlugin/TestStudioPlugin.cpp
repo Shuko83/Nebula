@@ -19,7 +19,9 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMimeData>
+#include <QPalette>
 #include <QPointer>
+#include <QSettings>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QTabWidget>
@@ -209,6 +211,7 @@ class TestStudioPlugin : public QObject
     void partsGoWithTheStudio();
     void stoppingStopsTheApplicationAssembled();
     void projectFileOpensAsItStarts();
+    void themeChosenInTheViewMenu();
     void galaxyDirectory_data();
     void galaxyDirectory();
     void splitterInTheOrderOfItsBindings();
@@ -224,13 +227,19 @@ class TestStudioPlugin : public QObject
     Component* instantiate(const QString& name);
     // The widget component provides as "widget".
     static QWidget* widgetOf(const Component& component);
+    // Starts the galaxy of NebulaStudio, then returns the Theme menu of its window; nullptr when it has none.
+    QMenu* startedThemeMenu();
 
     std::unique_ptr<Universe> m_universe;
+    const QTemporaryDir m_settings; // Of the user, those of NebulaStudio among them: not the ones of who runs the tests
 };
 
 void TestStudioPlugin::initTestCase()
 {
     QFontDatabase::families(); // The platform of the tests warns, once, that it has no fonts: before failOnWarning()
+    QVERIFY(m_settings.isValid());
+    // The directory of the user settings in any format, that of the preferences of NebulaStudio included.
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_settings.path());
 }
 
 void TestStudioPlugin::init()
@@ -259,6 +268,19 @@ Component* TestStudioPlugin::instantiate(const QString& name)
 QWidget* TestStudioPlugin::widgetOf(const Component& component)
 {
     return component.providedInterface<QWidget>(u"widget"_s);
+}
+
+QMenu* TestStudioPlugin::startedThemeMenu()
+{
+    openGalaxy();
+    ignoreSizeHints();
+    if(!m_universe->start() || shownWindow() == nullptr)
+    {
+        return nullptr;
+    }
+    const QMenu* view = menuOf(*shownWindow(), u"&View"_s);
+    const QAction* theme = view != nullptr ? actionOf(*view, u"&Theme"_s) : nullptr;
+    return theme != nullptr ? theme->menu() : nullptr;
 }
 
 void TestStudioPlugin::galaxyOpens()
@@ -420,6 +442,33 @@ void TestStudioPlugin::projectFileOpensAsItStarts()
     QMainWindow* window = shownWindow();
     QVERIFY(window != nullptr);
     QTRY_COMPARE(window->windowTitle(), u"Clock.nbp - NebulaStudio"_s);
+}
+
+// The color scheme chosen in View > Theme gives the application its palette at once, and the preferences of the user
+// of NebulaStudio keep it for its next launch, in their JSON file.
+void TestStudioPlugin::themeChosenInTheViewMenu()
+{
+    QMenu* theme = startedThemeMenu();
+    QVERIFY(theme != nullptr);
+    QCOMPARE(theme->actions().size(), 3);
+    QVERIFY(actionOf(*theme, u"&System"_s)->isChecked()); // Until another one is chosen
+    actionOf(*theme, u"&Light"_s)->trigger();
+    QVERIFY(QApplication::palette().color(QPalette::Window).lightness() > 128);
+    actionOf(*theme, u"&Dark"_s)->trigger();
+    QVERIFY(QApplication::palette().color(QPalette::Window).lightness() < 128);
+    QVERIFY(!actionOf(*theme, u"&Light"_s)->isChecked()); // One at a time
+
+    cleanup(); // Its preferences written as it goes
+    QFile file(m_settings.filePath(u"FabienDG/NebulaStudio.json"_s));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QCOMPARE(QJsonDocument::fromJson(file.readAll()).object().value(u"appearance"_s),
+             QJsonObject({{u"colorScheme"_s, u"dark"_s}}));
+
+    init(); // Its next launch
+    theme = startedThemeMenu();
+    QVERIFY(theme != nullptr);
+    QVERIFY(actionOf(*theme, u"&Dark"_s)->isChecked());
+    actionOf(*theme, u"&System"_s)->trigger(); // Of the system again, for the tests after this one
 }
 
 void TestStudioPlugin::galaxyDirectory_data()

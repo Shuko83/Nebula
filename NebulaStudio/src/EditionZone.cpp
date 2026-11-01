@@ -14,6 +14,7 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <memory>
 #include <utility>
 
@@ -31,27 +32,50 @@
 namespace
 {
 
-// A way of drawing the links, as the View menu offers it.
-struct LinkStyleEntry
+// One of the choices of a submenu of the View menu, and what it chooses.
+template <typename Value> struct Choice
 {
     const char* name; // Translated in the context of EditionZone
-    LinkStyle style;
+    Value value;
 };
 
+// The ways of drawing the links.
 constexpr std::array LinkStyles{
-    LinkStyleEntry{.name = QT_TRANSLATE_NOOP("EditionZone", "&Curves"), .style = LinkStyle::Curved},
-    LinkStyleEntry{.name = QT_TRANSLATE_NOOP("EditionZone", "&Straight Lines"), .style = LinkStyle::Straight},
-    LinkStyleEntry{.name = QT_TRANSLATE_NOOP("EditionZone", "&Right Angles"), .style = LinkStyle::RightAngled},
+    Choice<LinkStyle>{.name = QT_TRANSLATE_NOOP("EditionZone", "&Curves"), .value = LinkStyle::Curved},
+    Choice<LinkStyle>{.name = QT_TRANSLATE_NOOP("EditionZone", "&Straight Lines"), .value = LinkStyle::Straight},
+    Choice<LinkStyle>{.name = QT_TRANSLATE_NOOP("EditionZone", "&Right Angles"), .value = LinkStyle::RightAngled},
 };
 
-// Adds to group the action that draws the links as entry tells, its style in its data; checked when it is current, the
-// style they are drawn in.
-void addLinkStyleAction(QActionGroup& group, const LinkStyleEntry& entry, LinkStyle current)
+// The color schemes of the theme: the one of the system first.
+constexpr std::array ColorSchemes{
+    Choice<Qt::ColorScheme>{.name = QT_TRANSLATE_NOOP("EditionZone", "&System"), .value = Qt::ColorScheme::Unknown},
+    Choice<Qt::ColorScheme>{.name = QT_TRANSLATE_NOOP("EditionZone", "&Light"), .value = Qt::ColorScheme::Light},
+    Choice<Qt::ColorScheme>{.name = QT_TRANSLATE_NOOP("EditionZone", "&Dark"), .value = Qt::ColorScheme::Dark},
+};
+
+// Adds to group the action of choice, what it chooses in its data; checked when it is current.
+template <typename Value> void addChoice(QActionGroup& group, const Choice<Value>& choice, Value current)
 {
-    QAction* action = group.addAction(EditionZone::tr(entry.name));
-    action->setData(QVariant::fromValue(entry.style));
+    QAction* action = group.addAction(EditionZone::tr(choice.name));
+    action->setData(QVariant::fromValue(choice.value));
     action->setCheckable(true);
-    action->setChecked(entry.style == current);
+    action->setChecked(choice.value == current);
+}
+
+// Adds to menu the submenu title of choices, see addChoice(), and returns their group, which tells the one triggered:
+// one of them is checked at a time.
+template <typename Value, std::size_t Count>
+const QActionGroup& addChoiceMenu(QMenu& menu, const QString& title, const std::array<Choice<Value>, Count>& choices,
+                                  Value current)
+{
+    QMenu* submenu = menu.addMenu(title);
+    auto* group = new QActionGroup(submenu); // Exclusive
+    for(const Choice<Value>& choice : choices)
+    {
+        addChoice(*group, choice, current);
+    }
+    submenu->addActions(group->actions());
+    return *group;
 }
 
 // The view of scene, the edition zone.
@@ -172,18 +196,21 @@ void EditionZone::addViewActions(QMenu& menu)
     menu.addAction(tr("&Actual Size"), QKeySequence(Qt::CTRL | Qt::Key_0), this, [this] { m_view->resetZoom(); });
     menu.addSeparator();
     addLinkStyleMenu(menu);
+    addThemeMenu(menu);
 }
 
 void EditionZone::addLinkStyleMenu(QMenu& menu)
 {
-    auto* group = new QActionGroup(&menu); // Exclusive: one style at a time
-    connect(group, &QActionGroup::triggered, this,
+    const QActionGroup& styles = addChoiceMenu(menu, tr("&Links"), LinkStyles, m_studio.linkStyle());
+    connect(&styles, &QActionGroup::triggered, this,
             [this](const QAction* action) { m_studio.setLinkStyle(action->data().value<LinkStyle>()); });
-    for(const LinkStyleEntry& entry : LinkStyles)
-    {
-        addLinkStyleAction(*group, entry, m_studio.linkStyle());
-    }
-    menu.addMenu(tr("&Links"))->addActions(group->actions());
+}
+
+void EditionZone::addThemeMenu(QMenu& menu)
+{
+    const QActionGroup& schemes = addChoiceMenu(menu, tr("&Theme"), ColorSchemes, m_studio.colorScheme());
+    connect(&schemes, &QActionGroup::triggered, this,
+            [this](const QAction* action) { m_studio.setColorScheme(action->data().value<Qt::ColorScheme>()); });
 }
 
 void EditionZone::addRunActions(QMenu& menu)
