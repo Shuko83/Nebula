@@ -10,7 +10,8 @@
 // to the application that runs it, and of the directories its command line gives with --plugin-dir, the preferences
 // of the user of NebulaStudio, and what the parts tell one another. It provides it as the interface "studio", at once,
 // to each part, a PluginListComponent or an EditionZoneComponent say. The first one created gives the application
-// that runs it the theme of NebulaStudio; stopping it stops the application it assembles, when it runs. It needs a
+// that runs it the theme of NebulaStudio, in the color scheme its user chose; each one gives it the scheme chosen in
+// its studio from then on. Stopping it stops the application it assembles, when it runs. It needs a
 // QApplication.
 class StudioComponent : public Nebula::Component
 {

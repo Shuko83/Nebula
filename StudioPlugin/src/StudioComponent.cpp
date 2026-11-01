@@ -15,16 +15,16 @@ NEBULA_REGISTER_COMPONENT(StudioPlugin, StudioComponent);
 namespace
 {
 
-// Whose preferences a studio has: those of the user of NebulaStudio, the link style they chose there say.
+// Whose preferences a studio has: those of the user of NebulaStudio, the link style and the theme they chose there say.
 constexpr auto PreferencesName = "NebulaStudio";
 
-// Gives the application the theme of NebulaStudio, once: what follows the color scheme of the system is connected
-// once.
-void applyThemeOnce()
+// Gives the application the theme of NebulaStudio in scheme, once: what follows the color scheme of the system is
+// connected once.
+void applyThemeOnce(Qt::ColorScheme scheme)
 {
-    [[maybe_unused]] static const bool applied = []
+    [[maybe_unused]] static const bool applied = [scheme]
     {
-        applyTheme();
+        applyTheme(scheme);
         return true;
     }();
 }
@@ -34,7 +34,9 @@ void applyThemeOnce()
 StudioComponent::StudioComponent()
     : m_studio(QString::fromUtf8(StudioPluginInfo::organization), QString::fromUtf8(PreferencesName))
 {
-    applyThemeOnce();
+    applyThemeOnce(m_studio.colorScheme());
+    // The palette is the one of the application: the scheme chosen in any of its studios.
+    connect(&m_studio, &Studio::colorSchemeChanged, this, &chooseColorScheme);
     applyCommandLine();
     provideInterface<Studio>(QStringLiteral("studio"), &m_studio);
 }

@@ -8,6 +8,7 @@
 #include <QPalette>
 #include <QProxyStyle>
 #include <QStyle>
+#include <QStyleHints>
 #include <QStyleOption>
 #include <QTest>
 
@@ -53,17 +54,26 @@ class TestTheme : public QObject
     void contrast();
     void unknownSchemeIsDark();
     void applyTheme();
+    void chooseColorScheme_data();
+    void chooseColorScheme();
+    void chosenSchemeStays();
     void edges_data();
     void edges();
     void titleFont();
     void icon_data();
     void icon();
     void logo();
+    void cleanup();
 };
 
 void TestTheme::init()
 {
     QTest::failOnWarning(); // What is expected is told with QTest::ignoreMessage()
+}
+
+void TestTheme::cleanup()
+{
+    ::chooseColorScheme(Qt::ColorScheme::Unknown); // The one of the system again
 }
 
 void TestTheme::contrast_data()
@@ -136,6 +146,52 @@ void TestTheme::applyTheme()
     QCOMPARE(palette.color(QPalette::Highlight), colors.accent);
     QCOMPARE(palette.color(QPalette::HighlightedText), colors.onAccent);
     QCOMPARE(palette.color(QPalette::Disabled, QPalette::Text), colors.disabledText);
+    // The one of the system, which tells none here: the dark one.
+    QCOMPARE(&colors, &themeColors(QGuiApplication::styleHints()->colorScheme()));
+}
+
+void TestTheme::chooseColorScheme_data()
+{
+    QTest::addColumn<Qt::ColorScheme>("scheme");
+    QTest::addColumn<bool>("applied"); // By applyTheme(), rather than chosen after it
+
+    for(const auto& [scheme, schemeName] :
+        {std::pair{Qt::ColorScheme::Light, "light"}, std::pair{Qt::ColorScheme::Dark, "dark"}})
+    {
+        QTest::addRow("%s, applied", schemeName) << scheme << true;
+        QTest::addRow("%s, chosen", schemeName) << scheme << false;
+    }
+}
+
+// The application has the palette of the scheme chosen, whatever the one of the system.
+void TestTheme::chooseColorScheme()
+{
+    QFETCH(Qt::ColorScheme, scheme);
+    QFETCH(bool, applied);
+
+    ::applyTheme(applied ? scheme : Qt::ColorScheme::Unknown);
+    if(!applied)
+    {
+        ::chooseColorScheme(scheme);
+    }
+    const ThemeColors& colors = themeColors(scheme);
+    QCOMPARE(&currentThemeColors(), &colors);
+    QCOMPARE(QApplication::palette().color(QPalette::Window), colors.space);
+    QCOMPARE(QApplication::palette().color(QPalette::Text), colors.text);
+}
+
+// A scheme chosen stays when the one of the system changes; the one of the system is followed again once it is chosen.
+void TestTheme::chosenSchemeStays()
+{
+    ::applyTheme(Qt::ColorScheme::Light);
+    QStyleHints* hints = QGuiApplication::styleHints();
+    emit hints->colorSchemeChanged(Qt::ColorScheme::Dark); // As the system tells it
+    QCOMPARE(QApplication::palette().color(QPalette::Window), themeColors(Qt::ColorScheme::Light).space);
+
+    ::chooseColorScheme(Qt::ColorScheme::Unknown);
+    const ThemeColors& system = themeColors(hints->colorScheme());
+    QCOMPARE(&currentThemeColors(), &system);
+    QCOMPARE(QApplication::palette().color(QPalette::Window), system.space);
 }
 
 void TestTheme::edges_data()

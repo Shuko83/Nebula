@@ -25,7 +25,8 @@ class Studio : public QObject
 
   public:
     // The preferences are those of the user for the application named name of organization, NebulaStudio, rather than
-    // those of QCoreApplication, which would move the AppConfigLocation the applications run here write to.
+    // those of QCoreApplication, which would move the AppConfigLocation the applications run here write to: the JSON
+    // file name.json in the directory organization of their settings, see preferencesFormat().
     Studio(const QString& organization, const QString& name, QObject* parent = nullptr);
 
     [[nodiscard]] Nebula::Universe& application();
@@ -38,6 +39,11 @@ class Studio : public QObject
     [[nodiscard]] LinkStyle linkStyle() const;
     // Draws the links in style from now on, and at the next launch; see linkStyleChanged().
     void setLinkStyle(LinkStyle style);
+    // The color scheme of the theme of NebulaStudio, as the user chose it last, from one launch to the next:
+    // Qt::ColorScheme::Unknown for the one of the system.
+    [[nodiscard]] Qt::ColorScheme colorScheme() const;
+    // Has NebulaStudio in scheme from now on, and at the next launch; see colorSchemeChanged().
+    void setColorScheme(Qt::ColorScheme scheme);
 
     // Has the lists of plugins and of components read them again: see pluginsChanged().
     void refreshPlugins();
@@ -52,6 +58,8 @@ class Studio : public QObject
     // A project file was written, or a plugin opened from its file: the galaxies are to be listed again.
     void galaxiesChanged();
     void linkStyleChanged(LinkStyle style);
+    // The application is to have the palette of scheme: StudioComponent gives it.
+    void colorSchemeChanged(Qt::ColorScheme scheme);
     // message is a sentence to show in the status bar, for a while.
     void told(const QString& message);
 
@@ -59,4 +67,5 @@ class Studio : public QObject
     Nebula::Universe m_application; // What is assembled in the edition zone, with the plugins it is made from
     QSettings m_preferences;        // Of the user, kept from one launch to the next
     LinkStyle m_linkStyle = readLinkStyle(m_preferences);
+    Qt::ColorScheme m_colorScheme = readColorScheme(m_preferences);
 };

@@ -3,11 +3,16 @@
 
 #include "Preferences.h"
 
+#include <QIODevice>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QLatin1StringView>
-#include <QSettings>
 #include <QString>
+#include <QStringList>
 #include <algorithm>
 #include <array>
+#include <cstddef>
 
 namespace
 {
@@ -15,34 +20,125 @@ namespace
 using namespace Qt::Literals::StringLiterals;
 
 constexpr QLatin1StringView LinkStyleKey = "edition/linkStyle"_L1;
+constexpr QLatin1StringView ColorSchemeKey = "appearance/colorScheme"_L1;
 
-// A style of the links, under the name the settings hold it by.
-struct NamedLinkStyle
+// A value of a preference, under the name the settings hold it by.
+template <typename Value> struct Named
 {
-    LinkStyle style;
+    Value value;
     QLatin1StringView name;
 };
 
 constexpr std::array LinkStyleNames{
-    NamedLinkStyle{.style = LinkStyle::Curved, .name = "curves"_L1},
-    NamedLinkStyle{.style = LinkStyle::Straight, .name = "straightLines"_L1},
-    NamedLinkStyle{.style = LinkStyle::RightAngled, .name = "rightAngles"_L1},
+    Named<LinkStyle>{.value = LinkStyle::Curved, .name = "curves"_L1},
+    Named<LinkStyle>{.value = LinkStyle::Straight, .name = "straightLines"_L1},
+    Named<LinkStyle>{.value = LinkStyle::RightAngled, .name = "rightAngles"_L1},
 };
+
+constexpr std::array ColorSchemeNames{
+    Named<Qt::ColorScheme>{.value = Qt::ColorScheme::Unknown, .name = "system"_L1},
+    Named<Qt::ColorScheme>{.value = Qt::ColorScheme::Light, .name = "light"_L1},
+    Named<Qt::ColorScheme>{.value = Qt::ColorScheme::Dark, .name = "dark"_L1},
+};
+
+// The value settings hold under key, by its name among names: the first of names when it holds none of them.
+template <typename Value, std::size_t Count>
+Value readNamed(const QSettings& settings, QLatin1StringView key, const std::array<Named<Value>, Count>& names)
+{
+    const QString name = settings.value(key).toString();
+    const auto found = std::ranges::find(names, name, &Named<Value>::name);
+    return found != names.end() ? found->value : names.front().value;
+}
+
+// Writes value under key, by its name among names.
+template <typename Value, std::size_t Count>
+void writeNamed(QSettings& settings, QLatin1StringView key, const std::array<Named<Value>, Count>& names, Value value)
+{
+    const auto found = std::ranges::find(names, value, &Named<Value>::value);
+    if(found != names.end())
+    {
+        settings.setValue(key, QString(found->name));
+    }
+}
+
+void addMembers(const QJsonObject& object, const QString& prefix, QSettings::SettingsMap& settings);
+
+// Adds to settings value under key, or, when it is an object, its members under key then their names.
+void addMember(const QString& key, const QJsonValue& value, QSettings::SettingsMap& settings)
+{
+    if(value.isObject())
+    {
+        addMembers(value.toObject(), key + u'/', settings);
+        return;
+    }
+    settings.insert(key, value.toVariant());
+}
+
+// Adds to settings the members of object, each under prefix then its name, see addMember().
+void addMembers(const QJsonObject& object, const QString& prefix, QSettings::SettingsMap& settings)
+{
+    for(const QString& name : object.keys())
+    {
+        addMember(prefix + name, object.value(name), settings);
+    }
+}
+
+// Reads into settings the JSON object of device, see preferencesFormat(); false when it is not one.
+bool readJson(QIODevice& device, QSettings::SettingsMap& settings)
+{
+    const QJsonDocument document = QJsonDocument::fromJson(device.readAll());
+    if(!document.isObject())
+    {
+        return false;
+    }
+    addMembers(document.object(), QString(), settings);
+    return true;
+}
+
+// object, with value under the path of its groups, each an object made when it has none.
+QJsonObject withMember(QJsonObject object, QStringList path, const QJsonValue& value)
+{
+    const QString name = path.takeFirst();
+    object.insert(name, path.isEmpty() ? value : QJsonValue(withMember(object.value(name).toObject(), path, value)));
+    return object;
+}
+
+// Writes settings to device as a JSON object, see preferencesFormat().
+bool writeJson(QIODevice& device, const QSettings::SettingsMap& settings)
+{
+    QJsonObject object;
+    for(auto setting = settings.cbegin(); setting != settings.cend(); ++setting)
+    {
+        object = withMember(object, setting.key().split(u'/'), QJsonValue::fromVariant(setting.value()));
+    }
+    return device.write(QJsonDocument(object).toJson()) != -1;
+}
 
 } // namespace
 
+QSettings::Format preferencesFormat()
+{
+    // Registered once by each copy of this code: the one of NebulaStudio, and the one of StudioPlugin.
+    static const QSettings::Format format = QSettings::registerFormat(u"json"_s, &readJson, &writeJson);
+    return format;
+}
+
 LinkStyle readLinkStyle(const QSettings& settings)
 {
-    const QString name = settings.value(LinkStyleKey).toString();
-    const auto found = std::ranges::find(LinkStyleNames, name, &NamedLinkStyle::name);
-    return found != LinkStyleNames.end() ? found->style : LinkStyle::Curved;
+    return readNamed(settings, LinkStyleKey, LinkStyleNames);
 }
 
 void writeLinkStyle(QSettings& settings, LinkStyle style)
 {
-    const auto found = std::ranges::find(LinkStyleNames, style, &NamedLinkStyle::style);
-    if(found != LinkStyleNames.end())
-    {
-        settings.setValue(LinkStyleKey, QString(found->name));
-    }
+    writeNamed(settings, LinkStyleKey, LinkStyleNames, style);
+}
+
+Qt::ColorScheme readColorScheme(const QSettings& settings)
+{
+    return readNamed(settings, ColorSchemeKey, ColorSchemeNames);
+}
+
+void writeColorScheme(QSettings& settings, Qt::ColorScheme scheme)
+{
+    writeNamed(settings, ColorSchemeKey, ColorSchemeNames, scheme);
 }

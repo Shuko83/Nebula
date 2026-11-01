@@ -132,9 +132,24 @@ QPalette palette(const ThemeColors& colors)
     return palette;
 }
 
-void applyColorScheme(Qt::ColorScheme scheme)
+// The scheme chooseColorScheme() was given last: Unknown, the one of the system, until then.
+Qt::ColorScheme& chosenScheme()
 {
-    QApplication::setPalette(palette(themeColors(scheme)));
+    static Qt::ColorScheme chosen = Qt::ColorScheme::Unknown;
+    return chosen;
+}
+
+// The scheme the application is in: the one chosen, or the one of the system.
+Qt::ColorScheme shownScheme()
+{
+    const Qt::ColorScheme chosen = chosenScheme();
+    return chosen != Qt::ColorScheme::Unknown ? chosen : QGuiApplication::styleHints()->colorScheme();
+}
+
+// Gives the application the palette of the scheme it is in.
+void applyShownScheme()
+{
+    QApplication::setPalette(palette(themeColors(shownScheme())));
 }
 
 // The radius of the corners of a field, as Fusion draws them.
@@ -201,18 +216,26 @@ const ThemeColors& themeColors(Qt::ColorScheme scheme)
 
 const ThemeColors& currentThemeColors()
 {
-    return themeColors(QGuiApplication::styleHints()->colorScheme());
+    return themeColors(shownScheme());
 }
 
-void applyTheme()
+void applyTheme(Qt::ColorScheme scheme)
 {
     // Fusion, the one style of Qt that paints all it draws in the colors of the palette, on every platform.
     QApplication::setStyle(std::make_unique<ThemeStyle>().release()); // Which the application owns
     QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/SpaceGrotesk-Bold.ttf"));
 
-    QStyleHints* hints = QGuiApplication::styleHints();
-    applyColorScheme(hints->colorScheme());
-    QObject::connect(hints, &QStyleHints::colorSchemeChanged, qApp, &applyColorScheme);
+    // The one of the system, as it changes, or the one chosen, which stays.
+    QObject::connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, qApp, &applyShownScheme);
+    chooseColorScheme(scheme);
+}
+
+void chooseColorScheme(Qt::ColorScheme scheme)
+{
+    chosenScheme() = scheme;
+    // For the title bars; the platform that lets the application choose then tells colorSchemeChanged().
+    QGuiApplication::styleHints()->setColorScheme(scheme);
+    applyShownScheme(); // Whether it does or not
 }
 
 QFont titleFont(const QFont& font)
