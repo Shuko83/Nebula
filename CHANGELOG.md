@@ -29,6 +29,10 @@ to it.
   it; its links, the one being drawn included, go out of that edge, and **Expose...** adds the stargate on that side.
   **Swap with** swaps its row with the one of another interface of the instance, whatever their kinds. A project holds
   them in the `sides` and the `rows` of the component, when they are not those of their kinds.
+- The theme of NebulaStudio is chosen in **View** > **Theme** (#118): **System**, as it was until then, follows the
+  color scheme of the system; **Light** and **Dark** keep NebulaStudio light or dark whatever the system is, the title
+  bars of its windows too where the system lets them. It changes at once, and is kept for its user, from one launch to
+  the next.
 
 ### Changed
 
@@ -55,6 +59,9 @@ to it.
 - A link goes through each of its anchors the way from the point before it to the one after it (#117): leftwards when
   the one after it is on the left, rather than always rightwards, which looped around the anchors of a link going back
   to the left.
+- The preferences of NebulaStudio, the style of its links and its theme, are kept in a JSON file,
+  `FabienDG/NebulaStudio.json` in the configuration directory of the user, `%APPDATA%` under Windows, rather than in the
+  registry (#118): a style of the links chosen before is to be chosen again.
 
 ### Fixed
 
