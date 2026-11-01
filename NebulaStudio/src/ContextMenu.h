@@ -10,6 +10,7 @@
 #include <functional>
 
 class QAction;
+class QActionGroup;
 class QPoint;
 
 // A context menu whose entries each do what they are for once it is closed, rather than while it closes: editing a
@@ -27,6 +28,8 @@ class ContextMenu
                  const QString& toolTip = {});
     // A submenu telling text, with icon before it, which it owns: its entries are added by add().
     QMenu& addMenu(const QString& text, const QIcon& icon = {});
+    // A group of its entries, which it owns: those added to it are radio buttons, one of them checked at most.
+    QActionGroup& addGroup();
     void addSeparator();
     // Shows it at position, the one of the screen, and does what the entry chosen is for, in a submenu or not;
     // nothing when none is.

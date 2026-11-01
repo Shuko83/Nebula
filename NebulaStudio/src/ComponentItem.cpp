@@ -156,6 +156,33 @@ const QList<InterfaceItem*>& ComponentItem::providedInterfaces() const
     return m_providedInterfaces;
 }
 
+InterfaceItem* ComponentItem::interfaceItem(InterfaceItem::Kind kind, const QString& name) const
+{
+    const QList<InterfaceItem*>& items =
+        kind == InterfaceItem::Kind::Provided ? m_providedInterfaces : m_consumedInterfaces;
+    const auto found = std::ranges::find(items, name, &InterfaceItem::name);
+    return found != items.end() ? *found : nullptr;
+}
+
+void ComponentItem::setInterfaceSide(InterfaceItem::Kind kind, const QString& name, InterfaceItem::Side side)
+{
+    keepSide(kind, name, side);
+    forgetLostSides(); // When it has no such interface
+    placeInterfaces();
+}
+
+void ComponentItem::keepSide(InterfaceItem::Kind kind, const QString& name, InterfaceItem::Side side)
+{
+    if(side == InterfaceItem::defaultSide(kind))
+    {
+        m_sides.erase({kind, name});
+    }
+    else
+    {
+        m_sides.insert_or_assign({kind, name}, side);
+    }
+}
+
 const QColor& ComponentItem::color() const
 {
     return m_color;
@@ -221,10 +248,10 @@ void ComponentItem::editInterfaceName(const InterfaceItem& interfaceItem)
 {
     m_editedKind = interfaceItem.kind();
     m_editedName = interfaceItem.name();
-    const bool provided = interfaceItem.kind() == InterfaceItem::Kind::Provided;
+    const bool right = interfaceItem.side() == InterfaceItem::Side::Right; // Its name is next to its dot
     interfaceEditor().edit(interfaceItem.name(), QApplication::palette().color(QPalette::ButtonText),
                            interfaceItem.mapRectToParent(interfaceItem.nameRect()),
-                           provided ? Qt::AlignRight : Qt::AlignLeft);
+                           right ? Qt::AlignRight : Qt::AlignLeft);
 }
 
 bool ComponentItem::isNameEdited(const InterfaceItem& interfaceItem) const
@@ -382,11 +409,21 @@ NameEditor& ComponentItem::interfaceEditor()
     if(m_interfaceEditor == nullptr)
     {
         // Its child rather than the one of the interface: renaming it shows the interfaces again, in new items.
-        m_interfaceEditor = new NameEditor(*this, [this](const QString& name)
-                                           { emit interfaceNameEdited(m_editedKind, m_editedName, name); });
+        m_interfaceEditor = new NameEditor(*this, [this](const QString& name) { nameEditedInterface(name); });
         m_interfaceEditor->setFont(QApplication::font()); // The one the interfaces are painted in
     }
     return *m_interfaceEditor;
+}
+
+void ComponentItem::nameEditedInterface(const QString& newName)
+{
+    // Under its new name before it is renamed, which shows the interfaces again; not over another one so named.
+    if(interfaceItem(m_editedKind, newName) == nullptr)
+    {
+        keepSide(m_editedKind, newName, interfaceSide(m_editedKind, m_editedName));
+    }
+    emit interfaceNameEdited(m_editedKind, m_editedName, newName);
+    forgetLostSides(); // Under its new name, when it was not renamed
 }
 
 QRectF ComponentItem::nameArea() const
@@ -477,19 +514,16 @@ bool ComponentItem::clearIfChanged(const QList<Nebula::InterfaceInfo>& consumed,
 void ComponentItem::showInterfaces(const QList<Nebula::InterfaceInfo>& consumed,
                                    const QList<Nebula::InterfaceInfo>& provided)
 {
-    // The rows start in the padding under the names and leave as much under the last one; the dots are on the edges
-    // drawn by paint(), one pixel inside its bounds.
-    const qreal top = Header.bottom() - Padding / 2 + InterfaceItem::RowHeight / 2;
-    const qreal providedTop = top + static_cast<qreal>(consumed.size()) * InterfaceItem::RowHeight;
-    showInterfaces(m_consumedInterfaces, consumed, InterfaceItem::Kind::Consumed, QPointF(Header.left() + 1, top));
-    showInterfaces(m_providedInterfaces, provided, InterfaceItem::Kind::Provided,
-                   QPointF(Header.right() - 1, providedTop));
+    showInterfaces(m_consumedInterfaces, consumed, InterfaceItem::Kind::Consumed);
+    showInterfaces(m_providedInterfaces, provided, InterfaceItem::Kind::Provided);
+    forgetLostSides(); // Those of the interfaces renamed or removed
+    placeInterfaces();
 }
 
 void ComponentItem::showInterfaces(QList<InterfaceItem*>& items, const QList<Nebula::InterfaceInfo>& interfaces,
-                                   InterfaceItem::Kind kind, QPointF at)
+                                   InterfaceItem::Kind kind)
 {
-    for(qsizetype index = 0; index < interfaces.size(); ++index, at.ry() += InterfaceItem::RowHeight)
+    for(qsizetype index = 0; index < interfaces.size(); ++index)
     {
         if(index == items.size())
         {
@@ -497,8 +531,44 @@ void ComponentItem::showInterfaces(QList<InterfaceItem*>& items, const QList<Neb
             items.append(new InterfaceItem(kind, interfaces.at(index), RowWidth, *this));
         }
         items.at(index)->setAvailable(interfaces.at(index).available);
-        items.at(index)->setPos(at); // Lower than it was when an interface was declared above it
     }
+}
+
+void ComponentItem::placeInterfaces()
+{
+    // The rows start in the padding under the names and leave as much under the last one: lower than they were when an
+    // interface was declared above them.
+    qreal y = Header.bottom() - Padding / 2 + InterfaceItem::RowHeight / 2;
+    const QList<InterfaceItem*> items = m_consumedInterfaces + m_providedInterfaces;
+    for(InterfaceItem* item : items)
+    {
+        place(*item, y);
+        y += InterfaceItem::RowHeight;
+    }
+}
+
+void ComponentItem::place(InterfaceItem& item, qreal y)
+{
+    const InterfaceItem::Side side = interfaceSide(item.kind(), item.name());
+    item.setSide(side); // Before it moves: its links follow it, out of that edge
+    // On the edges drawn by paint(), one pixel inside its bounds.
+    item.setPos(side == InterfaceItem::Side::Left ? Header.left() + 1 : Header.right() - 1, y);
+}
+
+InterfaceItem::Side ComponentItem::interfaceSide(InterfaceItem::Kind kind, const QString& name) const
+{
+    const auto found = m_sides.find({kind, name});
+    return found != m_sides.end() ? found->second : InterfaceItem::defaultSide(kind);
+}
+
+void ComponentItem::forgetLostSides()
+{
+    std::erase_if(m_sides,
+                  [this](const auto& entry)
+                  {
+                      const auto& [kind, name] = entry.first;
+                      return interfaceItem(kind, name) == nullptr;
+                  });
 }
 
 void ComponentItem::refreshUnbound()

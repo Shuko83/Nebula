@@ -118,7 +118,77 @@ QJsonObject withPosition(QJsonObject json, const QGraphicsItem& item)
     return json;
 }
 
-// json, what a project holds about the component of item, with where it is and the color it was given.
+// The name of side in a project.
+QString sideName(InterfaceItem::Side side)
+{
+    return side == InterfaceItem::Side::Left ? QStringLiteral("left") : QStringLiteral("right");
+}
+
+// The side named name in a project, the dot of an interface of kind being there; the one of kind when it is neither
+// left nor right.
+InterfaceItem::Side sideNamed(const QString& name, InterfaceItem::Kind kind)
+{
+    if(name == u"left")
+    {
+        return InterfaceItem::Side::Left;
+    }
+    return name == u"right" ? InterfaceItem::Side::Right : InterfaceItem::defaultSide(kind);
+}
+
+// What a project holds of the edges the dots of items are on, by the names of their interfaces: none for those on the
+// edge of their kind.
+QJsonObject sidesJson(const QList<InterfaceItem*>& items)
+{
+    QJsonObject json;
+    for(const InterfaceItem* item : items)
+    {
+        if(item->side() != InterfaceItem::defaultSide(item->kind()))
+        {
+            json.insert(item->name(), sideName(item->side()));
+        }
+    }
+    return json;
+}
+
+// Inserts value into json as key, unless it is empty.
+void insertUnlessEmpty(QJsonObject& json, QStringView key, const QJsonObject& value)
+{
+    if(!value.isEmpty())
+    {
+        json.insert(key, value);
+    }
+}
+
+// Writes to json, what a project holds about the component of item, the edges the dots of its interfaces are on, when
+// one is not on the edge of its kind.
+void writeSides(QJsonObject& json, const ComponentItem& item)
+{
+    QJsonObject sides;
+    insertUnlessEmpty(sides, u"consumed", sidesJson(item.consumedInterfaces()));
+    insertUnlessEmpty(sides, u"provided", sidesJson(item.providedInterfaces()));
+    insertUnlessEmpty(json, u"sides", sides);
+}
+
+// Puts the dots of the interfaces of item of kind on the edges sides, what a project holds of them, tells.
+void readSides(ComponentItem& item, InterfaceItem::Kind kind, const QJsonObject& sides)
+{
+    const QStringList names = sides.keys();
+    for(const QString& name : names)
+    {
+        item.setInterfaceSide(kind, name, sideNamed(sides.value(name).toString(), kind));
+    }
+}
+
+// Puts the dots of the interfaces of item on the edges json, what a project holds about its component, tells.
+void readSides(ComponentItem& item, const QJsonObject& json)
+{
+    const QJsonObject sides = json.value(u"sides").toObject();
+    readSides(item, InterfaceItem::Kind::Consumed, sides.value(u"consumed").toObject());
+    readSides(item, InterfaceItem::Kind::Provided, sides.value(u"provided").toObject());
+}
+
+// json, what a project holds about the component of item, with where it is, the color it was given and the edges the
+// dots of its interfaces are on.
 QJsonObject placed(QJsonObject json, const ComponentItem& item)
 {
     writePosition(json, item.pos());
@@ -126,6 +196,7 @@ QJsonObject placed(QJsonObject json, const ComponentItem& item)
     {
         json.insert(u"color", item.color().name(QColor::HexArgb)); // With its opacity
     }
+    writeSides(json, item);
     return json;
 }
 
@@ -322,11 +393,32 @@ QActionGroup* choiceGroup(QMenu& bindMenu, const InterfaceItem& consumed)
     return group;
 }
 
-// Where the stargate that exposes item is added: next to its component, on the side of the interface, which the dot
-// of the stargate faces.
+// Where the stargate that exposes item is added: next to its component, on the edge its dot is on, which the dot of
+// the stargate faces.
 QPointF exposedPosition(const InterfaceItem& item)
 {
-    return item.parentItem()->pos() + QPointF(isProvided(item) ? ExposedDistance : -ExposedDistance, item.y());
+    const bool right = item.side() == InterfaceItem::Side::Right;
+    return item.parentItem()->pos() + QPointF(right ? ExposedDistance : -ExposedDistance, item.y());
+}
+
+// The kind of the interface of the stargate that exposes item: it consumes what a component provides, and the other
+// way round.
+InterfaceItem::Kind exposingKind(const InterfaceItem& item)
+{
+    return isProvided(item) ? InterfaceItem::Kind::Consumed : InterfaceItem::Kind::Provided;
+}
+
+// The edge across from side.
+InterfaceItem::Side across(InterfaceItem::Side side)
+{
+    return side == InterfaceItem::Side::Left ? InterfaceItem::Side::Right : InterfaceItem::Side::Left;
+}
+
+// What the entry of the menu of a dot that puts it on side tells.
+QString sideText(InterfaceItem::Side side)
+{
+    return side == InterfaceItem::Side::Left ? EditionScene::tr("Dot on the left edge")
+                                             : EditionScene::tr("Dot on the right edge");
 }
 
 // Has stargate expose item, an interface of a component, of type, and returns the name it exposes it as: its own,
@@ -532,6 +624,7 @@ void EditionScene::showSaved(Nebula::Component& component, const QJsonObject& js
 {
     ComponentItem* item = showComponent(component, readPosition(json));
     item->setColor(QColor::fromString(json.value(u"color").toString())); // Not valid when it has none
+    readSides(*item, json);
 }
 
 void EditionScene::refreshStargateLinks()
@@ -703,8 +796,10 @@ void EditionScene::showTypeOf(const InterfaceItem* hovered, const QGraphicsScene
 void EditionScene::drawPendingLink(const InterfaceItem* hovered, const QPointF& cursor)
 {
     const InterfaceItem* target = hovered != nullptr && m_linkSource->canLinkTo(*hovered) ? hovered : nullptr;
-    const QPointF end = target != nullptr ? target->scenePos() : cursor;
-    const QPointF start = m_linkSource->scenePos();
+    const LinkItem::Stop start = LinkItem::stopAt(*m_linkSource);
+    // The cursor is gone through the way its start is, as the dot of a component across from it would be.
+    const LinkItem::Stop end =
+        target != nullptr ? LinkItem::stopAt(*target) : LinkItem::Stop{.point = cursor, .leftwards = start.leftwards};
     m_pendingLink->setPath(isProvided(*m_linkSource) ? LinkItem::route(m_linkStyle, start, end)
                                                      : LinkItem::route(m_linkStyle, end, start));
 }
@@ -792,9 +887,43 @@ void EditionScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
         return;
     }
     event->accept();
-    if(checkEditable()) // Everything it does edits the application
+    if(checkEditable() && !showSideMenu(*event)) // Everything it does edits the application
     {
         showMenu(*event);
+    }
+}
+
+const InterfaceItem* EditionScene::shiftClickedDot(const QGraphicsSceneContextMenuEvent& event) const
+{
+    // Not from the keyboard, which Shift+F10 opens the menu from as well.
+    const bool shifted =
+        event.reason() == QGraphicsSceneContextMenuEvent::Mouse && event.modifiers().testFlag(Qt::ShiftModifier);
+    return shifted ? interfaceAt(event.scenePos()) : nullptr;
+}
+
+bool EditionScene::showSideMenu(const QGraphicsSceneContextMenuEvent& event)
+{
+    const InterfaceItem* dot = shiftClickedDot(event);
+    if(dot == nullptr)
+    {
+        return false;
+    }
+    ContextMenu menu(event.widget());
+    addSideEntries(menu, *dot);
+    menu.exec(event.screenPos());
+    return true;
+}
+
+void EditionScene::addSideEntries(ContextMenu& menu, const InterfaceItem& dot)
+{
+    QActionGroup& group = menu.addGroup();
+    for(const InterfaceItem::Side side : {InterfaceItem::Side::Left, InterfaceItem::Side::Right})
+    {
+        QAction* entry = menu.add(sideText(side), [item = &dot.componentItem(), kind = dot.kind(), name = dot.name(),
+                                                   side] { item->setInterfaceSide(kind, name, side); });
+        entry->setCheckable(true);
+        entry->setChecked(dot.side() == side);
+        entry->setActionGroup(&group);
     }
 }
 
@@ -1371,18 +1500,16 @@ void EditionScene::expose(const InterfaceItem& interfaceItem)
     }
     const QString name = exposeAs(*stargate, interfaceItem, *type);
     bindExposed(*stargate, name, interfaceItem);
-    showExposing(*stargate, name, interfaceItem.kind(), exposedPosition(interfaceItem));
+    showExposing(*stargate, name, interfaceItem);
 }
 
-void EditionScene::showExposing(Nebula::Stargate& stargate, const QString& name, InterfaceItem::Kind kind,
-                                const QPointF& position)
+void EditionScene::showExposing(Nebula::Stargate& stargate, const QString& name, const InterfaceItem& exposed)
 {
-    auto* item = qobject_cast<StargateItem*>(showComponent(stargate, position));
+    auto* item = qobject_cast<StargateItem*>(showComponent(stargate, exposedPosition(exposed)));
+    item->setInterfaceSide(exposingKind(exposed), name, across(exposed.side())); // Facing the dot of exposed
     refreshLinks();
     selectOnly(*item);
-    const QList<InterfaceItem*>& shown =
-        kind == InterfaceItem::Kind::Provided ? item->consumedInterfaces() : item->providedInterfaces();
-    if(const InterfaceItem* named = interfaceNamed(shown, name))
+    if(const InterfaceItem* named = item->interfaceItem(exposingKind(exposed), name))
     {
         item->editInterfaceName(*named);
     }

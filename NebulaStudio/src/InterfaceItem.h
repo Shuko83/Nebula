@@ -23,11 +23,11 @@ struct InterfaceInfo;
 } // namespace Nebula
 
 // An interface of a component, on an edge of its ComponentItem: a dot, with its name next to it, inside the component.
-// One the component provides is on its right edge: a disc while it is available, a dotted circle otherwise. One it
-// consumes is on its left edge: a circle, two stacked for a list, which several links can end on, with an asterisk
-// after its name when the component needs it, both in the warning color while it is bound to nothing. Hovering the dot
-// tells, in its tooltip, whether the interface is provided or consumed, its type, whether it is mandatory and its
-// state; links are drawn from it, see EditionScene.
+// One the component provides is on its right edge until it is put on the other one: a disc while it is available, a
+// dotted circle otherwise. One it consumes is on its left edge until then: a circle, two stacked for a list, which
+// several links can end on, with an asterisk after its name when the component needs it, both in the warning color
+// while it is bound to nothing. Hovering the dot tells, in its tooltip, whether the interface is provided or consumed,
+// its type, whether it is mandatory and its state; links are drawn from it, out of the edge it is on, see EditionScene.
 class InterfaceItem : public QGraphicsItem
 {
     Q_DECLARE_TR_FUNCTIONS(InterfaceItem)
@@ -37,6 +37,12 @@ class InterfaceItem : public QGraphicsItem
     {
         Provided,
         Consumed,
+    };
+    // The edge of its component its dot is on.
+    enum class Side : std::uint8_t
+    {
+        Left,
+        Right,
     };
     // For qgraphicsitem_cast.
     enum
@@ -58,11 +64,22 @@ class InterfaceItem : public QGraphicsItem
     [[nodiscard]] bool isList() const;
     // The component it is an interface of.
     [[nodiscard]] Nebula::Component& component() const;
+    // What shows that component, which puts it on its edge.
+    [[nodiscard]] ComponentItem& componentItem() const;
     // Whether one can be bound to the other: provided and consumed by two components, with the same type.
     [[nodiscard]] bool canLinkTo(const InterfaceItem& other) const;
 
     // The name of the type of an interface, type being the one of its pointer: QWidget for QWidget*.
     [[nodiscard]] static QString typeName(QMetaType type);
+    // The edge the dot of an interface of kind is on until it is put on the other one: the left one for a consumed
+    // interface, the right one for a provided one.
+    [[nodiscard]] static Side defaultSide(Kind kind);
+
+    // The edge its dot is on: the one of its kind, see defaultSide(), until it is given another one.
+    [[nodiscard]] Side side() const;
+    // Draws its dot on side, its name next to it, inside the component; its component puts it there, see
+    // ComponentItem::setInterfaceSide().
+    void setSide(Side side);
 
     void setAvailable(bool available);
     // Whether the component needs it and it is bound to nothing: it is drawn in the warning color, and its tooltip
@@ -101,6 +118,8 @@ class InterfaceItem : public QGraphicsItem
     [[nodiscard]] QString requirementText() const;
     // Whether it is available, and what to do when it is bound to nothing while mandatory.
     [[nodiscard]] QString stateText() const;
+    // Which way out of its component the edge it is on is: -1 on the left, 1 on the right.
+    [[nodiscard]] qreal outward() const;
     // The color of its dot and of its name, before it is seen over its component.
     [[nodiscard]] QColor inkColor(const QPalette& palette) const;
     // Shapes rather than colors, which not everyone tells apart: a disc is provided, a circle is consumed, and a dotted
@@ -116,6 +135,7 @@ class InterfaceItem : public QGraphicsItem
     bool m_mandatory;
     bool m_list;
     qreal m_nameWidth;
+    Side m_side;
     bool m_available = false;
     bool m_missing = false;
     bool m_dimmed = false;

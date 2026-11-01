@@ -7,10 +7,11 @@
 // View menu, for every scene at once; not saved with the project, but kept for the next launch, see Preferences.h.
 enum class LinkStyle
 {
-    // Out of the right edge of the provider, into the left edge of the consumer, bending between them.
+    // Out of the edge of the provider its dot is on, the right one until it is put on the other, into the edge of the
+    // consumer its dot is on, the left one until then, bending between them.
     Curved,
     // From one dot to the other.
     Straight,
-    // Out of the right edge of the provider, into the left edge of the consumer, in horizontal and vertical lines.
+    // Out of the edge of the provider, into the edge of the consumer, as curves do, in horizontal and vertical lines.
     RightAngled
 };

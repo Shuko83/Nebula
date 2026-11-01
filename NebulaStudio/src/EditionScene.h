@@ -57,6 +57,8 @@ class SettingsFile;
 // name it exposes it as at once.
 // Bind to, in the menu of the dot of an interface consumed, binds it to one of the interfaces shown it can be bound to,
 // those it is bound to checked: choosing one of these unbinds it.
+// Shift+right-clicking the dot of an interface opens a menu of its own instead, which puts it on the left or the right
+// edge of its component, the one it is on checked: its links go out of that edge, see LinkItem.
 // Double-clicking a link, or Add anchor point in its menu, has it go through that point, an anchor, see AnchorItem,
 // which the mouse drags; double-clicking an anchor, or Remove anchor point in its menu, removes it.
 // None of this is done while the application runs, see Universe: its components can still be selected, but nothing is
@@ -92,7 +94,8 @@ class EditionScene : public QGraphicsScene
     ComponentItem* select(const Nebula::Component& component);
 
     // The application as a project file holds it, see README.md: what Universe::save() writes, with where its
-    // components and its settings files are in the edition zone, the color its components were given, and its zones.
+    // components and its settings files are in the edition zone, the color its components were given, the edges the
+    // dots of their interfaces are on, and its zones.
     // The galaxy, as its file is to hold it, when it shows one: see Universe::saveGalaxy().
     [[nodiscard]] QJsonObject save() const;
     // Replaces the application with the one project holds, as save() wrote it, see Universe::load(), and shows
@@ -130,7 +133,7 @@ class EditionScene : public QGraphicsScene
     // Double-clicking a settings file edits it, an anchor removes it, and a link anchors it there; a stargate edits
     // what it exposes by itself, see StargateItem.
     void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
-    // Not while it is busy, see isBusy().
+    // Not while it is busy, see isBusy(). Shift+right-clicking the dot of an interface opens its own menu.
     void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
     // Delete removes the selected components, settings files and links, unless a name is edited: the key is for what is
     // typed then. Not while it is busy either, see isBusy().
@@ -172,7 +175,8 @@ class EditionScene : public QGraphicsScene
     // Shows components, with their links, files and the zones of project, which tells where they are.
     void show(const std::vector<std::unique_ptr<Nebula::Component>>& components,
               const std::vector<std::unique_ptr<Nebula::SettingsFile>>& files, const QJsonObject& project);
-    // Shows component where json, what a project holds of it, tells, in the color it tells.
+    // Shows component where json, what a project holds of it, tells, in the color it tells, the dots of its interfaces
+    // on the edges it tells.
     void showSaved(Nebula::Component& component, const QJsonObject& json);
     // Draws the links of what components, those shown, bind, through the anchors project holds, and the lines of the
     // stargates.
@@ -219,6 +223,14 @@ class EditionScene : public QGraphicsScene
     // Shows the menu of where event is: about the component, the settings file or the link there, or about the edition
     // zone when there is none, then about the zone there.
     void showMenu(const QGraphicsSceneContextMenuEvent& event);
+    // Shows the menu of the dot of an interface where event is, when the mouse opened it with Shift held: the edge of
+    // its component it is on. Returns whether it did.
+    bool showSideMenu(const QGraphicsSceneContextMenuEvent& event);
+    // The dot of an interface where event is, when the mouse opened the menu with Shift held; nullptr otherwise.
+    [[nodiscard]] const InterfaceItem* shiftClickedDot(const QGraphicsSceneContextMenuEvent& event) const;
+    // Adds to menu putting dot on the left or the right edge of its component, as radio buttons, the edge it is on
+    // checked.
+    static void addSideEntries(ContextMenu& menu, const InterfaceItem& dot);
     // Adds to menu what is done to component, at position, with dialogs of parent; false when component is nullptr.
     bool addComponentEntries(ContextMenu& menu, ComponentItem* component, const QPointF& position, QWidget* parent);
     // Adds to menu binding consumed, an interface shown, in a submenu: to one of the interfaces shown it can be bound
@@ -333,13 +345,12 @@ class EditionScene : public QGraphicsScene
     // Edits what the stargate of item exposes in a dialog of parent, see StargateDialog, which is left open once this
     // returns; tells why it is not when the scene is not editable.
     void editStargate(const StargateItem& item, QWidget* parent);
-    // Adds a stargate that exposes interfaceItem, an interface of a component, bound to it, next to it, and edits the
-    // name it exposes it as.
+    // Adds a stargate that exposes interfaceItem, an interface of a component, bound to it, next to it on the edge its
+    // dot is on, and edits the name it exposes it as.
     void expose(const InterfaceItem& interfaceItem);
-    // Shows stargate at position, which exposes as name an interface of kind, and edits that name at once: the dot of
-    // the stargate is on the edge across from the one of the interface.
-    void showExposing(Nebula::Stargate& stargate, const QString& name, InterfaceItem::Kind kind,
-                      const QPointF& position);
+    // Shows stargate next to the dot of exposed, which it exposes as name, and edits that name at once: the dot of the
+    // stargate faces the one of exposed, on its edge across from it.
+    void showExposing(Nebula::Stargate& stargate, const QString& name, const InterfaceItem& exposed);
     // Names name, an interface of stargate of kind, as its item shows it, newName, as typed in place of its name;
     // tells why through refused() when it cannot be.
     void renameExposed(Nebula::Stargate& stargate, InterfaceItem::Kind kind, const QString& name,

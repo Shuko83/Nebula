@@ -35,56 +35,103 @@ constexpr qreal MinimumReach = 40;
 // How many points along a stretch of a link tell how close a position is to it.
 constexpr int Samples = 32;
 
-// Out of the right edge of the provider, into the left edge of the consumer, wherever they are.
-QPainterPath curved(const QPointF& provided, const QPointF& consumed)
+// The way a line goes through stop, along the x axis: -1 leftwards, 1 rightwards.
+qreal heading(const LinkItem::Stop& stop)
 {
-    const QPointF reach(std::max(MinimumReach, std::abs(consumed.x() - provided.x()) / 2), 0);
-    QPainterPath path(provided);
-    path.cubicTo(provided + reach, consumed - reach, consumed);
+    return stop.leftwards ? -1 : 1;
+}
+
+// Out of from and into to the way the line goes through each, wherever they are: out of the right edge of the provider
+// and into the left edge of the consumer, say.
+QPainterPath curved(const LinkItem::Stop& from, const LinkItem::Stop& to)
+{
+    const qreal reach = std::max(MinimumReach, std::abs(to.point.x() - from.point.x()) / 2);
+    QPainterPath path(from.point);
+    path.cubicTo(from.point + QPointF(heading(from) * reach, 0), to.point - QPointF(heading(to) * reach, 0), to.point);
     return path;
 }
 
-QPainterPath straight(const QPointF& provided, const QPointF& consumed)
+QPainterPath straight(const QPointF& from, const QPointF& to)
 {
-    QPainterPath path(provided);
-    path.lineTo(consumed);
+    QPainterPath path(from);
+    path.lineTo(to);
     return path;
 }
 
-// Where a right-angled link turns: halfway between its interfaces when the consumer is far enough to the right of the
-// provider; otherwise out of the provider, back across halfway between their heights, and into the consumer.
-QList<QPointF> corners(const QPointF& provided, const QPointF& consumed)
+// Across halfway between from and to.
+QList<QPointF> halfway(const QPointF& from, const QPointF& to)
 {
-    if(consumed.x() - provided.x() >= 2 * MinimumReach)
+    const qreal across = (from.x() + to.x()) / 2;
+    return {{across, from.y()}, {across, to.y()}};
+}
+
+// Out of from, back across halfway between their heights, and into to, each the way the line goes through it.
+QList<QPointF> backAcross(const LinkItem::Stop& from, const LinkItem::Stop& to)
+{
+    const qreal outOf = from.point.x() + heading(from) * MinimumReach;
+    const qreal into = to.point.x() - heading(to) * MinimumReach;
+    const qreal between = (from.point.y() + to.point.y()) / 2;
+    return {{outOf, from.point.y()}, {outOf, between}, {into, between}, {into, to.point.y()}};
+}
+
+// Out of from, past to, and back into it: the line goes through them in opposite ways, out of the right edges of two
+// components, say.
+QList<QPointF> around(const LinkItem::Stop& from, const LinkItem::Stop& to)
+{
+    const qreal way = heading(from);
+    const qreal beyond = way * (std::max(way * from.point.x(), way * to.point.x()) + MinimumReach);
+    return {{beyond, from.point.y()}, {beyond, to.point.y()}};
+}
+
+// Where a right-angled link turns: around them when it goes through from and to in opposite ways; otherwise halfway
+// between them when to is far enough the way it goes, or out of from, back across, and into to.
+QList<QPointF> corners(const LinkItem::Stop& from, const LinkItem::Stop& to)
+{
+    if(from.leftwards != to.leftwards)
     {
-        const qreal across = (provided.x() + consumed.x()) / 2;
-        return {{across, provided.y()}, {across, consumed.y()}};
+        return around(from, to);
     }
-    const qreal outOf = provided.x() + MinimumReach;
-    const qreal into = consumed.x() - MinimumReach;
-    const qreal between = (provided.y() + consumed.y()) / 2;
-    return {{outOf, provided.y()}, {outOf, between}, {into, between}, {into, consumed.y()}};
+    if(heading(from) * (to.point.x() - from.point.x()) >= 2 * MinimumReach)
+    {
+        return halfway(from.point, to.point);
+    }
+    return backAcross(from, to);
 }
 
-QPainterPath rightAngled(const QPointF& provided, const QPointF& consumed)
+QPainterPath rightAngled(const LinkItem::Stop& from, const LinkItem::Stop& to)
 {
-    QPainterPath path(provided);
-    for(const QPointF& corner : corners(provided, consumed))
+    QPainterPath path(from.point);
+    for(const QPointF& corner : corners(from, to))
     {
         path.lineTo(corner);
     }
-    path.lineTo(consumed);
+    path.lineTo(to.point);
     return path;
 }
 
-// The line of a link in style through points, from the first one to the last one: from each of them to the next one,
-// as LinkItem::route() goes from a provided interface to a consumed one.
-QPainterPath through(LinkStyle style, const QList<QPointF>& points)
+// The stops of a line from first to last through anchors, in their order: each anchor is gone through the way from the
+// point before it to the one after it, rightwards when one is above the other.
+QList<LinkItem::Stop> stopsThrough(const LinkItem::Stop& first, const QList<QPointF>& anchors,
+                                   const LinkItem::Stop& last)
 {
-    QPainterPath path(points.constFirst());
-    for(qsizetype index = 1; index < points.size(); ++index)
+    const QList<QPointF> points = QList<QPointF>{first.point} + anchors + QList<QPointF>{last.point};
+    QList<LinkItem::Stop> stops{first};
+    for(qsizetype index = 1; index + 1 < points.size(); ++index)
     {
-        path.connectPath(LinkItem::route(style, points.at(index - 1), points.at(index)));
+        stops.append({.point = points.at(index), .leftwards = points.at(index + 1).x() < points.at(index - 1).x()});
+    }
+    stops.append(last);
+    return stops;
+}
+
+// The line of a link in style through stops, from the first one to the last one: from each of them to the next one,
+// as LinkItem::route() goes from a provided interface to a consumed one.
+QPainterPath through(LinkStyle style, const QList<LinkItem::Stop>& stops)
+{
+    QPainterPath path(stops.constFirst().point);
+    for(qsizetype index = 1; index < stops.size(); ++index)
+    {
+        path.connectPath(LinkItem::route(style, stops.at(index - 1), stops.at(index)));
     }
     return path;
 }
@@ -101,14 +148,14 @@ qreal distance(const QPainterPath& path, const QPointF& position)
     return nearest;
 }
 
-// The distance from position to each stretch of the line of a link in style through points, between each two of them
+// The distance from position to each stretch of the line of a link in style through stops, between each two of them
 // next to each other, in their order.
-QList<qreal> distances(LinkStyle style, const QList<QPointF>& points, const QPointF& position)
+QList<qreal> distances(LinkStyle style, const QList<LinkItem::Stop>& stops, const QPointF& position)
 {
     QList<qreal> found;
-    for(qsizetype index = 1; index < points.size(); ++index)
+    for(qsizetype index = 1; index < stops.size(); ++index)
     {
-        found.append(distance(LinkItem::route(style, points.at(index - 1), points.at(index)), position));
+        found.append(distance(LinkItem::route(style, stops.at(index - 1), stops.at(index)), position));
     }
     return found;
 }
@@ -150,18 +197,25 @@ LinkItem::~LinkItem()
     m_consumed.removeLink(*this);
 }
 
-QPainterPath LinkItem::route(LinkStyle style, const QPointF& provided, const QPointF& consumed)
+QPainterPath LinkItem::route(LinkStyle style, const Stop& from, const Stop& to)
 {
     switch(style)
     {
     case LinkStyle::Straight:
-        return straight(provided, consumed);
+        return straight(from.point, to.point);
     case LinkStyle::RightAngled:
-        return rightAngled(provided, consumed);
+        return rightAngled(from, to);
     case LinkStyle::Curved:
         break;
     }
-    return curved(provided, consumed);
+    return curved(from, to);
+}
+
+LinkItem::Stop LinkItem::stopAt(const InterfaceItem& dot)
+{
+    // Out of the left edge of a provider, or into the right edge of a consumer, the line goes leftwards.
+    const bool onRight = dot.side() == InterfaceItem::Side::Right;
+    return {.point = dot.scenePos(), .leftwards = dot.kind() == InterfaceItem::Kind::Provided ? !onRight : onRight};
 }
 
 int LinkItem::type() const
@@ -265,9 +319,9 @@ void LinkItem::setEditable(bool editable)
     }
 }
 
-QList<QPointF> LinkItem::stops() const
+QList<LinkItem::Stop> LinkItem::stops() const
 {
-    return QList<QPointF>{m_provided.scenePos()} + anchors() + QList<QPointF>{m_consumed.scenePos()};
+    return stopsThrough(stopAt(m_provided), anchors(), stopAt(m_consumed));
 }
 
 qsizetype LinkItem::nearestStretch(const QPointF& position) const

@@ -22,12 +22,13 @@ class Component;
 } // namespace Nebula
 
 // An interface a component consumes bound to the one another component provides, in the edition zone: a line between
-// their dots, drawn in the style it is given, which follows them. Clicking it selects it, which removing it needs, see
-// EditionScene; the rubber band of a view does not: a link that crosses it would go with the components it selects.
-// Hovered, it is drawn thicker, and its tooltip tells what it binds; selected, in the color of the selection, as a
-// component is.
+// their dots, drawn in the style it is given, which follows them, out of the edge of its component each dot is on.
+// Clicking it selects it, which removing it needs, see EditionScene; the rubber band of a view does not: a link that
+// crosses it would go with the components it selects. Hovered, it is drawn thicker, and its tooltip tells what it
+// binds; selected, in the color of the selection, as a component is.
 // It can be made to go through points of the edition zone, its anchors, in their order, wherever its components are:
-// see AnchorItem. Its line goes from each of them to the next one in its style, as it goes from one dot to the other.
+// see AnchorItem. Its line goes from each of them to the next one in its style, as it goes from one dot to the other,
+// through each of them the way from the point before it to the one after it.
 class LinkItem : public QGraphicsItem
 {
     Q_DECLARE_TR_FUNCTIONS(LinkItem)
@@ -52,14 +53,26 @@ class LinkItem : public QGraphicsItem
         [[nodiscard]] bool operator<(const Ends& other) const;
     };
 
+    // A point the line of a link goes through, in the scene, and the way it goes there, horizontally: rightwards, as
+    // out of the right edge of a provider or into the left edge of a consumer, or leftwards.
+    struct Stop
+    {
+        QPointF point;
+        bool leftwards = false;
+    };
+
     // Not a child of them, but deleted with the first one deleted. Drawn in style until it is given another one.
     // anchored is called with it whenever its anchors change, once it is built: given, added, moved or removed.
     LinkItem(InterfaceItem& provided, InterfaceItem& consumed, LinkStyle style,
              std::function<void(const LinkItem&)> anchored = {});
     ~LinkItem() override;
 
-    // The line of a link in style from a provided interface to a consumed one, their dots being there in the scene.
-    [[nodiscard]] static QPainterPath route(LinkStyle style, const QPointF& provided, const QPointF& consumed);
+    // The line of a link in style from one stop to the next one: from the dot of a provided interface to the dot of a
+    // consumed one, say, see stopAt().
+    [[nodiscard]] static QPainterPath route(LinkStyle style, const Stop& from, const Stop& to);
+    // Where a link starts or ends at the dot of dot: out of the edge of its component it is on, for a provided
+    // interface, into it for a consumed one.
+    [[nodiscard]] static Stop stopAt(const InterfaceItem& dot);
 
     [[nodiscard]] int type() const override;
     // The one it is drawn from.
@@ -113,7 +126,7 @@ class LinkItem : public QGraphicsItem
     // Paints its anchors again, in its color.
     void updateAnchors();
     // Where its line goes through: the dot of its provided interface, its anchors, then the dot of its consumed one.
-    [[nodiscard]] QList<QPointF> stops() const;
+    [[nodiscard]] QList<Stop> stops() const;
     // Where position is inserted among its anchors: the index of the stretch of its line, between two of its stops,
     // position is the closest to.
     [[nodiscard]] qsizetype nearestStretch(const QPointF& position) const;

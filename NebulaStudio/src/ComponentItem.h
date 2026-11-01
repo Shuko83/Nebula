@@ -9,6 +9,7 @@
 #include <QList>
 #include <QString>
 #include <QStringList>
+#include <map>
 #include <utility>
 
 #include "InterfaceItem.h"
@@ -26,12 +27,12 @@ class Component;
 }
 
 // A component instantiated in the edition zone: its name above the name of its component, then its interfaces, one
-// InterfaceItem per row: those it consumes on its left edge, then those it provides on its right edge, and rows of
-// text under them when it is given some. A triangle in its top right corner tells that it runs. An exclamation mark in
-// its top left corner tells that it does not work: an interface it cannot do without is bound to nothing, see
-// Component::unboundMandatoryInterfaces(); its tooltip names them and tells how to bind them. It can be selected, and,
-// while it is editable, moved, and its name edited in place by double-clicking its names. It can be given a color,
-// which its names are written over.
+// InterfaceItem per row: those it consumes, their dots on its left edge, then those it provides, their dots on its
+// right edge, each until it is put on the other one, and rows of text under them when it is given some. A triangle in
+// its top right corner tells that it runs. An exclamation mark in its top left corner tells that it does not work: an
+// interface it cannot do without is bound to nothing, see Component::unboundMandatoryInterfaces(); its tooltip names
+// them and tells how to bind them. It can be selected, and, while it is editable, moved, and its name edited in place
+// by double-clicking its names. It can be given a color, which its names are written over.
 class ComponentItem : public QGraphicsObject
 {
     Q_OBJECT
@@ -49,6 +50,12 @@ class ComponentItem : public QGraphicsObject
     // Its interfaces, in the order of Component::consumedInterfaces() and Component::providedInterfaces().
     [[nodiscard]] const QList<InterfaceItem*>& consumedInterfaces() const;
     [[nodiscard]] const QList<InterfaceItem*>& providedInterfaces() const;
+    // Its interface of kind named name; nullptr when it has none.
+    [[nodiscard]] InterfaceItem* interfaceItem(InterfaceItem::Kind kind, const QString& name) const;
+    // Puts the dot of its interface of kind named name on side, its name next to it, inside: its links go out of that
+    // edge. It stays there while the component has that interface, shown again or not, renamed in place too, and goes
+    // with it; nothing when it has none so named.
+    void setInterfaceSide(InterfaceItem::Kind kind, const QString& name, InterfaceItem::Side side);
     // Not valid until it is given one: it has the colors of the style. As opaque as it was chosen.
     [[nodiscard]] const QColor& color() const;
     void setColor(const QColor& color);
@@ -105,11 +112,24 @@ class ComponentItem : public QGraphicsObject
     // Deletes its interface items, with their links, unless they show the first of consumed and provided: one was
     // renamed or removed, as those of a stargate are. Returns whether it deleted them.
     bool clearIfChanged(const QList<Nebula::InterfaceInfo>& consumed, const QList<Nebula::InterfaceInfo>& provided);
-    // Shows consumed on its left edge, then provided on its right edge, under its names, adding the items they miss.
+    // Shows consumed, then provided, under its names, adding the items they miss, each dot on the edge it is put on.
     void showInterfaces(const QList<Nebula::InterfaceInfo>& consumed, const QList<Nebula::InterfaceInfo>& provided);
-    // Has items show interfaces, of kind, the first at at and the others below it.
+    // Has items show interfaces, of kind, adding those they miss.
     void showInterfaces(QList<InterfaceItem*>& items, const QList<Nebula::InterfaceInfo>& interfaces,
-                        InterfaceItem::Kind kind, QPointF at);
+                        InterfaceItem::Kind kind);
+    // Puts its interfaces on their rows, under its names, each dot on the edge it is put on.
+    void placeInterfaces();
+    // Puts item, one of its interfaces, on the row at y, its dot on the edge it is put on.
+    void place(InterfaceItem& item, qreal y);
+    // The edge the dot of its interface of kind named name is put on: the one of its kind until it is put on another.
+    [[nodiscard]] InterfaceItem::Side interfaceSide(InterfaceItem::Kind kind, const QString& name) const;
+    // Keeps side as the edge the dot of its interface of kind named name is put on, without moving it.
+    void keepSide(InterfaceItem::Kind kind, const QString& name, InterfaceItem::Side side);
+    // Tells that the interface whose name was edited is to be named newName, see interfaceNameEdited(): its dot stays
+    // on its edge once it is.
+    void nameEditedInterface(const QString& newName);
+    // Forgets the edges the dots of the interfaces it no longer has were put on.
+    void forgetLostSides();
     // Whether it works: what it misses is drawn in the warning color, and told by its mark and its tooltip.
     void refreshUnbound();
     // What it is, how it opens, and what it misses, unbound, when it does not work.
@@ -163,6 +183,9 @@ class ComponentItem : public QGraphicsObject
     // Its children.
     QList<InterfaceItem*> m_consumedInterfaces;
     QList<InterfaceItem*> m_providedInterfaces;
+    // The edges the dots of its interfaces are put on, by kind and name, when it is not the one of their kind: the
+    // items are deleted when an interface is renamed or removed.
+    std::map<std::pair<InterfaceItem::Kind, QString>, InterfaceItem::Side> m_sides;
     NameEditor* m_nameEditor = nullptr;      // Over its name while it is edited; created when first so
     NameEditor* m_interfaceEditor = nullptr; // Over the name of an interface while it is edited, the same way
     InterfaceItem::Kind m_editedKind = InterfaceItem::Kind::Provided; // Of the interface whose name is edited

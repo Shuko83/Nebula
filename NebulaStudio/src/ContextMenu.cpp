@@ -4,6 +4,7 @@
 #include "ContextMenu.h"
 
 #include <QAction>
+#include <QActionGroup>
 #include <utility>
 
 ContextMenu::ContextMenu(QWidget* parent) : m_menu(parent) {}
@@ -25,6 +26,11 @@ QAction* ContextMenu::add(QMenu& submenu, const QString& text, std::function<voi
 QMenu& ContextMenu::addMenu(const QString& text, const QIcon& icon)
 {
     return *m_menu.addMenu(icon, text);
+}
+
+QActionGroup& ContextMenu::addGroup()
+{
+    return *new QActionGroup(&m_menu); // Exclusive
 }
 
 void ContextMenu::addSeparator()
