@@ -66,8 +66,10 @@ NebulaStudio n'a pas la plateforme `offscreen`.
 Cette plateforme a ses limites : elle n'a pas de polices (un texte montré, celui d'un `QLabel` visible, avertit qu'elle
 ne trouve pas leur dossier) et avertit qu'elle ne suit pas les contraintes de taille d'une fenêtre (`This plugin does
 not support propagateSizeHints()`) quand une fenêtre montrée change la taille qu'elle demande, celle d'une
-`QMainWindow` avec une barre d'outils. Un test évite le premier en vérifiant la visibilité sans montrer le texte
-(`isVisibleTo()`), et attend le second par `QTest::ignoreMessage()`. Un test qui ne peut pas éviter de montrer du texte
+`QMainWindow` avec une barre d'outils, ou dont un widget est masqué puis remontré. Un test évite le premier en vérifiant
+la visibilité sans montrer le texte (`isVisibleTo()`), et attend le second par `QTest::ignoreMessage()`, autant de fois
+qu'il change cette taille, ou l'évite dans une fenêtre qu'il construit lui-même en n'y contraignant rien
+(`QLayout::SetNoConstraint`, comme `TestDragAside`). Un test qui ne peut pas éviter de montrer du texte
 (`TestEditionScene` : les noms des composants, ses menus) charge les polices une fois dans `initTestCase()`, avant
 `QTest::failOnWarning()` (`QFontDatabase::families()`) : l'avertissement y est écrit sans faire échouer, et ne revient
 plus. Un menu ouvert (`QMenu::exec()`) avertit enfin qu'elle ne sait ni le mettre au premier plan (`This plugin does not
