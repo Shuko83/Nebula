@@ -833,15 +833,22 @@ void EditionScene::tellProblems(const Nebula::Galaxy& galaxy)
 
 void EditionScene::mousePressEvent(QGraphicsSceneMouseEvent* event)
 {
-    InterfaceItem* source =
-        isEditable() && event->button() == Qt::LeftButton ? interfaceAt(event->scenePos()) : nullptr;
-    if(source == nullptr)
+    if(!isEditable() || event->button() != Qt::LeftButton || !startLinkAt(*event))
     {
         QGraphicsScene::mousePressEvent(event);
         return;
     }
-    startLink(*source); // Not passed to the items: its component would move
-    event->accept();
+    event->accept(); // Not passed to the items: a component would move, a link would be selected
+}
+
+bool EditionScene::startLinkAt(const QGraphicsSceneMouseEvent& event)
+{
+    if(InterfaceItem* source = interfaceAt(event.scenePos()))
+    {
+        startLink(*source);
+        return true;
+    }
+    return event.modifiers().testFlag(Qt::ShiftModifier) && startBranch(event.scenePos());
 }
 
 void EditionScene::startLink(InterfaceItem& source)
@@ -850,6 +857,24 @@ void EditionScene::startLink(InterfaceItem& source)
     m_pendingLink = addPath({}, QPen(palette().color(QPalette::ButtonText), 1.5, Qt::DashLine));
     m_pendingLink->setZValue(1); // Over the components it is drawn across
     dimLinkTargets(&source);
+}
+
+bool EditionScene::startBranch(const QPointF& position)
+{
+    AnchorItem* anchor = anchorAt(position);
+    LinkItem* link = anchor != nullptr ? anchor->links().constFirst() : linkAt(position);
+    if(link == nullptr)
+    {
+        return false;
+    }
+    m_branch = Branch{.link = link, .anchor = anchor, .position = anchor != nullptr ? anchor->pos() : position};
+    startLink(link->provided());
+    return true;
+}
+
+LinkItem::Stop EditionScene::pendingStart() const
+{
+    return m_branch ? m_branch->link->branchStop(m_branch->position) : LinkItem::stopAt(*m_linkSource);
 }
 
 void EditionScene::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
@@ -874,7 +899,7 @@ void EditionScene::showTypeOf(const InterfaceItem* hovered, const QGraphicsScene
 void EditionScene::drawPendingLink(const InterfaceItem* hovered, const QPointF& cursor)
 {
     const InterfaceItem* target = hovered != nullptr && m_linkSource->canLinkTo(*hovered) ? hovered : nullptr;
-    const LinkItem::Stop start = LinkItem::stopAt(*m_linkSource);
+    const LinkItem::Stop start = pendingStart();
     // The cursor is gone through the way its start is, as the dot of a component across from it would be.
     const LinkItem::Stop end =
         target != nullptr ? LinkItem::stopAt(*target) : LinkItem::Stop{.point = cursor, .leftwards = start.leftwards};
@@ -896,21 +921,58 @@ void EditionScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 void EditionScene::finishLink(const QPointF& position)
 {
     InterfaceItem* source = m_linkSource;
+    const std::optional<Branch> branch = m_branch;
     InterfaceItem* target = linkTargetAt(position);
     endLink();
     if(target != nullptr && isEditable()) // Not when it was started while the link was drawn
     {
-        link(*source, *target);
+        branch ? linkThrough(*branch, *target) : link(*source, *target);
     }
 }
 
 void EditionScene::endLink()
 {
     m_linkSource = nullptr;
+    m_branch.reset();
     delete m_pendingLink;
     m_pendingLink = nullptr;
     dimLinkTargets(nullptr);
     QToolTip::hideText();
+}
+
+bool EditionScene::abandonLink(const QKeyEvent& event)
+{
+    const bool abandoned = event.key() == Qt::Key_Escape && m_linkSource != nullptr;
+    if(abandoned)
+    {
+        endLink(); // The release of the button then goes to the scene, which nothing grabs it for
+    }
+    return abandoned;
+}
+
+void EditionScene::linkThrough(const Branch& branch, InterfaceItem& consumed)
+{
+    InterfaceItem& provided = branch.link->provided();
+    if(consumed.linkTo(provided) == nullptr)
+    {
+        link(provided, consumed); // Which draws the links again: the one it branches off stays, still bound
+    }
+    LinkItem* joined = consumed.linkTo(provided);
+    if(joined != nullptr && !goesThrough(branch, *joined))
+    {
+        joined->setAnchorItems(branch.link->anchorsUpTo(junctionOf(branch)));
+    }
+}
+
+AnchorItem& EditionScene::junctionOf(const Branch& branch)
+{
+    return branch.anchor != nullptr ? *branch.anchor : branch.link->addAnchor(branch.position);
+}
+
+bool EditionScene::goesThrough(const Branch& branch, LinkItem& link)
+{
+    return branch.anchor != nullptr ? link.anchorItems().contains(branch.anchor)
+                                    : branch.link->linksAlong(branch.position).contains(&link);
 }
 
 void EditionScene::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
@@ -940,10 +1002,10 @@ bool EditionScene::editSettingsAt(const QPointF& position, QWidget* parent)
 
 bool EditionScene::removeAnchorAt(const QPointF& position)
 {
-    const AnchorItem* anchor = anchorAt(position);
+    AnchorItem* anchor = anchorAt(position);
     if(anchor != nullptr)
     {
-        anchor->link().removeAnchor(*anchor);
+        anchor->isJunction() ? LinkItem::removeJunction(*anchor) : LinkItem::removeAnchor(*anchor);
     }
     return anchor != nullptr;
 }
@@ -1159,8 +1221,20 @@ bool EditionScene::addAnchorEntries(ContextMenu& menu, AnchorItem* anchor)
     {
         return false;
     }
-    menu.add(tr("Remove anchor point"), [anchor] { anchor->link().removeAnchor(*anchor); });
+    addRemoveEntry(menu, *anchor);
     return true;
+}
+
+void EditionScene::addRemoveEntry(ContextMenu& menu, AnchorItem& anchor)
+{
+    if(!anchor.isJunction())
+    {
+        menu.add(tr("Remove anchor point"), [item = &anchor] { LinkItem::removeAnchor(*item); });
+        return;
+    }
+    menu.add(
+        tr("Remove junction point"), [item = &anchor] { LinkItem::removeJunction(*item); }, {},
+        tr("Has each link through it go from its provided interface again, without the line they share"));
 }
 
 bool EditionScene::addLinkEntries(ContextMenu& menu, LinkItem* link, const QPointF& position)
@@ -1169,18 +1243,21 @@ bool EditionScene::addLinkEntries(ContextMenu& menu, LinkItem* link, const QPoin
     {
         return false;
     }
-    addAnchoringEntries(menu, *link, position);
-    menu.add(tr("Remove link"), [this, link] { unlink({link}); });
+    const QList<LinkItem*> along = link->linksAlong(position);
+    addAnchoringEntries(menu, *link, position, along);
+    menu.add(along.size() == 1 ? tr("Remove link") : tr("Remove links"), [this, along] { unlink(along); });
     return true;
 }
 
-void EditionScene::addAnchoringEntries(ContextMenu& menu, LinkItem& link, const QPointF& position)
+void EditionScene::addAnchoringEntries(ContextMenu& menu, LinkItem& link, const QPointF& position,
+                                       const QList<LinkItem*>& along)
 {
     menu.add(
         tr("Add anchor point"), [item = &link, position] { item->addAnchor(position); }, {},
-        tr("Has the link go through this point, wherever its components are"));
-    menu.add(tr("Remove anchor points"), [item = &link] { item->setAnchors({}); })
-        ->setEnabled(!link.anchors().isEmpty());
+        tr("Has the line go through this point, wherever its components are"));
+    menu.add(tr("Remove anchor points"),
+             [along] { std::ranges::for_each(along, [](LinkItem* item) { item->setAnchors({}); }); })
+        ->setEnabled(std::ranges::any_of(along, [](const LinkItem* item) { return !item->anchors().isEmpty(); }));
     menu.addSeparator();
 }
 
@@ -1251,16 +1328,25 @@ void EditionScene::addStargateAt(const QPointF& position, QWidget* parent)
 
 void EditionScene::keyPressEvent(QKeyEvent* event)
 {
-    if(event->key() != Qt::Key_Delete || focusItem() != nullptr || isBusy())
+    if(!abandonLink(*event) && !removeOnDelete(*event))
     {
         QGraphicsScene::keyPressEvent(event);
         return;
     }
     event->accept();
+}
+
+bool EditionScene::removeOnDelete(const QKeyEvent& event)
+{
+    if(event.key() != Qt::Key_Delete || focusItem() != nullptr || isBusy())
+    {
+        return false;
+    }
     if(checkEditable())
     {
         removeSelected();
     }
+    return true;
 }
 
 void EditionScene::removeSelected()
@@ -1429,6 +1515,7 @@ void EditionScene::removeItems()
     // Nothing is selected, nor being linked, any longer: who listens lets go of the components before they go.
     clearSelection();
     m_linkSource = nullptr;
+    m_branch.reset();
     m_pendingLink = nullptr;
     clear();
     m_anchors.clear();
@@ -1566,9 +1653,10 @@ void EditionScene::drawLink(InterfaceItem& provided, InterfaceItem& consumed)
 {
     auto* link =
         new LinkItem(provided, consumed, m_linkStyle, [this](const LinkItem& anchored) { m_anchors.keep(anchored); });
-    link->setAnchors(m_anchors.of(link->ends()));
+    addItem(link); // Before its anchors, which join its scene
     link->setEditable(isEditable());
-    addItem(link);
+    // Those the links of provided already drawn go through first are the same points: their line is one up to there.
+    link->setAnchors(m_anchors.of(link->ends()));
 }
 
 void EditionScene::editStargate(const StargateItem& item, QWidget* parent)

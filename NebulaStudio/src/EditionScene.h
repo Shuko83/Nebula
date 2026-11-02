@@ -10,16 +10,17 @@
 #include <QStringList>
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "InterfaceItem.h"
 #include "LinkAnchors.h"
+#include "LinkItem.h"
 #include "LinkStyle.h"
 
 class AnchorItem;
 class ComponentItem;
 class ContextMenu;
-class LinkItem;
 class QAction;
 class QGraphicsPathItem;
 class QJsonArray;
@@ -62,6 +63,11 @@ class SettingsFile;
 // swaps its row with the one of another interface of its component, whatever their kinds.
 // Double-clicking a link, or Add anchor point in its menu, has it go through that point, an anchor, see AnchorItem,
 // which the mouse drags; double-clicking an anchor, or Remove anchor point in its menu, removes it.
+// Shift+dragging from a link, or from an anchor, to the dot of an interface consumed that can be bound to the one the
+// link is drawn from binds them, and draws their link through that point, a junction, along the line of the other one
+// up to it: from there on, the two part. Double-clicking a junction, or Remove junction point in its menu, has each
+// link through it go from its provided interface again. Clicking the line links share selects them all, see LinkItem,
+// and so does the menu opened on it: Remove links removes them all.
 // None of this is done while the application runs, see Universe: its components can still be selected, but nothing is
 // dropped, moved, linked, renamed, recolored, added or removed until it is stopped.
 // A galaxy dragged from a GalaxyModel is placed in the application the same way, see Universe::instantiateGalaxy();
@@ -127,22 +133,32 @@ class EditionScene : public QGraphicsScene
     void dragEnterEvent(QGraphicsSceneDragDropEvent* event) override;
     void dragMoveEvent(QGraphicsSceneDragDropEvent* event) override;
     void dropEvent(QGraphicsSceneDragDropEvent* event) override;
-    // Pressing the dot of an interface starts a link, which follows the cursor until the button is released.
+    // Pressing the dot of an interface starts a link, which follows the cursor until the button is released; so does
+    // Shift+pressing a link or an anchor, which starts it there, see startBranch().
     void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
-    // Double-clicking a settings file edits it, an anchor removes it, and a link anchors it there; a stargate edits
-    // what it exposes by itself, see StargateItem.
+    // Double-clicking a settings file edits it, an anchor or a junction removes it, and a link anchors it there; a
+    // stargate edits what it exposes by itself, see StargateItem.
     void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
     // Not while it is busy, see isBusy(). Shift+right-clicking the dot of an interface opens its own menu.
     void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
-    // Delete removes the selected components, settings files and links, unless a name is edited: the key is for what is
-    // typed then. Not while it is busy either, see isBusy().
+    // Escape gives up the link being drawn. Delete removes the selected components, settings files and links, unless a
+    // name is edited: the key is for what is typed then. Not while it is busy either, see isBusy().
     void keyPressEvent(QKeyEvent* event) override;
     // A grid, and a hint while nothing is in the edition zone.
     void drawBackground(QPainter* painter, const QRectF& rect) override;
 
   private:
+    // Where a link that branches off another one starts: on the line of link, at position, the one of anchor when it
+    // starts at one of its points.
+    struct Branch
+    {
+        LinkItem* link = nullptr;
+        AnchorItem* anchor = nullptr;
+        QPointF position;
+    };
+
     // Whether what it shows is edited: while the application does not run.
     [[nodiscard]] bool isEditable() const;
     // Whether it is editable; tells why it is not through refused() when it is not.
@@ -199,8 +215,16 @@ class EditionScene : public QGraphicsScene
     // Tells what galaxy, just placed, misses of its file, when it misses anything.
     void tellProblems(const Nebula::Galaxy& galaxy);
 
+    // Starts drawing a link where event, the press of the left button, is: from the dot of an interface, or with Shift
+    // held, from a link or an anchor. Returns whether it did.
+    bool startLinkAt(const QGraphicsSceneMouseEvent& event);
     // Starts drawing a link from source.
     void startLink(InterfaceItem& source);
+    // Starts drawing a link that branches off the link or the anchor at position, from there: it binds the provided
+    // interface of that link. Returns whether there is one.
+    bool startBranch(const QPointF& position);
+    // Where the link being drawn starts: the dot of an interface, or the point of another link it branches off.
+    [[nodiscard]] LinkItem::Stop pendingStart() const;
     // Shows what hovered, the dot under the cursor where event is, is: no tooltip shows by itself while a button is
     // pressed, and its type is what tells whether the link being drawn can end there.
     void showTypeOf(const InterfaceItem* hovered, const QGraphicsSceneMouseEvent& event) const;
@@ -211,6 +235,15 @@ class EditionScene : public QGraphicsScene
     void finishLink(const QPointF& position);
     // Stops drawing a link.
     void endLink();
+    // Ends the link being drawn when event is Escape. Returns whether it did.
+    bool abandonLink(const QKeyEvent& event);
+    // Binds consumed to the interface the link of branch is drawn from, unless it is already, and has their link go
+    // through the point of branch, along the line of the other one up to it; nothing when it already does.
+    void linkThrough(const Branch& branch, InterfaceItem& consumed);
+    // The point of branch, added to the line of its link when it is not one of its anchors yet.
+    static AnchorItem& junctionOf(const Branch& branch);
+    // Whether link goes through the point of branch already.
+    [[nodiscard]] static bool goesThrough(const Branch& branch, LinkItem& link);
     // The interface whose dot is at position; nullptr when there is none.
     [[nodiscard]] InterfaceItem* interfaceAt(const QPointF& position) const;
     // The interface the link being drawn would be bound to if released at position; nullptr when there is none.
@@ -261,12 +294,16 @@ class EditionScene : public QGraphicsScene
     bool addSettingsEntries(ContextMenu& menu, SettingsItem* settings, QWidget* parent);
     // Adds to menu editing settings, writing its default values and removing it.
     void addSettingsActions(ContextMenu& menu, SettingsItem& settings, QWidget* parent);
-    // Adds to menu removing anchor; false when it is nullptr.
+    // Adds to menu removing anchor, or the junction it is; false when it is nullptr.
     static bool addAnchorEntries(ContextMenu& menu, AnchorItem* anchor);
-    // Adds to menu anchoring link at position, removing its anchors, and removing it; false when it is nullptr.
+    // Adds to menu removing anchor, or the junction it is, see LinkItem::removeJunction().
+    static void addRemoveEntry(ContextMenu& menu, AnchorItem& anchor);
+    // Adds to menu anchoring link at position, and removing the anchors of the links that share its line there, and
+    // those links; false when it is nullptr.
     bool addLinkEntries(ContextMenu& menu, LinkItem* link, const QPointF& position);
-    // Adds to menu anchoring link at position and removing its anchors.
-    static void addAnchoringEntries(ContextMenu& menu, LinkItem& link, const QPointF& position);
+    // Adds to menu anchoring link at position and removing the anchors of along, the links that share its line there.
+    static void addAnchoringEntries(ContextMenu& menu, LinkItem& link, const QPointF& position,
+                                    const QList<LinkItem*>& along);
     // Adds to menu what is added at position: a zone, a settings file or a stargate.
     void addSceneEntries(ContextMenu& menu, const QPointF& position, QWidget* parent);
     // Adds to menu what is done to the zone at position; nothing when there is none.
@@ -283,6 +320,9 @@ class EditionScene : public QGraphicsScene
     // Adds a stargate to what it shows, at position, and chooses what it exposes at once in a dialog of parent.
     void addStargateAt(const QPointF& position, QWidget* parent);
 
+    // Removes what is selected when event is Delete, unless a name is edited or it is busy, see keyPressEvent(); tells
+    // why it does not while the application runs. Returns whether event was that Delete.
+    bool removeOnDelete(const QKeyEvent& event);
     // Removes what is selected: its links, its settings files and its components, with their links.
     void removeSelected();
     // Removes each of removed, see remove().
@@ -313,7 +353,8 @@ class EditionScene : public QGraphicsScene
     bool doubleClick(const QPointF& position, QWidget* parent);
     // Edits the settings file at position in a dialog of parent; false when there is none.
     bool editSettingsAt(const QPointF& position, QWidget* parent);
-    // Removes the anchor at position from its link; false when there is none.
+    // Removes the anchor at position from its links, or the junction there, see LinkItem::removeJunction(); false when
+    // there is none.
     bool removeAnchorAt(const QPointF& position);
     // Has the link at position go through it; false when there is none.
     bool anchorLinkAt(const QPointF& position);
@@ -370,6 +411,7 @@ class EditionScene : public QGraphicsScene
     QJsonObject m_saved;                        // What save() returned once m_galaxy was shown: see isModified()
     QStringList m_selected;                     // The components selected while m_galaxy is read again, by name
     InterfaceItem* m_linkSource = nullptr;      // Where the link being drawn starts; nullptr when none is
+    std::optional<Branch> m_branch;             // What it branches off, when it does: m_linkSource is provided then
     QGraphicsPathItem* m_pendingLink = nullptr; // The link being drawn
     LinkStyle m_linkStyle = LinkStyle::Curved;  // Of its links, and of m_pendingLink
     LinkAnchors m_anchors;                      // Of its links, which they outlive

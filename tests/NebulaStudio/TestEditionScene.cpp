@@ -9,11 +9,13 @@
 #include <QGraphicsPathItem>
 #include <QGraphicsTextItem>
 #include <QGraphicsView>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QSignalSpy>
 #include <QTest>
 #include <QTimer>
@@ -40,6 +42,8 @@ constexpr QPointF SourceAt(40, 40);
 constexpr QPointF SinkAt(460, 120);
 // Where another source is shown, below the first one, when a test adds one.
 constexpr QPointF OtherSourceAt(40, 300);
+// Where another sink is shown, below the first one, when a test adds one.
+constexpr QPointF OtherSinkAt(460, 360);
 // What the rubber band is dragged around to select both components, in the scene.
 constexpr QPointF AroundFrom(10, 10);
 constexpr QPointF AroundTo(760, 400);
@@ -260,22 +264,38 @@ QGraphicsPathItem* pendingLink(const QGraphicsScene& scene)
     return nullptr;
 }
 
-// Sends the viewport of view the mouse event type at at, a position in the scene, as the window system would.
-void send(QGraphicsView& view, QEvent::Type type, QPointF at, Qt::MouseButton button, Qt::MouseButtons buttons)
+// Sends the viewport of view the mouse event type at at, a position in the scene, as the window system would, with
+// modifiers held.
+void send(QGraphicsView& view, QEvent::Type type, QPointF at, Qt::MouseButton button, Qt::MouseButtons buttons,
+          Qt::KeyboardModifiers modifiers = Qt::NoModifier)
 {
     const QPoint position = view.mapFromScene(at);
-    QMouseEvent event(type, position, view.viewport()->mapToGlobal(position), button, buttons, Qt::NoModifier);
+    QMouseEvent event(type, position, view.viewport()->mapToGlobal(position), button, buttons, modifiers);
     QApplication::sendEvent(view.viewport(), &event);
 }
 
-// Drags from from to to, positions in the scene of view, with the left button: the rubber band of view, or what is
-// pressed there.
-void drag(QGraphicsView& view, QPointF from, QPointF to)
+// Drags from from to to, positions in the scene of view, with the left button and modifiers held: the rubber band of
+// view, or what is pressed there.
+void drag(QGraphicsView& view, QPointF from, QPointF to, Qt::KeyboardModifiers modifiers = Qt::NoModifier)
 {
-    send(view, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
-    send(view, QEvent::MouseMove, (from + to) / 2, Qt::NoButton, Qt::LeftButton);
-    send(view, QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton);
-    send(view, QEvent::MouseButtonRelease, to, Qt::LeftButton, Qt::NoButton);
+    send(view, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton, modifiers);
+    send(view, QEvent::MouseMove, (from + to) / 2, Qt::NoButton, Qt::LeftButton, modifiers);
+    send(view, QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton, modifiers);
+    send(view, QEvent::MouseButtonRelease, to, Qt::LeftButton, Qt::NoButton, modifiers);
+}
+
+// Clicks view at at, a position in its scene, with the left button.
+void clickAt(QGraphicsView& view, QPointF at)
+{
+    send(view, QEvent::MouseButtonPress, at, Qt::LeftButton, Qt::LeftButton);
+    send(view, QEvent::MouseButtonRelease, at, Qt::LeftButton, Qt::NoButton);
+}
+
+// Expects the warning the offscreen platform gives as the tooltip of a dot is shown, which the scene does while a link
+// is drawn over it.
+void expectToolTip()
+{
+    QTest::ignoreMessage(QtWarningMsg, "This plugin does not support raise()");
 }
 
 // Double-clicks view at at, a position in its scene, as the window system does: a click, then a double click.
@@ -306,6 +326,64 @@ QList<AnchorItem*> anchorItems(const QGraphicsScene& scene)
         }
     }
     return anchors;
+}
+
+// The link scene shows to the interface named consumed of the component named consumer; nullptr when there is none.
+LinkItem* linkTo(const QGraphicsScene& scene, const QString& consumer, const QString& consumed)
+{
+    const QList<LinkItem*> shown = links(scene);
+    const auto found = std::ranges::find_if(
+        shown, [&consumer, &consumed](const LinkItem* link)
+        { return link->consumed().component().objectName() == consumer && link->consumed().name() == consumed; });
+    return found != shown.end() ? *found : nullptr;
+}
+
+// The elements of path, as points, from its start up to point, one of its ends, or to its end: the control points of a
+// curve included.
+QList<QPointF> elementsUpTo(const QPainterPath& path, QPointF point)
+{
+    QList<QPointF> elements;
+    for(int index = 0; index < path.elementCount(); ++index)
+    {
+        elements.append(QPointF(path.elementAt(index)));
+        if(elements.constLast() == point)
+        {
+            break;
+        }
+    }
+    return elements;
+}
+
+// Whether link paints anything around at, a point of the scene, as it is painted in a view of the scene.
+bool paintsAround(LinkItem& link, QPointF at)
+{
+    constexpr int Size = 21;
+    QImage image(Size, Size, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    painter.translate(QPointF(Size, Size) / 2 - at);
+    link.paint(&painter, nullptr, nullptr);
+    painter.end();
+    for(int pixel = 0; pixel < Size * Size; ++pixel)
+    {
+        if(qAlpha(image.pixel(pixel % Size, pixel / Size)) > 0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The interfaces links are drawn to, each after the name of its component, sorted: Sink1.object.
+QStringList consumersOf(const QList<LinkItem*>& links)
+{
+    QStringList names;
+    for(const LinkItem* link : links)
+    {
+        names.append(link->consumed().component().objectName() + u'.' + link->consumed().name());
+    }
+    names.sort();
+    return names;
 }
 
 // What a context menu offers.
@@ -528,6 +606,21 @@ class TestEditionScene : public QObject
     void anchorsSaved();
     void anchorsOfALinkDrawnAgain();
     void anchorsOfALinkRemoved();
+    void branch_data();
+    void branch();
+    void branchRefused_data();
+    void branchRefused();
+    void dragJunction();
+    void sharedLineDrawnOnce();
+    void clickSharedLine_data();
+    void clickSharedLine();
+    void sharedLineMenu_data();
+    void sharedLineMenu();
+    void removeJunction_data();
+    void removeJunction();
+    void junctionsSaved();
+    void junctionOfLinksDrawnAgain();
+    void junctionsWhileRunning();
     void sideMenu_data();
     void sideMenu();
     void noSideMenuWithoutShift();
@@ -545,6 +638,12 @@ class TestEditionScene : public QObject
   private:
     // The middle of the link, moved down by offset: where nothing else is shown, below it.
     [[nodiscard]] QPointF belowLink(qreal offset) const;
+    // Adds Sink2 to the application, whose interfaces are bound to nothing, and shows it at OtherSinkAt: the scene
+    // shows the application again, the link too.
+    void addOtherSink();
+    // Adds Sink2, then Shift+drags from the middle of the link to its object, in straight lines: their link goes
+    // through that point, which it returns.
+    QPointF branchToOtherSink();
 
     // Source1, which provides "object", and Sink1, whose "object" is bound to it.
     std::unique_ptr<Nebula::Universe> m_application;
@@ -1099,6 +1198,27 @@ QPointF TestEditionScene::belowLink(qreal offset) const
     return middle(*m_link) + QPointF(0, offset);
 }
 
+void TestEditionScene::addOtherSink()
+{
+    QVERIFY(m_application->instantiate(testComponentId(QStringLiteral("Sink"))) != nullptr);
+    QJsonObject project = m_scene->save();
+    place(project, QStringLiteral("Sink2"), OtherSinkAt);
+    QCOMPARE(m_scene->load(project), QStringList());
+    m_link = linkTo(*m_scene, QStringLiteral("Sink1"), QStringLiteral("object"));
+    QVERIFY(m_link != nullptr);
+}
+
+QPointF TestEditionScene::branchToOtherSink()
+{
+    addOtherSink();
+    m_scene->setLinkStyle(LinkStyle::Straight);
+    const QPointF junction = onPixel(*m_view, middle(*m_link));
+    expectToolTip();
+    drag(*m_view, junction, interfaceItem(*m_scene, QStringLiteral("Sink2"), QStringLiteral("object"))->scenePos(),
+         Qt::ShiftModifier);
+    return junction;
+}
+
 void TestEditionScene::anchoredPath_data()
 {
     QTest::addColumn<LinkStyle>("style");
@@ -1141,7 +1261,7 @@ void TestEditionScene::anchoredPath()
     for(const AnchorItem* anchor : anchorItems(*m_scene))
     {
         QVERIFY(anchors.contains(anchor->scenePos()));
-        QCOMPARE(&anchor->link(), m_link);
+        QCOMPARE(anchor->links(), QList<LinkItem*>{m_link});
     }
 
     const QPainterPath path = m_link->path();
@@ -1360,6 +1480,324 @@ void TestEditionScene::anchorsOfALinkRemoved()
     QVERIFY(links(*m_scene).constFirst()->anchors().isEmpty());
     QVERIFY(anchorItems(*m_scene).isEmpty());
     QVERIFY(!m_scene->save().value(u"bindings").toArray().at(0).toObject().contains(u"anchors"));
+}
+
+void TestEditionScene::branch_data()
+{
+    QTest::addColumn<LinkStyle>("style");
+    QTest::addColumn<bool>("fromAnchor"); // Whether it starts from an anchor of the link, rather than from its line
+
+    QTest::newRow("straight lines, from the line") << LinkStyle::Straight << false;
+    QTest::newRow("right angles, from the line") << LinkStyle::RightAngled << false;
+    QTest::newRow("curves, from the line") << LinkStyle::Curved << false;
+    QTest::newRow("right angles, from an anchor") << LinkStyle::RightAngled << true;
+    QTest::newRow("curves, from an anchor") << LinkStyle::Curved << true;
+}
+
+// Shift+dragging from a link, or from one of its anchors, to an interface that can be bound to the one it is drawn from
+// binds them, and their link goes through that point, a junction: both links go through it, their line one up to it,
+// gone through the way from the point before it.
+void TestEditionScene::branch()
+{
+    QFETCH(LinkStyle, style);
+    QFETCH(bool, fromAnchor);
+
+    addOtherSink();
+    m_scene->setLinkStyle(style);
+    const QPointF anchor = belowLink(80);
+    m_link->setAnchors(fromAnchor ? QList<QPointF>{anchor} : QList<QPointF>());
+    const QPointF from = fromAnchor ? anchor : onPixel(*m_view, middle(*m_link));
+    expectToolTip();
+    drag(*m_view, from, interfaceItem(*m_scene, QStringLiteral("Sink2"), QStringLiteral("object"))->scenePos(),
+         Qt::ShiftModifier);
+
+    const QStringList source{QStringLiteral("Source1.object")};
+    QCOMPARE(boundTo(*m_application->component(QStringLiteral("Sink1")), QStringLiteral("object")), source);
+    QCOMPARE(boundTo(*m_application->component(QStringLiteral("Sink2")), QStringLiteral("object")), source);
+    const LinkItem* branched = linkTo(*m_scene, QStringLiteral("Sink2"), QStringLiteral("object"));
+    QVERIFY(branched != nullptr);
+    QCOMPARE(m_link->anchors(), QList<QPointF>{from});
+    QCOMPARE(branched->anchorItems(), m_link->anchorItems()); // The same point
+    QCOMPARE(anchorItems(*m_scene).size(), 1);
+    QVERIFY(m_link->anchorItems().constFirst()->isJunction());
+
+    const LinkItem::Stop start = LinkItem::stopAt(m_link->provided());
+    const LinkItem::Stop junction{.point = from, .leftwards = from.x() < start.point.x()};
+    const QList<QPointF> shared = elementsUpTo(LinkItem::route(style, start, junction), from);
+    QCOMPARE(elementsUpTo(m_link->path(), from), shared);
+    QCOMPARE(elementsUpTo(branched->path(), from), shared);
+}
+
+void TestEditionScene::branchRefused_data()
+{
+    QTest::addColumn<QString>("target"); // Where the link is dragged to: an interface of a component, or nowhere
+    QTest::addColumn<bool>("abandoned"); // Whether Escape is pressed before the button is released
+
+    QTest::newRow("nowhere") << QString() << false;
+    QTest::newRow("an interface of another type") << QStringLiteral("Sink2.timer") << false;
+    QTest::newRow("its own consumed interface") << QStringLiteral("Sink1.object") << false;
+    QTest::newRow("abandoned") << QStringLiteral("Sink2.object") << true;
+}
+
+// A link that branches off another one binds nothing, and adds no point to it, when it is dragged to nothing it can be
+// bound to, to the interface the other one is drawn to already, or abandoned by Escape.
+void TestEditionScene::branchRefused()
+{
+    QFETCH(QString, target);
+    QFETCH(bool, abandoned);
+
+    addOtherSink();
+    m_scene->setLinkStyle(LinkStyle::Straight);
+    const QPointF from = onPixel(*m_view, middle(*m_link));
+    const QStringList names = target.split(u'.');
+    const QPointF to = target.isEmpty() ? OtherSinkAt + QPointF(-200, 100)
+                                        : interfaceItem(*m_scene, names.at(0), names.at(1))->scenePos();
+    if(!target.isEmpty())
+    {
+        expectToolTip();
+    }
+    send(*m_view, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton, Qt::ShiftModifier);
+    send(*m_view, QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton);
+    QVERIFY(pendingLink(*m_scene) != nullptr);
+    if(abandoned)
+    {
+        QTest::keyClick(m_view.get(), Qt::Key_Escape);
+        QCOMPARE(pendingLink(*m_scene), nullptr);
+    }
+    send(*m_view, QEvent::MouseButtonRelease, to, Qt::LeftButton, Qt::NoButton);
+
+    QCOMPARE(pendingLink(*m_scene), nullptr);
+    QCOMPARE(consumersOf(links(*m_scene)), QStringList{QStringLiteral("Sink1.object")});
+    QVERIFY(m_link->anchors().isEmpty());
+    QVERIFY(anchorItems(*m_scene).isEmpty());
+}
+
+// Dragging a junction moves it, and the links that go through it follow, still through the same point.
+void TestEditionScene::dragJunction()
+{
+    const QPointF junction = branchToOtherSink();
+    const LinkItem* branched = linkTo(*m_scene, QStringLiteral("Sink2"), QStringLiteral("object"));
+    QVERIFY(branched != nullptr);
+
+    const QPointF moved = junction + QPointF(-30, 60);
+    drag(*m_view, junction, moved);
+    QCOMPARE(m_link->anchors(), QList<QPointF>{moved});
+    QCOMPARE(branched->anchorItems(), m_link->anchorItems());
+    const QPointF start = m_link->provided().scenePos();
+    QCOMPARE(points(m_link->path()), (QList<QPointF>{start, moved, m_link->consumed().scenePos()}));
+    QCOMPARE(points(branched->path()), (QList<QPointF>{start, moved, branched->consumed().scenePos()}));
+    const QJsonArray bindings = m_scene->save().value(u"bindings").toArray();
+    QCOMPARE(bindings.size(), 2);
+    const QJsonArray anchors{QJsonObject{{QStringLiteral("x"), moved.x()}, {QStringLiteral("y"), moved.y()}}};
+    QCOMPARE(bindings.at(0).toObject().value(u"anchors").toArray(), anchors);
+    QCOMPARE(bindings.at(1).toObject().value(u"anchors").toArray(), anchors);
+}
+
+// The line links share up to a junction is drawn once, by the first link through it: the other one draws its own line
+// past it, and all of its line once it is selected, over the other one.
+void TestEditionScene::sharedLineDrawnOnce()
+{
+    const QPointF junction = branchToOtherSink();
+    LinkItem* other = linkTo(*m_scene, QStringLiteral("Sink2"), QStringLiteral("object"));
+    QVERIFY(other != nullptr);
+    QCOMPARE(m_link->anchorItems().constFirst()->links().constFirst(), m_link); // Through it first
+    const QPointF onShared = (m_link->provided().scenePos() + junction) / 2;
+    const QPointF onOther = (junction + other->consumed().scenePos()) / 2;
+
+    QVERIFY(paintsAround(*m_link, onShared));
+    QVERIFY(!paintsAround(*other, onShared));
+    QVERIFY(paintsAround(*other, onOther));
+    other->setSelected(true);
+    QVERIFY(paintsAround(*other, onShared));
+    QCOMPARE_GT(other->zValue(), m_link->zValue());
+}
+
+void TestEditionScene::clickSharedLine_data()
+{
+    QTest::addColumn<QString>("where");        // Where it is clicked: on the line they share, or after the junction
+    QTest::addColumn<QStringList>("selected"); // The links selected then, by what they are drawn to, and removed
+    QTest::addColumn<QStringList>("left");     // The links left once Delete is pressed
+
+    const QString first = QStringLiteral("Sink1.object");
+    const QString other = QStringLiteral("Sink2.object");
+    QTest::newRow("the line they share") << QStringLiteral("shared") << QStringList{first, other} << QStringList();
+    QTest::newRow("the line of the first one") << first << QStringList{first} << QStringList{other};
+    QTest::newRow("the line of the other one") << other << QStringList{other} << QStringList{first};
+}
+
+// Clicking the line links share up to a junction selects them all, which Delete removes; clicking the line of one of
+// them past it selects it alone. The links left go through the same point, an anchor of their own then.
+void TestEditionScene::clickSharedLine()
+{
+    QFETCH(QString, where);
+    QFETCH(QStringList, selected);
+    QFETCH(QStringList, left);
+
+    const QPointF junction = branchToOtherSink();
+    const QStringList names = where.split(u'.');
+    const QPointF end = where == QStringLiteral("shared")
+                            ? m_link->provided().scenePos()
+                            : interfaceItem(*m_scene, names.at(0), names.at(1))->scenePos();
+    clickAt(*m_view, onPixel(*m_view, (junction + end) / 2));
+    QList<LinkItem*> shown = links(*m_scene);
+    shown.removeIf([](const LinkItem* link) { return !link->isSelected(); });
+    QCOMPARE(consumersOf(shown), selected);
+
+    QTest::keyClick(m_view.get(), Qt::Key_Delete);
+    QCOMPARE(consumersOf(links(*m_scene)), left);
+    for(const LinkItem* link : links(*m_scene))
+    {
+        QCOMPARE(link->anchors(), QList<QPointF>{junction});
+        QVERIFY(!link->anchorItems().constFirst()->isJunction());
+    }
+    QCOMPARE(anchorItems(*m_scene).size(), left.size());
+}
+
+void TestEditionScene::sharedLineMenu_data()
+{
+    QTest::addColumn<QString>("chosen");
+    QTest::addColumn<QStringList>("left"); // The links left then, by what they are drawn to
+    QTest::addColumn<int>("anchors");      // The points each of them goes through then
+    QTest::addColumn<bool>("shared");      // Whether they go through the same points
+
+    const QStringList both{QStringLiteral("Sink1.object"), QStringLiteral("Sink2.object")};
+    QTest::newRow("anchored") << QStringLiteral("Add anchor point") << both << 2 << true;
+    QTest::newRow("anchors removed") << QStringLiteral("Remove anchor points") << both << 0 << false;
+    QTest::newRow("removed") << QStringLiteral("Remove links") << QStringList() << 0 << false;
+}
+
+// The menu opened on the line links share does to each of them what it does to a link: it anchors them there, before
+// their junction, removes their anchors, which has each go from its provided interface again, or removes them.
+void TestEditionScene::sharedLineMenu()
+{
+    QFETCH(QString, chosen);
+    QFETCH(QStringList, left);
+    QFETCH(int, anchors);
+    QFETCH(bool, shared);
+
+    const QPointF junction = branchToOtherSink();
+    const QPointF at = onPixel(*m_view, (m_link->provided().scenePos() + junction) / 2);
+    QCOMPARE(chooseFromMenu(*m_view, at, chosen),
+             (QStringList{QStringLiteral("Add anchor point"), QStringLiteral("Remove anchor points"),
+                          QStringLiteral("Remove links")}));
+    const QList<LinkItem*> shown = links(*m_scene);
+    QCOMPARE(consumersOf(shown), left);
+    for(const LinkItem* link : shown)
+    {
+        QCOMPARE(link->anchors().size(), anchors);
+        QCOMPARE(link->anchorItems() == shown.constFirst()->anchorItems() && anchors > 0, shared);
+    }
+    QCOMPARE(anchorItems(*m_scene).size(), shared ? anchors : 0);
+}
+
+void TestEditionScene::removeJunction_data()
+{
+    QTest::addColumn<bool>("fromMenu"); // Whether it is removed from its menu, or double-clicked
+
+    QTest::newRow("double-clicked") << false;
+    QTest::newRow("from its menu") << true;
+}
+
+// Removing a junction has each link through it go from its provided interface again, through its own points after it
+// only: the line they shared goes, and they stay bound.
+void TestEditionScene::removeJunction()
+{
+    QFETCH(bool, fromMenu);
+
+    const QPointF junction = branchToOtherSink();
+    LinkItem* branched = linkTo(*m_scene, QStringLiteral("Sink2"), QStringLiteral("object"));
+    QVERIFY(branched != nullptr);
+    const QPointF start = m_link->provided().scenePos();
+    m_link->addAnchor((start + junction) / 2); // On the line they share: both go through it
+    const QPointF own = (junction + branched->consumed().scenePos()) / 2;
+    branched->addAnchor(own);
+    QCOMPARE(branched->anchors(), (QList<QPointF>{(start + junction) / 2, junction, own}));
+    QCOMPARE(m_link->anchors(), (QList<QPointF>{(start + junction) / 2, junction}));
+
+    if(fromMenu)
+    {
+        QCOMPARE(chooseFromMenu(*m_view, junction, QStringLiteral("Remove junction point")),
+                 QStringList{QStringLiteral("Remove junction point")});
+    }
+    else
+    {
+        doubleClick(*m_view, junction);
+    }
+    QVERIFY(m_link->anchors().isEmpty());
+    QCOMPARE(branched->anchors(), QList<QPointF>{own});
+    QCOMPARE(anchorItems(*m_scene).size(), 1);
+    QCOMPARE(consumersOf(links(*m_scene)),
+             (QStringList{QStringLiteral("Sink1.object"), QStringLiteral("Sink2.object")}));
+}
+
+// A project holds the junction in the anchors of each binding through it, and gives it back once opened: the links go
+// through the same point again.
+void TestEditionScene::junctionsSaved()
+{
+    const QPointF junction = branchToOtherSink();
+    const QJsonObject project = m_scene->save();
+    const QJsonArray anchors{QJsonObject{{QStringLiteral("x"), junction.x()}, {QStringLiteral("y"), junction.y()}}};
+    const QJsonArray bindings = project.value(u"bindings").toArray();
+    QCOMPARE(bindings.size(), 2);
+    QCOMPARE(bindings.at(0).toObject().value(u"anchors").toArray(), anchors);
+    QCOMPARE(bindings.at(1).toObject().value(u"anchors").toArray(), anchors);
+
+    QCOMPARE(m_scene->load(project), QStringList());
+    const LinkItem* first = linkTo(*m_scene, QStringLiteral("Sink1"), QStringLiteral("object"));
+    const LinkItem* other = linkTo(*m_scene, QStringLiteral("Sink2"), QStringLiteral("object"));
+    QVERIFY(first != nullptr && other != nullptr);
+    QCOMPARE(first->anchors(), QList<QPointF>{junction});
+    QCOMPARE(other->anchorItems(), first->anchorItems());
+    QVERIFY(first->anchorItems().constFirst()->isJunction());
+    QCOMPARE(anchorItems(*m_scene).size(), 1);
+    QCOMPARE(m_scene->save(), project);
+}
+
+// Links drawn again, as the interfaces of the component they are drawn from are shown again, go through the same
+// junction again, and their own points after it.
+void TestEditionScene::junctionOfLinksDrawnAgain()
+{
+    Nebula::Component* outlets = m_application->instantiate(testComponentId(QStringLiteral("Outlets")));
+    Nebula::Component* other = m_application->instantiate(testComponentId(QStringLiteral("Sink")));
+    QVERIFY(outlets != nullptr && other != nullptr);
+    QVERIFY(outlets->setProperty("count", 1));
+    QVERIFY(m_application->component(QStringLiteral("Sink1"))
+                ->bindInterface(QStringLiteral("object"), *outlets, QStringLiteral("object1")));
+    QVERIFY(other->bindInterface(QStringLiteral("object"), *outlets, QStringLiteral("object1")));
+    QCOMPARE(m_scene->load(m_application->save()), QStringList());
+    outlets = m_application->component(QStringLiteral("Outlets1"));
+    const QList<QPointF> first{{300, 400}, {340, 420}};
+    LinkItem* firstLink = linkTo(*m_scene, QStringLiteral("Sink1"), QStringLiteral("object"));
+    firstLink->setAnchors(first);
+    linkTo(*m_scene, QStringLiteral("Sink2"), QStringLiteral("object"))
+        ->setAnchorItems(firstLink->anchorsUpTo(*firstLink->anchorItems().constFirst()));
+
+    QVERIFY(outlets->setProperty("count", 2)); // Which shows each of its interfaces again
+    firstLink = linkTo(*m_scene, QStringLiteral("Sink1"), QStringLiteral("object"));
+    const LinkItem* otherLink = linkTo(*m_scene, QStringLiteral("Sink2"), QStringLiteral("object"));
+    QCOMPARE(firstLink->anchors(), first);
+    QCOMPARE(otherLink->anchors(), first.first(1));
+    QCOMPARE(otherLink->anchorItems().constFirst(), firstLink->anchorItems().constFirst());
+    QVERIFY(firstLink->anchorItems().constFirst()->isJunction());
+    QCOMPARE(anchorItems(*m_scene).size(), 2);
+}
+
+// While the application runs, no link branches off another one, and a junction is not removed.
+void TestEditionScene::junctionsWhileRunning()
+{
+    const QPointF junction = branchToOtherSink();
+    QVERIFY(m_application->start());
+    m_link = linkTo(*m_scene, QStringLiteral("Sink1"), QStringLiteral("object"));
+    const QPointF onShared = onPixel(*m_view, (m_link->provided().scenePos() + junction) / 2);
+
+    expectToolTip(); // The one of the dot, hovered once the button is released there
+    drag(*m_view, onShared, interfaceItem(*m_scene, QStringLiteral("Sink1"), QStringLiteral("objects"))->scenePos(),
+         Qt::ShiftModifier);
+    QVERIFY(boundTo(*m_application->component(QStringLiteral("Sink1")), QStringLiteral("objects")).isEmpty());
+    doubleClick(*m_view, junction);
+    QCOMPARE(m_link->anchors(), QList<QPointF>{junction});
+    QVERIFY(m_link->anchorItems().constFirst()->isJunction());
+    m_application->stop();
 }
 
 void TestEditionScene::sideMenu_data()
