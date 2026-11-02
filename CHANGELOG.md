@@ -33,6 +33,10 @@ to it.
   color scheme of the system; **Light** and **Dark** keep NebulaStudio light or dark whatever the system is, the title
   bars of its windows too where the system lets them. It changes at once, and is kept for its user, from one launch to
   the next.
+- The overview of the edition zone in NebulaStudio (#64), under the properties: the whole scene shown, the application
+  or the galaxy opened, small, what the edition zone shows of it framed; clicking it, or dragging in it, shows that
+  part in the edition zone. **View** > **Overview** shows it or hides it, which is kept for the user, from one launch to
+  the next. `OverviewComponent` provides it to the galaxy of NebulaStudio.
 
 ### Changed
 
