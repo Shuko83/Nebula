@@ -37,6 +37,12 @@ to it.
   or the galaxy opened, small, what the edition zone shows of it framed; clicking it, or dragging in it, shows that
   part in the edition zone. **View** > **Overview** shows it or hides it, which is kept for the user, from one launch to
   the next. `OverviewComponent` provides it to the galaxy of NebulaStudio.
+- Junctions of the links in NebulaStudio (#126): Shift+dragging from a link, or from one of its anchors, to an
+  interface that can be bound to the one it comes from binds them through that point, a junction, a filled disc. Up to
+  it, the links go through the same points, along one line drawn once, which clicking, or the Delete key, selects or
+  removes as a whole; moving the junction moves them all. Double-clicking it, or **Remove junction point**, has each go
+  from its provided interface again. A project holds a junction in the `anchors` of each link through it, which go
+  through it again once it is opened.
 
 ### Changed
 
