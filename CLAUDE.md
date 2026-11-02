@@ -66,12 +66,14 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   aussi son objet racine, `QObject` dérivant de `Nebula::Plugin<<Nom>>`, avec `Q_PLUGIN_METADATA` (le JSON id / name /
   description / version / coreVersion) et `buildDate()`. Le plugin n'écrit que ses composants, qui l'incluent pour s'y
   enregistrer. `NEBULA_PLUGIN` n'est plus qu'un `static_assert(false, …)` qui dit à un plugin écrit pour 1.0.0 de
-  retirer sa classe. Elle ne connaît pas les objets de ses composants : un composant les crée lui-même dans son
-  constructeur (issue #79). `Plugin::add()` refuse de compiler si la classe a un `build(<Composant>&)`, que Core
-  n'appelle plus.
+  retirer sa classe, après avoir déplacé dans le constructeur de ses composants ce que créaient ses `build()` (ceux d'un
+  plugin d'avant 1.0.0). Elle ne connaît pas les objets de ses composants : un composant les crée lui-même dans son
+  constructeur (issue #79). Le contrôle qui refusait une classe ayant un `build(<Composant>&)` est retiré (issue #88) :
+  la classe générée n'en a pas.
 - `Nebula::Plugin<P>` (`Plugin.h`, CRTP, tout dans l'en-tête) implémente `components()` et `create()` depuis
   `registered()`, la liste statique de `P` : `NEBULA_REGISTER_COMPONENT(ClassePlugin, Composant);` est une
-  initialisation statique qui appelle `Plugin<ClassePlugin>::add<Composant>()` (série de `static_assert`), au
+  initialisation statique qui appelle `Plugin<ClassePlugin>::add<Composant>()` (série de `static_assert`,
+  `std::derived_from` pour exiger un héritage public de `Component` et de `Plugin<ClassePlugin>`), au
   chargement de la DLL, avant que Qt crée l'objet racine. Une seule liste, que rien ne recopie.
 - `Plugin::Instance<T>` est ce que `create()` instancie : son destructeur appelle `releaseInterfaces()` avant celui
   de `T`. Rien n'empêche plus de compiler `new Greeter` (`Component::builtByPlugin()` est retirée) : la règle
@@ -586,7 +588,8 @@ ini, celui des formats qui n'ont pas le leur).
 - Sur la plateforme `offscreen` des tests, sans polices, `QFontInfo` renvoie une taille négative, que
   `QFont::setPointSizeF()` refuse en avertissant : `DialogHeader` agrandit son titre depuis la taille de la police
   elle-même, en points ou en pixels.
-- Un composant ne peut pas être `final`, a besoin d'un constructeur par défaut et de `Q_OBJECT`.
+- Un composant dérive publiquement de `Component` (`std::is_base_of_v` accepterait un héritage privé, refusé plus
+  loin, à la création, sans message), ne peut pas être `final`, a besoin d'un constructeur par défaut et de `Q_OBJECT`.
 - Une propriété `QDate`, `QTime` ou `QDateTime` nulle ne fait pas l'aller-retour JSON (`ProjectJson::toJson()`) : tant
   qu'elle l'est, un projet ne l'écrit pas et `SettingsFile::canHold()` la refuse. Les composants de test ont donc des
   dates valides par défaut.
