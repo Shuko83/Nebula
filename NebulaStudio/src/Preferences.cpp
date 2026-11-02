@@ -61,25 +61,18 @@ void writeNamed(QSettings& settings, QLatin1StringView key, const std::array<Nam
     }
 }
 
-void addMembers(const QJsonObject& object, const QString& prefix, QSettings::SettingsMap& settings);
-
-// Adds to settings value under key, or, when it is an object, its members under key then their names.
-void addMember(const QString& key, const QJsonValue& value, QSettings::SettingsMap& settings)
+// Adds to settings value under key, or, when it is an object, each of its members under key, '/' and its name: under
+// its name alone when key is empty, for the object of the file.
+void addSetting(const QString& key, const QJsonValue& value, QSettings::SettingsMap& settings)
 {
-    if(value.isObject())
+    if(!value.isObject())
     {
-        addMembers(value.toObject(), key + u'/', settings);
+        settings.insert(key, value.toVariant());
         return;
     }
-    settings.insert(key, value.toVariant());
-}
-
-// Adds to settings the members of object, each under prefix then its name, see addMember().
-void addMembers(const QJsonObject& object, const QString& prefix, QSettings::SettingsMap& settings)
-{
-    for(const QString& name : object.keys())
+    for(const QString& name : value.toObject().keys())
     {
-        addMember(prefix + name, object.value(name), settings);
+        addSetting(key.isEmpty() ? name : key + u'/' + name, value[name], settings);
     }
 }
 
@@ -91,7 +84,7 @@ bool readJson(QIODevice& device, QSettings::SettingsMap& settings)
     {
         return false;
     }
-    addMembers(document.object(), QString(), settings);
+    addSetting(QString(), document.object(), settings);
     return true;
 }
 

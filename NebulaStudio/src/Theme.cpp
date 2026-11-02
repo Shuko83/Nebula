@@ -132,18 +132,12 @@ QPalette palette(const ThemeColors& colors)
     return palette;
 }
 
-// The scheme chooseColorScheme() was given last: Unknown, the one of the system, until then.
-Qt::ColorScheme& chosenScheme()
-{
-    static Qt::ColorScheme chosen = Qt::ColorScheme::Unknown;
-    return chosen;
-}
+Qt::ColorScheme chosenScheme = Qt::ColorScheme::Unknown; // Given last to chooseColorScheme(): the one of the system
 
 // The scheme the application is in: the one chosen, or the one of the system.
 Qt::ColorScheme shownScheme()
 {
-    const Qt::ColorScheme chosen = chosenScheme();
-    return chosen != Qt::ColorScheme::Unknown ? chosen : QGuiApplication::styleHints()->colorScheme();
+    return chosenScheme != Qt::ColorScheme::Unknown ? chosenScheme : QGuiApplication::styleHints()->colorScheme();
 }
 
 // Gives the application the palette of the scheme it is in.
@@ -232,7 +226,7 @@ void applyTheme(Qt::ColorScheme scheme)
 
 void chooseColorScheme(Qt::ColorScheme scheme)
 {
-    chosenScheme() = scheme;
+    chosenScheme = scheme;
     // For the title bars; the platform that lets the application choose then tells colorSchemeChanged().
     QGuiApplication::styleHints()->setColorScheme(scheme);
     applyShownScheme(); // Whether it does or not
