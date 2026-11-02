@@ -51,6 +51,18 @@ void Studio::setColorScheme(Qt::ColorScheme scheme)
     emit colorSchemeChanged(scheme);
 }
 
+bool Studio::isOverviewShown() const
+{
+    return m_overviewShown;
+}
+
+void Studio::setOverviewShown(bool shown)
+{
+    m_overviewShown = shown;
+    writeOverviewShown(m_preferences, shown);
+    emit overviewShownChanged(shown);
+}
+
 void Studio::refreshPlugins()
 {
     emit pluginsChanged();

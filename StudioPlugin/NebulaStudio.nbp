@@ -69,6 +69,13 @@
             "properties": {}
         },
         {
+            "name": "Overview",
+            "type": "FabienDG.Nebula.StudioPlugin.OverviewComponent",
+            "x": 1630,
+            "y": 2080,
+            "properties": {}
+        },
+        {
             "name": "Sources",
             "type": "FabienDG.Nebula.StudioPlugin.TabsComponent",
             "x": 1950,
@@ -97,7 +104,7 @@
             "y": 1360,
             "properties": {
                 "vertical": true,
-                "sizes": "420, 330",
+                "sizes": "330, 240, 180",
                 "stretched": 0,
                 "hiddenWhileDragging": true
             }
@@ -199,6 +206,24 @@
             "provided": "zone"
         },
         {
+            "consumer": "Overview",
+            "consumed": "studio",
+            "provider": "Studio",
+            "provided": "studio"
+        },
+        {
+            "consumer": "Overview",
+            "consumed": "zone",
+            "provider": "Edition",
+            "provided": "zone"
+        },
+        {
+            "consumer": "Overview",
+            "consumed": "viewMenu",
+            "provider": "Edition",
+            "provided": "viewMenu"
+        },
+        {
             "consumer": "Sources",
             "consumed": "pages",
             "provider": "Components",
@@ -238,6 +263,12 @@
             "consumer": "SideColumn",
             "consumed": "widgets",
             "provider": "Properties",
+            "provided": "widget"
+        },
+        {
+            "consumer": "SideColumn",
+            "consumed": "widgets",
+            "provider": "Overview",
             "provided": "widget"
         },
         {
@@ -310,7 +341,7 @@
             "x": 1510,
             "y": 1220,
             "width": 260,
-            "height": 860
+            "height": 1020
         },
         {
             "title": "Layout",

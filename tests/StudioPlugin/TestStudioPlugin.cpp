@@ -212,6 +212,7 @@ class TestStudioPlugin : public QObject
     void stoppingStopsTheApplicationAssembled();
     void projectFileOpensAsItStarts();
     void themeChosenInTheViewMenu();
+    void overviewShownFromTheViewMenu();
     void galaxyDirectory_data();
     void galaxyDirectory();
     void splitterInTheOrderOfItsBindings();
@@ -227,8 +228,12 @@ class TestStudioPlugin : public QObject
     Component* instantiate(const QString& name);
     // The widget component provides as "widget".
     static QWidget* widgetOf(const Component& component);
+    // Starts the galaxy of NebulaStudio, then returns the View menu of its window; nullptr when it has none.
+    QMenu* startedViewMenu();
     // Starts the galaxy of NebulaStudio, then returns the Theme menu of its window; nullptr when it has none.
     QMenu* startedThemeMenu();
+    // The overview of the edition zone, as its component provides it; nullptr when there is none.
+    QWidget* overview() const;
 
     std::unique_ptr<Universe> m_universe;
     const QTemporaryDir m_settings; // Of the user, those of NebulaStudio among them: not the ones of who runs the tests
@@ -270,7 +275,7 @@ QWidget* TestStudioPlugin::widgetOf(const Component& component)
     return component.providedInterface<QWidget>(u"widget"_s);
 }
 
-QMenu* TestStudioPlugin::startedThemeMenu()
+QMenu* TestStudioPlugin::startedViewMenu()
 {
     openGalaxy();
     ignoreSizeHints();
@@ -278,15 +283,26 @@ QMenu* TestStudioPlugin::startedThemeMenu()
     {
         return nullptr;
     }
-    const QMenu* view = menuOf(*shownWindow(), u"&View"_s);
+    return menuOf(*shownWindow(), u"&View"_s);
+}
+
+QMenu* TestStudioPlugin::startedThemeMenu()
+{
+    const QMenu* view = startedViewMenu();
     const QAction* theme = view != nullptr ? actionOf(*view, u"&Theme"_s) : nullptr;
     return theme != nullptr ? theme->menu() : nullptr;
+}
+
+QWidget* TestStudioPlugin::overview() const
+{
+    const Component* overview = m_universe->component(u"Overview"_s);
+    return overview != nullptr ? widgetOf(*overview) : nullptr;
 }
 
 void TestStudioPlugin::galaxyOpens()
 {
     openGalaxy();
-    QCOMPARE(m_universe->components().size(), 13);
+    QCOMPARE(m_universe->components().size(), 14);
     // Each of its parts has what it needs.
     for(const std::unique_ptr<Component>& component : m_universe->components())
     {
@@ -328,21 +344,25 @@ void TestStudioPlugin::partsInTheWindow()
     QCOMPARE(edition->orientation(), Qt::Vertical);
     QCOMPARE(edition->count(), 2);
     QCOMPARE(edition->widget(0)->findChildren<QGraphicsView*>().size(), 1);
-    QCOMPARE(window->findChildren<QGraphicsView*>().size(), 1);
+    QCOMPARE(window->findChildren<QGraphicsView*>().size(), 2); // With its overview
     QVERIFY(window->findChildren<QGroupBox*>().isEmpty());
     // Most of the window, and the room it gains.
     QTRY_VERIFY(columns->sizes().at(0) > columns->width() / 2);
     QCOMPARE(edition->sizePolicy().horizontalStretch(), 1);
-    // On its right, the lists in tabs, one shown at a time, the components first, above the property editor.
+    // On its right, the lists in tabs, one shown at a time, the components first, above the property editor, then the
+    // overview of the scene the edition zone shows.
     const auto* side = qobject_cast<QSplitter*>(columns->widget(1));
     QVERIFY(side != nullptr);
     QCOMPARE(side->orientation(), Qt::Vertical);
-    QCOMPARE(side->count(), 2);
+    QCOMPARE(side->count(), 3);
     const auto* sources = qobject_cast<QTabWidget*>(side->widget(0));
     QVERIFY(sources != nullptr);
     QCOMPARE(tabTitles(*sources), QStringList({u"Components"_s, u"Galaxies"_s, u"Plugins"_s}));
     QCOMPARE(sources->currentIndex(), 0);
     QCOMPARE(side->widget(1), widgetOf(*m_universe->component(u"Properties"_s)));
+    const auto* overview = qobject_cast<QGraphicsView*>(side->widget(2));
+    QVERIFY(overview != nullptr && overview->isVisible());
+    QCOMPARE(overview->scene(), edition->widget(0)->findChild<QGraphicsView*>()->scene());
 }
 
 void TestStudioPlugin::listsAsideWhileDragging()
@@ -357,7 +377,7 @@ void TestStudioPlugin::listsAsideWhileDragging()
     QVERIFY(window != nullptr);
     QVERIFY(QTest::qWaitForWindowExposed(window));
     QWidget* side = widgetOf(*m_universe->component(u"SideColumn"_s));
-    const QGraphicsView* edition = window->findChild<QGraphicsView*>();
+    const auto* edition = widgetOf(*m_universe->component(u"Edition"_s))->findChild<QGraphicsView*>();
     QTRY_VERIFY(side->isVisible() && edition->width() > 0);
     const int width = edition->width();
     // The list of the components, whose rows are dragged into the edition zone.
@@ -404,7 +424,7 @@ void TestStudioPlugin::partsGoWithTheStudio()
         QVERIFY(m_universe->component(part)->bindInterface(u"studio"_s, *studio, u"studio"_s));
     }
     QCOMPARE(qobject_cast<QTabWidget*>(sources)->count(), 2);
-    QCOMPARE(columns->findChildren<QGraphicsView*>().size(), 1);
+    QCOMPARE(columns->findChildren<QGraphicsView*>().size(), 2); // The edition zone, and its overview again
 }
 
 void TestStudioPlugin::stoppingStopsTheApplicationAssembled()
@@ -469,6 +489,45 @@ void TestStudioPlugin::themeChosenInTheViewMenu()
     QVERIFY(theme != nullptr);
     QVERIFY(actionOf(*theme, u"&Dark"_s)->isChecked());
     actionOf(*theme, u"&System"_s)->trigger(); // Of the system again, for the tests after this one
+}
+
+// Overview, at the end of the View menu, shows or hides the overview of the edition zone, under the property editor,
+// what is above it taking its room; the preferences of the user of NebulaStudio keep it for its next launch.
+void TestStudioPlugin::overviewShownFromTheViewMenu()
+{
+    QMenu* view = startedViewMenu();
+    QVERIFY(view != nullptr);
+    QAction* entry = view->actions().constLast();
+    QCOMPARE(entry->text(), u"O&verview"_s);
+    QVERIFY(view->actions().at(view->actions().size() - 2)->isSeparator());
+    QVERIFY(entry->isChecked()); // Until it is hidden
+    QVERIFY(overview()->isVisible());
+    const QWidget* sources = widgetOf(*m_universe->component(u"Sources"_s));
+    int height = sources->height();
+    ignoreSizeHints(); // The window can be smaller without it
+    entry->trigger();
+    QVERIFY(overview()->isHidden());
+    QTRY_VERIFY(sources->height() > height);
+
+    cleanup(); // Its preferences written as it goes
+    QFile file(m_settings.filePath(u"FabienDG/NebulaStudio.json"_s));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QCOMPARE(QJsonDocument::fromJson(file.readAll()).object().value(u"edition"_s).toObject().value(u"overview"_s),
+             QJsonValue(false));
+
+    init(); // Its next launch
+    view = startedViewMenu();
+    QVERIFY(view != nullptr);
+    entry = view->actions().constLast();
+    QVERIFY(!entry->isChecked());
+    QVERIFY(overview()->isHidden());
+    sources = widgetOf(*m_universe->component(u"Sources"_s));
+    QTRY_VERIFY(sources->height() > 0);
+    height = sources->height();
+    ignoreSizeHints();
+    entry->trigger(); // Shown again, for the tests after this one
+    QVERIFY(overview()->isVisible());
+    QTRY_VERIFY(sources->height() < height);
 }
 
 void TestStudioPlugin::galaxyDirectory_data()

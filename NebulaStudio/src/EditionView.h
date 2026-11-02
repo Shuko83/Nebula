@@ -13,7 +13,7 @@
 // the move only change what is seen, not the scene: they are not saved with the project. As the view grows or shrinks
 // on its left or top side, a panel beside it hidden or shown, what it shows stays where it is on the screen: the panel
 // uncovers or covers it. The item selected alone stays in view then, when it was: one just dropped where the panel
-// comes back, say.
+// comes back, say. It tells what follows it, a SceneOverview say, the scene it shows and what it shows of it.
 class EditionView : public QGraphicsView
 {
     Q_OBJECT
@@ -31,9 +31,18 @@ class EditionView : public QGraphicsView
     void zoomOut();
     // Shows the scene at its own size.
     void resetZoom();
+    // Shows scene in place of the one it shows, rather than setScene(), which does not tell it: see sceneChanged().
+    void showScene(QGraphicsScene* scene);
+    // What it shows of its scene, in the coordinates of the scene, beyond its edges too when the view is larger than
+    // the scene; empty without a scene.
+    [[nodiscard]] QRectF shownArea() const;
 
   signals:
     void zoomChanged(qreal zoom);
+    // It shows scene from now on, see showScene().
+    void sceneChanged(QGraphicsScene* scene);
+    // What it shows of its scene moved, grew or shrank, see shownArea(): it scrolled, zoomed, or was resized.
+    void shownAreaChanged();
 
   protected:
     void wheelEvent(QWheelEvent* event) override;
@@ -42,6 +51,7 @@ class EditionView : public QGraphicsView
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    void scrollContentsBy(int horizontal, int vertical) override;
 
   private:
     // Scrolls the view by delta, in pixels of the viewport.
