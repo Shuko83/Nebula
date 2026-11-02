@@ -31,6 +31,11 @@ class TestPreferences : public QObject
     void colorScheme_data();
     void colorScheme();
     void unknownColorScheme();
+    void overviewShownByDefault();
+    void overviewShown_data();
+    void overviewShown();
+    void overviewShownUnlessFalse_data();
+    void overviewShownUnlessFalse();
     void jsonFile();
     void othersKept();
     void unreadableFile();
@@ -153,6 +158,53 @@ void TestPreferences::unknownColorScheme()
     QCOMPARE(readColorScheme(*settings()), Qt::ColorScheme::Unknown);
 }
 
+// The overview of the edition zone is shown until it is hidden.
+void TestPreferences::overviewShownByDefault()
+{
+    QVERIFY(readOverviewShown(*settings()));
+}
+
+void TestPreferences::overviewShown_data()
+{
+    QTest::addColumn<bool>("shown");
+
+    QTest::newRow("hidden") << false;
+    QTest::newRow("shown") << true;
+}
+
+// Whether it is shown is read again at the next launch, a boolean in the file.
+void TestPreferences::overviewShown()
+{
+    QFETCH(bool, shown);
+
+    writeOverviewShown(*settings(), shown);
+    QCOMPARE(readOverviewShown(*settings()), shown);
+    QCOMPARE(written(), (QJsonObject{{u"edition"_s, QJsonObject{{u"overview"_s, shown}}}}));
+}
+
+void TestPreferences::overviewShownUnlessFalse_data()
+{
+    // What the file holds, written by hand or by another version, and whether the overview is shown then.
+    QTest::addColumn<QByteArray>("json");
+    QTest::addColumn<bool>("shown");
+
+    QTest::newRow("false") << QByteArray(R"({"edition": {"overview": false}})") << false;
+    QTest::newRow("true") << QByteArray(R"({"edition": {"overview": true}})") << true;
+    QTest::newRow("a text") << QByteArray(R"({"edition": {"overview": "false"}})") << true;
+    QTest::newRow("a number") << QByteArray(R"({"edition": {"overview": 0}})") << true;
+    QTest::newRow("an object") << QByteArray(R"({"edition": {"overview": {"shown": false}}})") << true;
+}
+
+// Only false hides it: anything else is not known, and it is shown as by default.
+void TestPreferences::overviewShownUnlessFalse()
+{
+    QFETCH(QByteArray, json);
+    QFETCH(bool, shown);
+
+    write(json);
+    QCOMPARE(readOverviewShown(*settings()), shown);
+}
+
 // The file is a JSON object, each group of the keys an object of its own.
 void TestPreferences::jsonFile()
 {
@@ -160,9 +212,11 @@ void TestPreferences::jsonFile()
         const std::unique_ptr<QSettings> preferences = settings();
         writeLinkStyle(*preferences, LinkStyle::RightAngled);
         writeColorScheme(*preferences, Qt::ColorScheme::Dark);
+        writeOverviewShown(*preferences, false);
     }
-    QCOMPARE(written(), (QJsonObject{{u"edition"_s, QJsonObject{{u"linkStyle"_s, u"rightAngles"_s}}},
-                                     {u"appearance"_s, QJsonObject{{u"colorScheme"_s, u"dark"_s}}}}));
+    QCOMPARE(written(),
+             (QJsonObject{{u"edition"_s, QJsonObject{{u"linkStyle"_s, u"rightAngles"_s}, {u"overview"_s, false}}},
+                          {u"appearance"_s, QJsonObject{{u"colorScheme"_s, u"dark"_s}}}}));
 }
 
 // What the file holds that NebulaStudio does not know, from another version say, is kept when it is written again.

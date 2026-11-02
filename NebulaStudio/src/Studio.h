@@ -44,6 +44,10 @@ class Studio : public QObject
     [[nodiscard]] Qt::ColorScheme colorScheme() const;
     // Has NebulaStudio in scheme from now on, and at the next launch; see colorSchemeChanged().
     void setColorScheme(Qt::ColorScheme scheme);
+    // Whether the overview of the edition zone is shown, as the user chose it last, from one launch to the next.
+    [[nodiscard]] bool isOverviewShown() const;
+    // Shows the overview, or hides it, from now on, and at the next launch; see overviewShownChanged().
+    void setOverviewShown(bool shown);
 
     // Has the lists of plugins and of components read them again: see pluginsChanged().
     void refreshPlugins();
@@ -60,6 +64,8 @@ class Studio : public QObject
     void linkStyleChanged(LinkStyle style);
     // The application is to have the palette of scheme: StudioComponent gives it.
     void colorSchemeChanged(Qt::ColorScheme scheme);
+    // The overview is to be shown, or hidden: OverviewComponent shows it or hides it.
+    void overviewShownChanged(bool shown);
     // message is a sentence to show in the status bar, for a while.
     void told(const QString& message);
 
@@ -68,4 +74,5 @@ class Studio : public QObject
     QSettings m_preferences;        // Of the user, kept from one launch to the next
     LinkStyle m_linkStyle = readLinkStyle(m_preferences);
     Qt::ColorScheme m_colorScheme = readColorScheme(m_preferences);
+    bool m_overviewShown = readOverviewShown(m_preferences);
 };

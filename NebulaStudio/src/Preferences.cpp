@@ -10,6 +10,7 @@
 #include <QLatin1StringView>
 #include <QString>
 #include <QStringList>
+#include <QVariant>
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -21,6 +22,7 @@ using namespace Qt::Literals::StringLiterals;
 
 constexpr QLatin1StringView LinkStyleKey = "edition/linkStyle"_L1;
 constexpr QLatin1StringView ColorSchemeKey = "appearance/colorScheme"_L1;
+constexpr QLatin1StringView OverviewKey = "edition/overview"_L1;
 
 // A value of a preference, under the name the settings hold it by.
 template <typename Value> struct Named
@@ -134,4 +136,15 @@ Qt::ColorScheme readColorScheme(const QSettings& settings)
 void writeColorScheme(QSettings& settings, Qt::ColorScheme scheme)
 {
     writeNamed(settings, ColorSchemeKey, ColorSchemeNames, scheme);
+}
+
+bool readOverviewShown(const QSettings& settings)
+{
+    const QVariant shown = settings.value(OverviewKey);
+    return shown.typeId() != QMetaType::Bool || shown.toBool();
+}
+
+void writeOverviewShown(QSettings& settings, bool shown)
+{
+    settings.setValue(OverviewKey, shown);
 }

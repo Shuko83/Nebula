@@ -25,3 +25,7 @@ void writeLinkStyle(QSettings& settings, LinkStyle style);
 [[nodiscard]] Qt::ColorScheme readColorScheme(const QSettings& settings);
 // Writes scheme by its name: system for Qt::ColorScheme::Unknown, light or dark.
 void writeColorScheme(QSettings& settings, Qt::ColorScheme scheme);
+
+// Whether the overview of the edition zone is shown: until false is written, a boolean, whatever else is.
+[[nodiscard]] bool readOverviewShown(const QSettings& settings);
+void writeOverviewShown(QSettings& settings, bool shown);

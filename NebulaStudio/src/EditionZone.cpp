@@ -26,6 +26,7 @@
 #include "Nebula/Component/ComponentFactory.h"
 #include "PanelWidgets.h"
 #include "ProjectFiles.h"
+#include "SceneOverview.h"
 #include "Studio.h"
 #include "Theme.h"
 
@@ -233,6 +234,11 @@ QLabel* EditionZone::createZoomLabel() const
     return label;
 }
 
+SceneOverview* EditionZone::createOverview() const
+{
+    return new SceneOverview(*m_view);
+}
+
 void EditionZone::followStudio()
 {
     const Nebula::Universe& application = m_studio.application();
@@ -342,7 +348,7 @@ void EditionZone::enterGalaxy(Nebula::Galaxy& galaxy)
 void EditionZone::showDepth(qsizetype depth)
 {
     EditionScene* shown = depth == 0 ? m_scene : m_galaxyScenes.at(depth - 1);
-    m_view->setScene(shown); // Before those further down go
+    m_view->showScene(shown); // Before those further down go, its overview with it
     closeGalaxyScenes(depth);
     emit selectionChanged(shown->selectedComponent());
     m_saveGalaxyAction->setEnabled(depth > 0 && !m_studio.application().isRunning());

@@ -5,6 +5,7 @@
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
 #include <QHBoxLayout>
+#include <QLineF>
 #include <QMouseEvent>
 #include <QScrollBar>
 #include <QSignalSpy>
@@ -66,6 +67,10 @@ class TestEditionView : public QObject
     void shownInPlaceBesideAPanel();
     void selectionStaysShown_data();
     void selectionStaysShown();
+    void showScene();
+    void shownAreaScrolls();
+    void shownAreaZooms();
+    void shownAreaResizes();
 
   private:
     // Another view of the scene, scrolled as the first one, in a window where it is on the right of a panel: hiding
@@ -362,6 +367,54 @@ void TestEditionView::selectionStaysShown()
     QTRY_COMPARE(view->width(), BesideSize.width());
     const QRectF inView = view->mapToScene(view->viewport()->rect()).boundingRect();
     QCOMPARE(inView.contains(m_item->sceneBoundingRect()), selected);
+}
+
+// The view shows another scene, a galaxy opened say, and tells what follows it, an overview say.
+void TestEditionView::showScene()
+{
+    QGraphicsScene galaxy(SceneRect);
+    const QSignalSpy shownScene(m_view.get(), &EditionView::sceneChanged);
+    const QSignalSpy shownArea(m_view.get(), &EditionView::shownAreaChanged);
+    m_view->showScene(&galaxy);
+
+    QCOMPARE(m_view->scene(), &galaxy);
+    QCOMPARE(shownScene.count(), 1);
+    QCOMPARE(shownScene.first().first().value<QGraphicsScene*>(), &galaxy);
+    QVERIFY(!shownArea.isEmpty());
+    m_view->showScene(m_scene.get()); // Before the galaxy goes
+}
+
+// What the view shows of the scene, in the scene, follows its scroll bars.
+void TestEditionView::shownAreaScrolls()
+{
+    QCOMPARE(m_view->shownArea(), QRectF(Scrolled, m_view->viewport()->size()));
+    const QSignalSpy changed(m_view.get(), &EditionView::shownAreaChanged);
+    m_view->horizontalScrollBar()->setValue(Scrolled.x() + 100);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(m_view->shownArea(), QRectF(Scrolled + QPoint(100, 0), m_view->viewport()->size()));
+}
+
+// Zoomed in, around its middle, it shows less of the scene.
+void TestEditionView::shownAreaZooms()
+{
+    const QRectF before = m_view->shownArea();
+    const QSignalSpy changed(m_view.get(), &EditionView::shownAreaChanged);
+    m_view->setZoom(2);
+    QVERIFY(!changed.isEmpty());
+    const QRectF shown = m_view->shownArea();
+    QCOMPARE(shown.size(), before.size() / 2);
+    QVERIFY(QLineF(shown.center(), before.center()).length() <= 1);
+}
+
+// Larger, it shows more of the scene, from the same corner.
+void TestEditionView::shownAreaResizes()
+{
+    const QSize before = m_view->viewport()->size();
+    const QSignalSpy changed(m_view.get(), &EditionView::shownAreaChanged);
+    m_view->resize(m_view->size() + QSize(100, 50));
+    QTRY_COMPARE(m_view->viewport()->size(), before + QSize(100, 50));
+    QVERIFY(!changed.isEmpty());
+    QCOMPARE(m_view->shownArea(), QRectF(Scrolled, m_view->viewport()->size()));
 }
 
 QTEST_MAIN(TestEditionView)

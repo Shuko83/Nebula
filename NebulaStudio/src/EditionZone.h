@@ -20,6 +20,7 @@ class QIcon;
 class QLabel;
 class QMenu;
 class QToolButton;
+class SceneOverview;
 class Studio;
 
 namespace Nebula
@@ -37,7 +38,8 @@ class Galaxy;
 // the one of their component, see ComponentFinder, and shows the one found in its middle. Its View menu gives the keys
 // to that field, zooms the view and chooses how the links of every scene are drawn, as its studio keeps it; its Run
 // menu starts the application, which is not edited while it runs, and stops it. What its scenes and its field refuse
-// or tell, it tells through its studio, as the plugins a galaxy placed loaded.
+// or tell, it tells through its studio, as the plugins a galaxy placed loaded. An overview of the whole scene shown,
+// beside it, follows its view, see createOverview().
 class EditionZone : public QWidget
 {
     Q_OBJECT
@@ -63,6 +65,9 @@ class EditionZone : public QWidget
     void addRunActions(QMenu& menu);
     // A label that tells the zoom level of the view, as it changes; who takes it owns it.
     [[nodiscard]] QLabel* createZoomLabel() const;
+    // The whole scene the view shows, small, what the view shows of it framed, see SceneOverview: the one of the
+    // application or of the galaxy shown, as it changes. Who takes it owns it, and deletes it before the zone.
+    [[nodiscard]] SceneOverview* createOverview() const;
 
     // Shows the component of the application named name, selected, in the middle of the view, once the galaxies
     // shown are left; nothing when one of them is not left, or when no component has that name.

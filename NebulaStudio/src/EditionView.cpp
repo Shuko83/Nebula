@@ -47,6 +47,7 @@ void EditionView::setZoom(qreal zoom)
     }
     setTransform(QTransform::fromScale(zoom, zoom));
     emit zoomChanged(zoom);
+    emit shownAreaChanged();
 }
 
 void EditionView::zoomIn()
@@ -62,6 +63,18 @@ void EditionView::zoomOut()
 void EditionView::resetZoom()
 {
     setZoom(1);
+}
+
+void EditionView::showScene(QGraphicsScene* scene)
+{
+    setScene(scene);
+    emit sceneChanged(scene);
+    emit shownAreaChanged();
+}
+
+QRectF EditionView::shownArea() const
+{
+    return scene() != nullptr ? mapToScene(viewport()->rect()).boundingRect() : QRectF();
 }
 
 void EditionView::wheelEvent(QWheelEvent* event)
@@ -127,6 +140,13 @@ void EditionView::resizeEvent(QResizeEvent* event)
     QGraphicsView::resizeEvent(event);
     keepInPlace();
     keepSelectionShown(shown);
+    emit shownAreaChanged();
+}
+
+void EditionView::scrollContentsBy(int horizontal, int vertical)
+{
+    QGraphicsView::scrollContentsBy(horizontal, vertical);
+    emit shownAreaChanged();
 }
 
 void EditionView::scrollBy(QPoint delta)
