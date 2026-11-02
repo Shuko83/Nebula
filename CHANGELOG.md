@@ -63,10 +63,21 @@ to it.
   `FabienDG/NebulaStudio.json` in the configuration directory of the user, `%APPDATA%` under Windows, rather than in the
   registry (#118): a style of the links chosen before is to be chosen again.
 
+### Removed
+
+- The check that refused to register a component in a plugin class declaring `build(<component>&)` (#88): the plugin
+  class is generated since 2.0.0 and has none. A plugin written before 1.0.0 meets `NEBULA_PLUGIN` first, whose message
+  now tells to move what its `build()` functions created to the constructor of each component before removing its
+  class.
+
 ### Fixed
 
 - NebulaStudio: the check boxes and the fields are edged in the edge color of the theme (#105). Fusion drew their
   edges from the color of the windows, which hid them in the dark scheme.
+- Registering a component that derives privately from `Nebula::Component` is refused with a message telling it must
+  derive publicly (#88), rather than by an error in `Plugin.h`, on a conversion of `Plugin::Instance`, that did not
+  tell why. Registering in a class that does not derive publicly from `Nebula::Plugin<itself>`, accepted until then, is
+  refused too. The message on a `final` component names `Plugin::Instance`, which derives from it.
 
 ## [2.0.0] - 2026-10-30
 
