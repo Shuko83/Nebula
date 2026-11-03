@@ -7,6 +7,8 @@ to it.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-03
+
 ### Added
 
 - The galaxy of NebulaStudio (#103): `StudioPlugin/NebulaStudio.nbp` assembles the window of NebulaStudio from the
@@ -19,7 +21,7 @@ to it.
   `ApplicationOptions`, given by the code, and its command line, when it is given a `QCommandLineParser`, tell it the
   directories of the plugins and of the galaxy, what the executable tells of itself, and where the messages go: their
   level, the console, a log file and a logger (`--plugin-dir`, `--plugin-root`, `--galaxy-dir`, `--log-level`,
-  `--log-file`, `--console`). `find_package(Nebula 2.0 REQUIRED COMPONENTS Application)`.
+  `--log-file`, `--console`). `find_package(Nebula 2.1 REQUIRED COMPONENTS Application)`.
 - `Universe::scanPluginDirectory()`, which lists the plugins of a directory as `--plugin-dir` does (#73).
 - The `file` of `ProjectComponent` (#73): the project file it opens each time it starts.
 - `hiddenWhileDragging` of `SplitterComponent` and `TabsComponent` (#104): the widget is hidden while what is dragged
@@ -213,6 +215,7 @@ First published version.
 - The package for other projects: `find_package(AppForge 0.2 REQUIRED COMPONENTS Core)`.
 - Examples: `ExamplePlugin`, `ExternalPlugin`, `ExampleApp` and `ExampleForgeApp`.
 
+[2.1.0]: https://github.com/Shuko83/Nebula/releases/tag/2.1.0
 [2.0.0]: https://github.com/Shuko83/Nebula/releases/tag/2.0.0
 [1.0.0]: https://github.com/Shuko83/Nebula/releases/tag/1.0.0
 [0.3.0]: https://github.com/Shuko83/Nebula/releases/tag/0.3.0
