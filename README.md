@@ -99,7 +99,7 @@ project(Acme VERSION 1.0.0 LANGUAGES CXX)
 
 set(cmu_organization "AcmeCorp")   # first part of the plugin ids: AcmeCorp.Acme.Network
 
-find_package(Nebula 2.0 REQUIRED COMPONENTS Core)
+find_package(Nebula 2.1 REQUIRED COMPONENTS Core)
 
 add_subdirectory(Network)          # nebula_add_plugin(NAME Network), its sources in Network/src
 ```
@@ -108,7 +108,7 @@ Point `CMAKE_PREFIX_PATH` at the package: `<build>/package`, staged after each b
 
 The plugin is written to `<build>/bin/plugins` (`<build>/bin/<config>/plugins` with Visual Studio): copy it to `plugins/` next to an application, or open it from NebulaStudio with **Open plugin...**. Its `coreVersion` is the version of the installed `Core`, whatever the version of its project. Build it in a configuration Nebula was installed in: Qt does not load a `Debug` plugin into a `Release` application, nor the other way round.
 
-Installed with `-Dcmu_install_mode=PACKAGE`, Nebula is a single prefix whose package has no components: `find_package(Nebula 2.0 REQUIRED)`.
+Installed with `-Dcmu_install_mode=PACKAGE`, Nebula is a single prefix whose package has no components: `find_package(Nebula 2.1 REQUIRED)`.
 
 ---
 
@@ -483,7 +483,7 @@ Nebula::NebulaApplication app(argc, argv, parser, QStringLiteral("Clock.nbp"),
                                .logLevel = QtInfoMsg});
 ```
 
-It links to `Nebula::Application`, which links to `Nebula::Core` and Qt Widgets: outside Nebula, `find_package(Nebula 2.0 REQUIRED COMPONENTS Application)` defines both. The plugins of the galaxy are loaded as it is opened, found by their id among those listed, or from the file the project gives them, relative to the plugin root.
+It links to `Nebula::Application`, which links to `Nebula::Core` and Qt Widgets: outside Nebula, `find_package(Nebula 2.1 REQUIRED COMPONENTS Application)` defines both. The plugins of the galaxy are loaded as it is opened, found by their id among those listed, or from the file the project gives them, relative to the plugin root.
 
 ### The Universe of an application
 
