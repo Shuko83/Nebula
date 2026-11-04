@@ -31,6 +31,9 @@ It enables developers to construct software systems by combining reusable buildi
 - 🗂️ **User settings**  
   Keep the values the user of an application gives some properties, from one run to the next, in settings files.
 
+- 🧰 **Standard components**  
+  Plugins shipped with Nebula for any application: a log, which drives the one of the application while it runs.
+
 ---
 
 ## 🧠 Core Concepts
@@ -263,6 +266,59 @@ void LabelsComponent::removeLabel() // As its count decreases: the last one firs
 
 ---
 
+## 🧰 Standard Plugins
+
+Nebula ships plugins whose components serve any application. `StandardPlugin` (`FabienDG.Nebula.StandardPlugin`, with the version of Nebula) is built with NebulaStudio and the example applications, to `plugins/` next to them, and installed in `plugins/` next to each application of the package.
+
+The interfaces its components provide are in `Nebula::Standard`, a library of headers only, in `Plugins/Standard/include/Nebula/Standard/`. A plugin links it to consume them, since a plugin, a `MODULE`, cannot be linked itself. Outside Nebula:
+
+```cmake
+find_package(Nebula 2.1 REQUIRED COMPONENTS Core Standard)
+
+nebula_add_plugin(
+    NAME Network
+    LINK_LIBRARIES PRIVATE Nebula::Standard
+)
+```
+
+### The log
+
+`LogComponent` (category Diagnostics) is the log of the application. It provides two interfaces from its construction:
+
+| Interface | Type | What it is |
+| --- | --- | --- |
+| `log` | `Nebula::ILog` | What a component writes its messages with: `write(level, message, source)` and its shortcuts `debug()`, `info()`, `warning()` and `critical()`. `source` tells who writes, the name of its instance say, and comes before the message, followed by `: `. `isWritten(level)` tells whether a message would be written, so that one that would not is not built |
+| `logControl` | `Nebula::ILogControl` | What drives the log while the application runs: `startLogging()`, `stopLogging()`, `isLogging()`, `setLevel(level)` and `level()` |
+
+`Nebula::LogLevel` is `Debug`, `Info`, `Warning` or `Critical`, the least severe first. A level stands for itself and those after it. `logLevelName()` and `logLevelNamed()` give the names `--log-level` gives them. There is no `Fatal`: a component does not end the application by writing a message.
+
+| Property | At first | What it is |
+| --- | --- | --- |
+| `logging` | `true` | Whether messages are written, but those under `level` |
+| `level` | `debug` | The name of the least severe level written, whatever its case. A name of no level is refused with a warning |
+| `category` | `log` | The category of the messages written through `log`. An empty one is refused with a warning |
+
+The messages go to Qt's journal, under its category, at the matching type of Qt. They go where the application writes its own: for a `NebulaApplication`, its console, `--log-file` and `logger`.
+
+```cpp
+// In a component that consumes the log, Nebula::ILog* m_log being one of its members:
+consumeInterface<Nebula::ILog>(QStringLiteral("log"), m_log);
+// ...
+if(m_log != nullptr)
+{
+    m_log->info(QStringLiteral("Connected to %1").arg(host), objectName());
+}
+```
+
+**Its level is the one of the whole process.** While it runs, `level` and `logging` hold for every message of the application: those of every plugin, of Core, of the application and of Qt, not only those written through `log`. A message under `level` is not written, and none is while `logging` is false, but a fatal one, which Qt does not let be disabled. What drives it through `logControl` drives the log for everyone.
+
+- It installs a category filter of Qt (`QLoggingCategory::installFilter()`), which calls the one before it, then disables what is under its level. The rules of the application, `--log-level` and `QT_LOGGING_RULES`, still apply: a message is written only when both let it.
+- While it is edited, in NebulaStudio say, it filters nothing: its properties hold from `start()` on. A component started before it, or stopped after it, writes its messages as the rules of the application alone tell. Started from NebulaStudio, it filters the messages of NebulaStudio too, which runs it in its own process.
+- Several running instances share the level. The one that starts gives its own to the others, and driving one changes the properties of all. The filter goes with the last one to stop, unless another filter was installed after it and calls it: it then lets everything pass.
+- Driving it changes its properties, which notify it. A settings file that holds them keeps what the user chose from one run to the next. Without one, `stop()` gives back their values of edition, as for any property.
+
+---
+
 ## 🔨 NebulaStudio
 
 `NebulaStudio` is the application that assembles applications from the components of the plugins, live.
@@ -466,7 +522,7 @@ Its options are given by the code, a `Nebula::ApplicationOptions`, and by the co
 | `pluginRoot` | `--plugin-root <directory>`, which replaces it | The directory the files of the plugins are relative to in a project file: the directory of the executable when it is empty |
 | `galaxyDirectories` | `--galaxy-dir <directory>`, as many times as needed | Where the galaxy is looked for, those of the command line first: the first one that has it is the one. `scene` until it is given others |
 | `executable` | | What the executable tells of itself, given to `QCoreApplication`: its `name`, its `version`, which `--version` shows, its `organization`, part of the directory settings files are written to by default, and its `organizationDomain`. Those left empty stay as Qt has them |
-| `logLevel` | `--log-level <level>`, `debug`, `info`, `warning`, `critical` or `fatal`, which replaces it | The least severe messages written: `QtDebugMsg`, all those Qt writes, until it is given another one. The rules of `QT_LOGGING_RULES` take precedence over it, and an unknown level is refused as a galaxy not found is |
+| `logLevel` | `--log-level <level>`, `debug`, `info`, `warning`, `critical` or `fatal`, which replaces it | The least severe messages written: `QtDebugMsg`, all those Qt writes, until it is given another one. The rules of `QT_LOGGING_RULES` take precedence over it, and an unknown level is refused as a galaxy not found is. A running [log](#the-log) of the galaxy disables more of them, never fewer |
 | `console` | `--console` | Whether the messages are written to the error output, rather than where Qt writes them: an application without a console of its own on Windows writes them to the console of the terminal it is started from |
 | `logFile` | `--log-file <file>`, which replaces it | A file the messages are added to as well, its directory created: one that cannot be opened is refused |
 | `logger` | | A function the messages are given to as well, as a `QtMessageHandler` is, one at a time, in the thread that logs them, to show them in a window, say: one it logs itself is written by Qt to the error output, not given to it again |
