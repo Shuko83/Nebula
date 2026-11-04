@@ -23,6 +23,8 @@ endif()
 add_subdirectory(Core)
 # The QApplication of an executable whose content is a galaxy, which it loads and runs.
 add_subdirectory(Application)
+# The standard plugins, shipped with Nebula for any application, and the headers of the interfaces of their components.
+add_subdirectory(Plugins)
 add_subdirectory(NebulaStudio)
 # The parts of NebulaStudio, each a component, and the galaxy that assembles them.
 add_subdirectory(StudioPlugin)
