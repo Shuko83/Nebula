@@ -11,6 +11,8 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `Core/` | `Nebula::Core` (DLL) | Composants, plugins, fabrique, application, galaxies. En-têtes publics dans `include/Nebula/{Application,Component,Galaxy,Plugin,Settings}/`, sources dans `src/` (module `Galaxy` : `Galaxy`, `GalaxyInfo`, `Stargate` ; ce qu'`Universe` en fait reste dans `Universe.cpp`) |
 | `Application/` | `Nebula::Application` (DLL) | Issue #73 : `NebulaApplication`, la `QApplication` d'un exécutable dont le contenu est une galaxy, et `ApplicationOptions` (en-têtes publics dans `include/Nebula/Application/`, à côté de ceux de Core sous le même chemin), et `MessageLog` (privé, `src/`), où vont les messages. Lie `Nebula::Core` et `Qt6::Widgets` en `PUBLIC` |
 | `Core/cmake/` | — | `nebula_add_plugin()` et les gabarits `plugin.h.in` / `plugin.json.in`, livrés avec `Core` dans le paquet |
+| `Plugins/Standard/` | `Nebula::Standard` (INTERFACE, en-têtes seuls) | Issue #130 : les interfaces des composants standard, dans `include/Nebula/Standard/` (`LogLevel.h`, `ILog.h`, `ILogControl.h`), qu'un plugin lie pour les consommer ; composant du paquet, `find_package(Nebula COMPONENTS Core Standard)`. Voir Plugins standard |
+| `Plugins/StandardPlugin/` | `.nbdl` dans `bin/plugins` | Issue #130 : le premier plugin standard, livré avec Nebula pour toute application, à la version de Nebula : `LogComponent` (fournit `log` : `ILog`, et `logControl` : `ILogControl`), qui pilote pendant l'exécution le log de tout le processus |
 | `NebulaStudio/` | `NebulaStudio` (exe Widgets) | L'éditeur graphique : son `main.cpp` est une `NebulaApplication` qui fait tourner la galaxy de `StudioPlugin/` (issue #73) ; le code de ses parties est dans `NebulaStudio/src/`, sans namespace, celui des fichiers de réglages dans `NebulaStudio/src/Settings/`, celui des galaxies (`GalaxyModel`, `GalaxyViewer`, `GalaxyPanel`) dans `NebulaStudio/src/Galaxy/`, le logo de Nebula, les icônes du glossaire et la police des titres dans `NebulaStudio/resources/` |
 | `StudioPlugin/` | `.nbdl` dans `bin/plugins` | Issue #103 : les parties de NebulaStudio, chacune un composant (`src/`, voir NebulaStudio), faites de ses classes, dont les sources sont recompilées dans le plugin (toutes celles de `NebulaStudio/src/` sauf `main.cpp` et `SplashScreen.cpp`, avec `nebulastudio.qrc`), et `NebulaStudio.nbp`, la galaxy qui les assemble en la fenêtre de NebulaStudio, copiée dans `<build>/bin[/<config>]/scene/` à chaque build (cible `StudioGalaxy`) |
 | `exemple/ExamplePlugin` | `.nbdl` dans `bin/plugins` | Composant `Greeter` (fournit `greeter` : `IGreeter`) |
@@ -22,7 +24,7 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `docs/release-notes/` | — | Notes de chaque version, `<x.y.z>.md` : le texte de sa release GitHub |
 | `CHANGELOG.md` | — | Ce qui change d'une version à l'autre, la dernière en premier, au format Keep a Changelog, en anglais : une section `## [x.y.z] - <date>` par version (Added, Changed, Removed, Fixed) et son lien vers la release en bas |
 | `docs/glossary.md` | — | Glossaire Nebula (Nebula, Univers, Galaxy, Astre, Comet, Stargate), en anglais puis en français, référencé par le README : le vocabulaire à employer pour nommer code, documentation et interface ; Nebula et Univers (la classe `Universe`) sont déjà employés, Galaxy pour un fichier de projet (`GalaxyInfo`, onglet **Galaxies**), et Stargate pour ce qu'une galaxy expose (`Stargate`) |
-| `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Application/` (`TestNebulaApplication`, `QTEST_APPLESS_MAIN` : chaque test construit sa `NebulaApplication`, l'une après l'autre, avec sa ligne de commande), `Core/` (une par classe, `TestGalaxy` pour les galaxies posées, leurs interfaces, leurs propriétés exposées, leur édition et leur relecture, `TestStargate` pour la Stargate dans l'application qui l'édite) et `NebulaStudio/` (Colors, Theme avec les bords de son style et le schéma choisi, PluginModel, ComponentModel, EditionView, SceneOverview, DragAside, EditionScene pour ses liens, ComponentFinder, PropertyEditor pour ses groupes, SettingsDialog, GalaxyModel, Preferences, sources recompilées), `StudioPlugin/` (`TestStudioPlugin` : ses composants chargés depuis le plugin, la galaxy de NebulaStudio ouverte, lancée et relue), `exemple/` (`TestWidgetsPlugin` : ses composants chargés depuis le plugin et assemblés), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`, `Outlets` : autant d'interfaces et d'objets que son `count`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`, et `Plugins/`, les plugins de test construits par `nebula_add_test_plugin()` (`nebula_add_plugin()`, puis retirés du paquet) : `FirstPlugin` (`Alpha`) et `ThirdPlugin` (`Gamma`, `Delta`) dans `test-plugins/`, `SecondPlugin` (`Beta`) dans `other-test-plugins/`, à côté des tests mais pas dans leur `plugins/` (`NEBULA_TEST_PLUGINS_DIR`, `NEBULA_OTHER_TEST_PLUGINS_DIR`). `PluginManager`, les plugins d'un projet ou d'une galaxy et `PluginModel` se testent sur eux : seul `TestWidgetsPlugin` dépend d'un exemple, celui qu'il teste (issue #83). Rien n'est installé |
+| `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Application/` (`TestNebulaApplication`, `QTEST_APPLESS_MAIN` : chaque test construit sa `NebulaApplication`, l'une après l'autre, avec sa ligne de commande), `Core/` (une par classe, `TestGalaxy` pour les galaxies posées, leurs interfaces, leurs propriétés exposées, leur édition et leur relecture, `TestStargate` pour la Stargate dans l'application qui l'édite) et `NebulaStudio/` (Colors, Theme avec les bords de son style et le schéma choisi, PluginModel, ComponentModel, EditionView, SceneOverview, DragAside, EditionScene pour ses liens, ComponentFinder, PropertyEditor pour ses groupes, SettingsDialog, GalaxyModel, Preferences, sources recompilées), `StudioPlugin/` (`TestStudioPlugin` : ses composants chargés depuis le plugin, la galaxy de NebulaStudio ouverte, lancée et relue), `StandardPlugin/` (`TestLogComponent` : le `LogComponent` chargé depuis le plugin, consommé par les interfaces de `Nebula::Standard`, et le niveau du processus vu d'une catégorie du test), `exemple/` (`TestWidgetsPlugin` : ses composants chargés depuis le plugin et assemblés), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`, `Outlets` : autant d'interfaces et d'objets que son `count`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`, et `Plugins/`, les plugins de test construits par `nebula_add_test_plugin()` (`nebula_add_plugin()`, puis retirés du paquet) : `FirstPlugin` (`Alpha`) et `ThirdPlugin` (`Gamma`, `Delta`) dans `test-plugins/`, `SecondPlugin` (`Beta`) dans `other-test-plugins/`, à côté des tests mais pas dans leur `plugins/` (`NEBULA_TEST_PLUGINS_DIR`, `NEBULA_OTHER_TEST_PLUGINS_DIR`). `PluginManager`, les plugins d'un projet ou d'une galaxy et `PluginModel` se testent sur eux : seul `TestWidgetsPlugin` dépend d'un exemple, celui qu'il teste (issue #83). Rien n'est installé |
 | `docs/testing.md` | — | Lancer, déboguer et écrire les tests, en français |
 | `CFmake/` | non suivi, dépôt à part | Ne fait pas partie du build : ne pas y toucher |
 
@@ -38,9 +40,9 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   affiché par le splash de NebulaStudio. `Shuko83` reste le compte GitHub : adresse du dépôt, du sous-module
   CMakeUtils, et `organizationDomain` (valeur par défaut de CMakeUtils).
 - Sorties : `<build>/bin[/<config>]`, plugins dans `plugins/` à côté. Extension `.nbdl`, seule scannée.
-- `add_dependencies(NebulaStudio ExamplePlugin WidgetsPlugin ExternalPlugin StudioPlugin StudioGalaxy)`, de même pour
-  `ExampleUniverseApp` (et `ExampleApp` pour ceux de `plugins/`) : construire l'un reconstruit les plugins du dépôt, et
-  recopie la galaxy de NebulaStudio dans `scene/`.
+- `add_dependencies(NebulaStudio ExamplePlugin WidgetsPlugin ExternalPlugin StudioPlugin StudioGalaxy StandardPlugin)`,
+  de même pour `ExampleUniverseApp` (et `ExampleApp` pour ceux de `plugins/`), dans `exemple/CMakeLists.txt` :
+  construire l'un reconstruit les plugins du dépôt, et recopie la galaxy de NebulaStudio dans `scene/`.
 - Tests : `tests/`, un exécutable Qt Test par classe, lancés par `ctest -C <config>` depuis le build (option
   `NEBULA_BUILD_TESTS`, `ON` par défaut), voir [docs/testing.md](docs/testing.md). CI : Windows, MSVC 2022, Qt 6.8,
   Release, puis `ctest`. `release.yml` fait la même compilation sur un tag
@@ -304,6 +306,30 @@ catégorie `nebula.application`).
   pas un gestionnaire en cours dans le même thread, l'écrit lui-même sur la sortie d'erreur. Le destructeur remet le
   gestionnaire d'avant et vide les règles.
 
+## Plugins standard
+
+`Plugins/` (issue #130) : les plugins livrés avec Nebula pour toute application, et `Nebula::Standard`, les en-têtes des
+interfaces de leurs composants (`cmu_add_interface_library()`, `Qt6::Core` en `INTERFACE`), qu'un plugin lie pour les
+consommer : un `MODULE` ne se lie pas. Une interface a pour type `QMetaType::fromType<Nebula::ILog*>()` dans chaque
+binaire, le même par son nom, ce que `TestLogComponent` vérifie. Messages en anglais, non traduits, catégorie
+`nebula.standard`.
+
+- `LogLevel.h`, en-tête seul : `Nebula::LogLevel` (`Debug`, `Info`, `Warning`, `Critical`, dans l'ordre de gravité, pas
+  de `Fatal`), `LogLevels`, `logLevelName()` / `logLevelNamed()` (sans casse, les noms de `--log-level`) et
+  `qtMsgType()`.
+- `ILog` (`log`) : `write(niveau, message, source)`, qui écrit `source: message`, `isWritten(niveau)`, et les raccourcis
+  `debug()`… non virtuels. `ILogControl` (`logControl`) : `startLogging()`, `stopLogging()`, `isLogging()`,
+  `setLevel()`, `level()` ; il ne signale rien, seul le composant notifie.
+- `StandardPlugin` : sans `VERSION`, donc celle de Nebula ; id `FabienDG.Nebula.StandardPlugin`, lie `Nebula::Standard`
+  en `PRIVATE`.
+
+| Classe | Rôle |
+| --- | --- |
+| `LogComponent` | Catégorie Diagnostics. Fournit `log` (`m_log`) et `logControl` (`m_control`) dès sa construction ; propriétés `logging` (vrai), `level` (`QString` : `levelName()` / `setLevelName()`, un nom inconnu refusé avec un avertissement ; `level()` / `setLevel()` en `LogLevel`) et `category` (`log`, vide refusé par `canBeCategory()`). Un setter qui change une valeur la notifie, puis `LogFilter::share()` ; `onStart()` / `onStop()` = `LogFilter::join()` / `leave()`, comme son destructeur ; `follow()` (privé, `LogFilter` amie) prend les valeurs partagées sans les repartager |
+| `Log` | `ILog` : `NamedCategory {name, category}`, le `QByteArray` que pointe la `QLoggingCategory`, qui doit lui survivre, refaite par `setCategory()` ; `write()` par `QMessageLogger().debug(catégorie)`… (`streamOf()`) si `isWritten()`, qui lit `QLoggingCategory::isEnabled()` : la catégorie suit le filtre du processus comme les autres |
+| `LogControl` | `ILogControl` : appelle les setters du composant |
+| `LogFilter` | Singleton du plugin (`instance()`) : le log du processus pendant l'exécution. `m_running`, les composants en cours ; `join()` (le dernier venu donne ses valeurs aux autres, `take()` / `giveOthers()`, puis `install()`), `share()` (de même pour un composant en cours piloté, puis `refilter()`), `leave()` (`uninstall()` avec le dernier). `filter()`, statique, est le filtre de catégories de Qt (`QLoggingCategory::installFilter()`) : il appelle le précédent (`m_previous` : celui de Qt, qui applique les règles, ou un autre), puis, actif, `disableUnder()` coupe sous `m_level` (tout si `!m_logging`) par `setEnabled(type, false)`, sans jamais réactiver. `refilter()` réinstalle le filtre en place, ce qui le fait passer sur chaque catégorie, et remet celui d'un autre s'il était en haut. `uninstall()` remet le précédent, ou, quand un autre filtre a été posé par-dessus (il appelle celui-ci), le remet et reste dessous, inactif (`m_installed`) ; `install()` ne se repose alors pas, sans quoi les deux s'appelleraient en boucle. Ce que lit `filter()` est en `std::atomic` : Qt l'appelle aussi à la création d'une catégorie, dans n'importe quel thread |
+
 ## NebulaStudio
 
 `main.cpp` (issue #73) : une `NebulaApplication` de `NebulaStudio.nbp` (`scene/` à côté de l'exécutable), avec le nom
@@ -558,6 +584,13 @@ ini, celui des formats qui n'ont pas le leur).
 - Exemples : `Greeter`, `Ticker`, `ProfileSelector` et `Window` gardent leur nom et leur classe `*Logic`, que le
   composant crée désormais ; seuls ceux de `WidgetsPlugin` suivent la bonne pratique (`<Nom>Component`, objets
   membres). Aucun projet d'exemple n'assemble `WidgetsPlugin` dans le dépôt.
+- Plugins standard (#130) : un seul composant, `LogComponent`. Pas de fichier de log à lui, pas de vue des messages, pas
+  de composant qui choisit le niveau (une liste qui consommerait `logControl`), et ni NebulaStudio ni un projet
+  d'exemple ne s'en servent. Un seul niveau pour tout le processus, ni par catégorie ni par plugin, et `level` est une
+  chaîne : l'éditeur de propriétés n'a pas d'énumération. `ILogControl` ne prévient de rien. On n'écrit que depuis le
+  thread du composant : changer `category` pendant qu'un autre thread écrit n'est pas protégé. Deux instances en cours
+  n'ont qu'un niveau : la dernière démarrée ou pilotée impose le sien, qui passe aussi dans les fichiers de réglages
+  des autres. Lancé par **Start** dans NebulaStudio, il filtre aussi les messages de NebulaStudio, le même processus.
 - Galaxy de NebulaStudio (#103, #73) : le splash ne se montre qu'une fois la galaxy chargée (`NebulaApplication` charge
   dans son constructeur, et n'offre aucun crochet avant), et `main.cpp` trouve le `Project` par le nom de son instance :
   une galaxy enregistrée sans lui n'ouvre pas le projet passé en argument, sans rien en dire. Sa fenêtre
@@ -693,6 +726,12 @@ ini, celui des formats qui n'ont pas le leur).
   `QCoreApplication` (nom, version, organisation) et le gestionnaire de messages sont globaux au processus : ils
   restent pour la suivante (`TestNebulaApplication::cleanup()` les remet), et ses règles de filtrage
   (`QLoggingCategory::setFilterRules()`) remplacent celles qu'un `main` aurait posées, et sont vidées à sa destruction.
+- `QLoggingCategory::installFilter()` passe le nouveau filtre sur chaque catégorie avant de rendre le précédent : un
+  filtre qui appelle celui d'avant (`LogFilter::filter()`, celui de `TestLogComponent`) ne fait rien tant qu'il ne le
+  connaît pas, sans quoi il appelle un pointeur nul, puis se fait repasser (`LogFilter::refilter()`). Un filtre de
+  catégories est global au processus et les filtres se chaînent : on ne retire le sien que s'il est en haut de la
+  chaîne. Les règles (`setFilterRules()`, celles de `NebulaApplication`) passent, elles, par le filtre installé, donc par
+  celui d'un `LogComponent` en cours.
 - NebulaStudio est un exécutable : ses tests recompilent ses sources, listées dans `tests/NebulaStudio/CMakeLists.txt`.
   Un nouveau `.cpp` qu'utilisent la scène, ses items ou ses fenêtres s'ajoute à `_scene`, les `SOURCES` de
   `TestEditionScene`, de `TestComponentFinder` et de `TestStargateDialog`, sans quoi l'édition de liens échoue (un

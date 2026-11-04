@@ -7,6 +7,19 @@ to it.
 
 ## [Unreleased]
 
+### Added
+
+- `StandardPlugin` (#130), the first standard plugin, shipped with Nebula for any application, built with NebulaStudio
+  and the example applications and installed next to each application of the package. Its components provide the
+  interfaces of `Nebula::Standard`, a library of headers only that a plugin links to consume them:
+  `find_package(Nebula 2.1 REQUIRED COMPONENTS Core Standard)`.
+- `LogComponent` (#130), the log of the application. It provides `log`, a `Nebula::ILog`, which writes the messages of
+  components to Qt's journal under its `category`, after their source, and `logControl`, a `Nebula::ILogControl`,
+  which starts and stops the log and sets its level (`Nebula::LogLevel`). While it runs, its `logging` and its `level`
+  hold for every message of the process, those of every plugin, of Core and of Qt included, on top of the rules of the
+  application: what drives it drives the log for everyone. Its properties follow, so that a settings file keeps the
+  level the user chose.
+
 ## [2.1.0] - 2026-11-03
 
 ### Added
