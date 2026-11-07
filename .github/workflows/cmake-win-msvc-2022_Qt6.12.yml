@@ -11,7 +11,7 @@ on:
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
-  QT_VERSION: "6.8.*"
+  QT_VERSION: "6.12.*"
 jobs:
   build:
     # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
@@ -40,6 +40,7 @@ jobs:
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      # install-qt-action has put the Qt it installed in CMAKE_PREFIX_PATH.
       run: cmake -S . -B ${{github.workspace}}/build -D Qt6_ROOT=${{env.QT_VERSION }}
 
     - name: Build
