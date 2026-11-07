@@ -43,6 +43,18 @@ jobs:
     - name: Setup MSVC developer environment
       uses: ilammy/msvc-dev-cmd@v1
 
+    # As in cmake-win-msvc-2022_Qt6.12.yml: Qt is installed by its official installer, with a Qt account.
+    - name: Check the Qt account
+      shell: pwsh
+      env:
+        QT_EMAIL: ${{ secrets.QT_EMAIL }}
+        QT_PASSWORD: ${{ secrets.QT_PASSWORD }}
+      run: |
+        if (-not $env:QT_EMAIL -or -not $env:QT_PASSWORD) {
+          Write-Error "Qt is installed with the Qt account of the repository secrets QT_EMAIL and QT_PASSWORD: one is missing"
+          exit 1
+        }
+
     - name: Install Qt6
       uses: jurplel/install-qt-action@v4
       with:
@@ -51,6 +63,9 @@ jobs:
         target: desktop
         arch: win64_msvc2022_64
         cache: true
+        use-official: true
+        email: ${{ secrets.QT_EMAIL }}
+        pw: ${{ secrets.QT_PASSWORD }}
 
     - name: Configure CMake
       run: cmake -S . -B ${{ github.workspace }}/build
