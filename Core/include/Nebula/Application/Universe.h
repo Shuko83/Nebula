@@ -109,6 +109,13 @@ class CORE_EXPORT Universe : public QObject
     // everything was. Nothing is changed while it runs, nor when its file cannot be read, or one of its plugins is
     // unknown or cannot be loaded, which is told.
     QStringList reloadGalaxy(Galaxy& galaxy);
+    // Gives galaxy what project, as saveGalaxy() wrote it, holds, in place of what it holds, as reloadGalaxy() gives
+    // it what its file holds: what was saved of it before it changed, say, to undo the change. Unlike reloadGalaxy(),
+    // the values of what it exposes are those of project; what is bound to its interfaces, and what they are bound to,
+    // stay as reloadGalaxy() keeps them. Its file is neither read nor written. Returns what could not be restored, a
+    // sentence each: none when everything was. Nothing is changed while it runs, nor when project would have it hold
+    // itself, or needs a plugin that is unknown or cannot be loaded, which is told.
+    QStringList restoreGalaxy(Galaxy& galaxy, const QJsonObject& project);
 
     // The project file it is read from and saved to, absolute; empty until it is set, or opened. The file of a galaxy
     // is written relative to its directory, and read from it, from the current directory when it has none; a galaxy
@@ -388,9 +395,12 @@ class CORE_EXPORT Universe : public QObject
     // The project of the file of galaxy, read again for it to be filled again in parent; nullopt, with error set, when
     // it can no longer be placed there.
     std::optional<QJsonObject> readAgain(const Galaxy& galaxy, const Scope& parent, QString& error);
+    // Whether galaxy, placed in parent, can be given project in place of what it holds: it would not hold itself, and
+    // the plugins of project are known and loaded. error tells why otherwise.
+    bool canRestore(const Galaxy& galaxy, const QJsonObject& project, const Scope& parent, QString& error);
     // Fills galaxy again with project, the one of its file, in parent, keeping what is bound to its interfaces, either
-    // way, and the values of what it exposes; returns what is lost.
-    QStringList reload(Galaxy& galaxy, const QJsonObject& project, const Scope& parent);
+    // way, and, when keepValues tells, the values of what it exposes; returns what is lost.
+    QStringList reload(Galaxy& galaxy, const QJsonObject& project, const Scope& parent, bool keepValues);
     // Fills galaxy, emptied, with project; returns its problems, or why it is left empty.
     QStringList refill(Galaxy& galaxy, const QJsonObject& project, const Scope& parent);
     // Tells galaxy was read again, and that the settings files of the application changed when it had or has some.

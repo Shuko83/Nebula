@@ -724,7 +724,19 @@ QStringList Universe::reloadGalaxy(Galaxy& galaxy)
     const Scope parent = *scopeOf(galaxy);
     QString error;
     const std::optional<QJsonObject> project = readAgain(galaxy, parent, error);
-    return project ? reload(galaxy, *project, parent) : QStringList{error};
+    return project ? reload(galaxy, *project, parent, true) : QStringList{error};
+}
+
+QStringList Universe::restoreGalaxy(Galaxy& galaxy, const QJsonObject& project)
+{
+    if(const QString refusal = reloadRefusal(galaxy); !refusal.isEmpty())
+    {
+        return {refusal};
+    }
+    const Scope parent = *scopeOf(galaxy);
+    QString error;
+    // Those of project, rather than those of this instance: what it saved of them.
+    return canRestore(galaxy, project, parent, error) ? reload(galaxy, project, parent, false) : QStringList{error};
 }
 
 QString Universe::description() const
@@ -1548,11 +1560,22 @@ std::optional<QJsonObject> Universe::readAgain(const Galaxy& galaxy, const Scope
     return project;
 }
 
-QStringList Universe::reload(Galaxy& galaxy, const QJsonObject& project, const Scope& parent)
+bool Universe::canRestore(const Galaxy& galaxy, const QJsonObject& project, const Scope& parent, QString& error)
+{
+    const QString nativePath = QDir::toNativeSeparators(galaxy.filePath());
+    if(canPlace(nativePath, galaxyInfo(galaxy.filePath(), project), parent, error))
+    {
+        return true;
+    }
+    error = QStringLiteral("%1 is not restored: %2").arg(galaxy.objectName(), error);
+    return false;
+}
+
+QStringList Universe::reload(Galaxy& galaxy, const QJsonObject& project, const Scope& parent, bool keepValues)
 {
     emit galaxy.aboutToBeReloaded();
     const QList<Binding> bindings = bindingsWith(galaxy, components(parent.galaxy));
-    const QJsonObject values = exposedValues(galaxy);
+    const QJsonObject values = keepValues ? exposedValues(galaxy) : QJsonObject();
     const bool hadSettingsFiles = hasSettingsFiles(galaxy);
     galaxy.empty();
     QStringList problems = refill(galaxy, project, parent);

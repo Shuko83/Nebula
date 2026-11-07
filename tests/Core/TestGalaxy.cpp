@@ -200,6 +200,9 @@ class TestGalaxy : public QObject
     void reloadRefused_data();
     void reloadRefused();
     void reloadLeftEmpty();
+    void restoreGalaxy();
+    void restoreRefused_data();
+    void restoreRefused();
 };
 
 void TestGalaxy::initTestCase()
@@ -1386,6 +1389,95 @@ void TestGalaxy::reloadLeftEmpty()
     QVERIFY(galaxy->components().empty());
     QCOMPARE(galaxy->problems().size(), 1);
     QCOMPARE(universe.component(u"Gated1"_s), galaxy);
+}
+
+void TestGalaxy::restoreGalaxy()
+{
+    const QTemporaryDir directory;
+    const QString filePath = write(directory, u"Gated.nbp"_s, Gated);
+    QObject object; // Outlives what provides it
+    Universe universe;
+    Galaxy* galaxy = universe.instantiateGalaxy(filePath);
+    QVERIFY(galaxy != nullptr);
+    auto* probe = qobject_cast<Probe*>(universe.instantiate(testComponentId(u"Probe"_s)));
+    QVERIFY(probe->consumeObject(u"got"_s));
+    QVERIFY(probe->provideObject(u"made"_s, &object));
+    QVERIFY(probe->bindInterface(u"got"_s, *galaxy, u"out"_s));
+    QVERIFY(galaxy->bindInterface(u"in"_s, *probe, u"made"_s));
+    QVERIFY(setExposedValue(*galaxy, u"rate"_s, 3));
+    const QJsonObject saved = universe.saveGalaxy(*galaxy);
+    const QVariant label = galaxy->component(u"Source"_s)->property("label");
+
+    // Changed since: a component and a settings file more, other values.
+    Nebula::Component* extra = universe.instantiate(testComponentId(u"Probe"_s), u"Extra"_s, galaxy);
+    QVERIFY(extra != nullptr);
+    QVERIFY(universe.addSettingsFile(*galaxy)->add({.component = extra, .object = extra, .property = u"count"_s}));
+    QVERIFY(galaxy->component(u"Source"_s)->setProperty("label", u"tock"_s));
+    QVERIFY(setExposedValue(*galaxy, u"rate"_s, 9));
+
+    // Given what was saved again, in the same instance, as its file would be read again.
+    const QSignalSpy aboutToBeReloaded(galaxy, &Galaxy::aboutToBeReloaded);
+    const QSignalSpy reloaded(galaxy, &Galaxy::reloaded);
+    const QPointer<Nebula::Component> formerExtra = extra;
+    QCOMPARE(universe.restoreGalaxy(*galaxy, saved), QStringList());
+    QCOMPARE(aboutToBeReloaded.count(), 1);
+    QCOMPARE(reloaded.count(), 1);
+    QVERIFY(formerExtra.isNull());
+    QCOMPARE(namesOf(galaxy->components()), (QStringList{"Source", "Sink", "Probe", "Gate"}));
+    QVERIFY(galaxy->settingsFiles().empty());
+    QCOMPARE(galaxy->component(u"Source"_s)->property("label"), label);
+    QCOMPARE(galaxy->project(), saved);
+    // The value it had then, rather than the one of the instance; still bound both ways.
+    QCOMPARE(exposedValue(*galaxy, u"rate"_s).toInt(), 3);
+    QCOMPARE(probe->binding(u"got"_s).provider, galaxy);
+    QCOMPARE(galaxy->binding(u"in"_s).provider, probe);
+    QCOMPARE(qobject_cast<const Sink*>(galaxy->component(u"Sink"_s))->object(), &object);
+    QCOMPARE(universe.saveGalaxy(*galaxy), saved);
+    // Its file is neither read nor written.
+    QCOMPARE(readJson(filePath), QJsonDocument::fromJson(Gated).object());
+}
+
+void TestGalaxy::restoreRefused_data()
+{
+    QTest::addColumn<QByteArray>("project");
+    QTest::addColumn<bool>("running");
+    QTest::addColumn<bool>("ofAnother");  // Whether another application is asked
+    QTest::addColumn<QString>("problem"); // How it starts
+
+    QTest::newRow("unknown plugin") << QByteArray(R"({"version": 1, "plugins": [{"id": "Other.Plugin"}]})") << false
+                                    << false << "Gated1 is not restored: ";
+    QTest::newRow("while running") << Clock << true << false << "Gated1 is not read again while the application runs";
+    QTest::newRow("of another application")
+        << Clock << false << true << "Gated1 is not read again: it is not a galaxy of the application";
+}
+
+void TestGalaxy::restoreRefused()
+{
+    QFETCH(QByteArray, project);
+    QFETCH(bool, running);
+    QFETCH(bool, ofAnother);
+    QFETCH(QString, problem);
+
+    const QTemporaryDir directory;
+    const QString filePath = write(directory, u"Gated.nbp"_s, Gated);
+    Universe universe;
+    Galaxy* galaxy = universe.instantiateGalaxy(filePath);
+    QVERIFY(galaxy != nullptr);
+    if(running)
+    {
+        QVERIFY(universe.start());
+    }
+    const QSignalSpy aboutToBeReloaded(galaxy, &Galaxy::aboutToBeReloaded);
+
+    Universe other;
+    const QJsonObject json = QJsonDocument::fromJson(project).object();
+    const QStringList problems = ofAnother ? other.restoreGalaxy(*galaxy, json) : universe.restoreGalaxy(*galaxy, json);
+    QCOMPARE(problems.size(), 1);
+    QVERIFY2(problems.first().startsWith(problem), qPrintable(problems.first()));
+    // Nothing changed.
+    QCOMPARE(aboutToBeReloaded.count(), 0);
+    QCOMPARE(namesOf(galaxy->components()), (QStringList{"Source", "Sink", "Probe", "Gate"}));
+    universe.stop();
 }
 
 QTEST_GUILESS_MAIN(TestGalaxy)
