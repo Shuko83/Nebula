@@ -78,6 +78,7 @@ void Project::showProject(const QString& filePath, const QJsonObject& project)
 {
     m_studio.application().setFilePath(filePath); // Its galaxies are relative to it
     const QStringList problems = m_zone.applicationScene().load(project);
+    m_zone.clearHistory();     // What was done to the one it replaces
     m_studio.refreshPlugins(); // Those it loaded, and their components, as the galaxies they were missing from
     m_studio.refreshGalaxies();
     setProjectFile(problems.isEmpty() ? filePath : QString()); // Saving would write over what is missing
@@ -139,6 +140,7 @@ void Project::newProject()
     if(saveChanges())
     {
         m_zone.applicationScene().reset();
+        m_zone.clearHistory();
         setProjectFile({});
     }
 }
@@ -197,6 +199,8 @@ void Project::editDescription()
         m_studio.application().description(), &accepted);
     if(accepted)
     {
-        m_studio.application().setDescription(description.trimmed()); // None when only blanks are left
+        // None when only blanks are left. A step of the history of the application, wherever the zone is.
+        m_zone.applicationScene().edit(tr("Edit description"), [this, &description]
+                                       { m_studio.application().setDescription(description.trimmed()); });
     }
 }

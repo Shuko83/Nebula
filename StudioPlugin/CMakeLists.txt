@@ -13,7 +13,7 @@ nebula_add_plugin(
     DESCRIPTION "The parts of NebulaStudio, each a component, which its galaxy assembles"
     SOURCES ${_studio_sources} "${_studio}/resources/nebulastudio.qrc"
     INCLUDE_DIRECTORIES PRIVATE "${_studio}/src"
-    LINK_LIBRARIES PRIVATE Qt6::Widgets
+    LINK_LIBRARIES PRIVATE Nebula::Standard Qt6::Widgets
 )
 set_target_properties(StudioPlugin PROPERTIES AUTORCC ON)
 

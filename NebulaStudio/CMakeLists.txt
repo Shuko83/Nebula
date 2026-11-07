@@ -13,7 +13,7 @@ cmu_add_executable(
     NAME NebulaStudio
     NAMESPACE Nebula
     SOURCES ../resources/nebulastudio.qrc
-    LINK_LIBRARIES PRIVATE Nebula::Application Nebula::Core Qt6::Widgets Qt6::Svg
+    LINK_LIBRARIES PRIVATE Nebula::Application Nebula::Core Nebula::Standard Qt6::Widgets Qt6::Svg
 )
 set_target_properties(NebulaStudio PROPERTIES WIN32_EXECUTABLE ON)
 # And the icon of NebulaStudio.exe: nebula.ico, rendered from the logo, through nebulastudio.rc.

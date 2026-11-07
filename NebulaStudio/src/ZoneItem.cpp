@@ -101,13 +101,30 @@ void ZoneItem::setColor(const QColor& color)
     update();
 }
 
+void ZoneItem::setTitle(const QString& title)
+{
+    m_title = title;
+    update();
+}
+
 void ZoneItem::editTitle()
 {
     if(m_titleEditor == nullptr)
     {
-        m_titleEditor = new NameEditor(*this, [this](const QString& title) { m_title = title; });
+        m_titleEditor =
+            new NameEditor(*this, [this](const QString& title) { m_titled ? m_titled(title) : setTitle(title); });
     }
     m_titleEditor->edit(m_title, textColorOver(m_color), titleRect(), Qt::AlignLeft);
+}
+
+void ZoneItem::setTitleEdited(std::function<void(const QString&)> titled)
+{
+    m_titled = std::move(titled);
+}
+
+bool ZoneItem::isResized() const
+{
+    return m_resizedEdges != Qt::Edges();
 }
 
 void ZoneItem::setEditable(bool editable)

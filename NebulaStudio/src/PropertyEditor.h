@@ -8,6 +8,7 @@
 #include <QPointer>
 #include <QString>
 #include <QWidget>
+#include <functional>
 #include <utility>
 
 class PlaceholderStack;
@@ -45,9 +46,16 @@ class PropertyEditor : public QWidget
     Q_OBJECT
 
   public:
+    // What writing a value edited goes through: it calls change, which writes it, and names it what, Change text of
+    // Greeter1 say, as one step of a history, see EditionZone::edit().
+    using Edit = std::function<void(const QString& what, const std::function<void()>& change)>;
+
     // The components and the settings files are those of application, or of its galaxies.
     PropertyEditor(const Nebula::Universe& application, const Nebula::ComponentFactory& factory,
                    QWidget* parent = nullptr);
+
+    // Has each value edited written through edit from now on; directly when it is empty, as until it is given one.
+    void setEdit(Edit edit);
 
     // Shows the editable properties of component; none when it is nullptr.
     void setComponent(Nebula::Component* component);
@@ -131,8 +139,10 @@ class PropertyEditor : public QWidget
     void followValue(const Row& shown);
     // Tells why no property is shown, when none is. It names the component, which can be renamed meanwhile.
     void refreshPlaceholder();
-    // Writes the value edited in item to its property.
+    // Writes the value edited in item to its property, through m_edit.
     void write(const QTableWidgetItem* item);
+    // What writing the property of edited is named, as a step of a history.
+    [[nodiscard]] QString stepName(const Row& edited) const;
     // The stargates where m_component is, the application or the galaxy it is in; none without it.
     [[nodiscard]] QList<const Nebula::Stargate*> stargates() const;
     // The stargate where m_component is that exposes the property of row, and what it exposes it as; nullptr when none
@@ -144,6 +154,7 @@ class PropertyEditor : public QWidget
     QPointer<Nebula::Component> m_component;
     QList<Row> m_rows; // One per row of m_table
     bool m_rebuildScheduled = false;
+    Edit m_edit; // What a value edited is written through; none writes it directly
 
     QTableWidget* m_table = nullptr;     // Shown when there is a property to show
     PlaceholderStack* m_stack = nullptr; // Of m_table and of what tells why there is none: the page of a component

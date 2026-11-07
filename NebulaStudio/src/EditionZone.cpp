@@ -3,13 +3,18 @@
 
 #include "EditionZone.h"
 
+#include <QAbstractSpinBox>
 #include <QAction>
 #include <QActionGroup>
+#include <QApplication>
 #include <QDir>
 #include <QGraphicsView>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenu>
+#include <QPlainTextEdit>
+#include <QTextEdit>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -24,6 +29,7 @@
 #include "EditionView.h"
 #include "Messages.h"
 #include "Nebula/Component/ComponentFactory.h"
+#include "Nebula/Standard/IHistory.h"
 #include "PanelWidgets.h"
 #include "ProjectFiles.h"
 #include "SceneOverview.h"
@@ -107,6 +113,34 @@ QLabel* createTitle(const QString& text)
     return title;
 }
 
+// The shortcuts of Undo: those of the platform, Ctrl+Z first.
+QList<QKeySequence> undoShortcuts()
+{
+    return QKeySequence::keyBindings(QKeySequence::Undo);
+}
+
+// The shortcuts of Redo: Ctrl+Shift+Z first, whatever the platform, then its own, Ctrl+Y under Windows say.
+QList<QKeySequence> redoShortcuts()
+{
+    QList<QKeySequence> shortcuts{QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z)};
+    for(const QKeySequence& shortcut : QKeySequence::keyBindings(QKeySequence::Redo))
+    {
+        if(!shortcuts.contains(shortcut))
+        {
+            shortcuts.append(shortcut);
+        }
+    }
+    return shortcuts;
+}
+
+// Whether widget is where text is typed: a field, a spin box, or a text.
+bool takesText(const QWidget* widget)
+{
+    return qobject_cast<const QLineEdit*>(widget) != nullptr ||
+           qobject_cast<const QAbstractSpinBox*>(widget) != nullptr ||
+           qobject_cast<const QTextEdit*>(widget) != nullptr || qobject_cast<const QPlainTextEdit*>(widget) != nullptr;
+}
+
 // Empties layout. Its widgets go later: one of them may be the button being clicked.
 void clearLayout(QLayout& layout)
 {
@@ -129,6 +163,7 @@ EditionZone::EditionZone(Studio& studio, QWidget* parent)
       m_view(createEditionView(*m_scene)), m_finder(new ComponentFinder(*m_view))
 {
     createSaveGalaxyAction();
+    createEditActions();
     followScene(*m_scene);
     followStudio();
     layOut();
@@ -170,6 +205,91 @@ void EditionZone::createSaveGalaxyAction()
     m_saveGalaxyAction->setEnabled(false); // Until a galaxy is shown
     connect(m_saveGalaxyAction, &QAction::triggered, this, &EditionZone::saveGalaxy);
     addAction(m_saveGalaxyAction); // Its shortcut works in the window of the zone, with or without a menu
+}
+
+void EditionZone::createEditActions()
+{
+    m_undoAction = createEditAction(tr("&Undo"), undoShortcuts(), &EditionZone::undo);
+    m_undoAction->setToolTip(tr("Undo the last edit of the application, or of a galaxy opened"));
+    m_redoAction = createEditAction(tr("&Redo"), redoShortcuts(), &EditionZone::redo);
+    m_redoAction->setToolTip(tr("Do again the last edit undone"));
+    refreshEditActions(); // Disabled until it has a history
+}
+
+QAction* EditionZone::createEditAction(const QString& text, const QList<QKeySequence>& shortcuts,
+                                       void (EditionZone::*step)())
+{
+    auto* action = new QAction(text, this);
+    action->setShortcuts(shortcuts);
+    connect(action, &QAction::triggered, this, step);
+    addAction(action); // Its shortcuts work in the window of the zone, with or without a menu
+    return action;
+}
+
+void EditionZone::addEditActions(QMenu& menu)
+{
+    menu.addAction(m_undoAction);
+    menu.addAction(m_redoAction);
+    // Whether the history does them is not told: it is asked each time they are shown.
+    connect(&menu, &QMenu::aboutToShow, this, &EditionZone::refreshEditActions);
+}
+
+void EditionZone::setHistory(Nebula::IHistory* history)
+{
+    m_history = history;
+    m_scene->setHistory(history);
+    for(EditionScene* scene : std::as_const(m_galaxyScenes))
+    {
+        scene->setHistory(history);
+    }
+    refreshEditActions();
+}
+
+void EditionZone::edit(const QString& what, const std::function<void()>& change)
+{
+    shownScene().edit(what, change);
+}
+
+void EditionZone::undo()
+{
+    if(canStep())
+    {
+        m_history->undo(); // Nothing when there is nothing to undo
+    }
+}
+
+void EditionZone::redo()
+{
+    if(canStep())
+    {
+        m_history->redo();
+    }
+}
+
+void EditionZone::clearHistory()
+{
+    if(m_history != nullptr)
+    {
+        m_history->clear();
+    }
+}
+
+void EditionZone::refreshEditActions()
+{
+    const bool editable = m_history != nullptr && !m_studio.application().isRunning();
+    m_undoAction->setEnabled(editable && m_history->isUndoActive());
+    m_redoAction->setEnabled(editable && m_history->isRedoActive());
+}
+
+bool EditionZone::canStep() const
+{
+    return m_history != nullptr && !m_studio.application().isRunning() && !shownScene().isBusy() && !isTyping();
+}
+
+bool EditionZone::isTyping() const
+{
+    // A field takes Ctrl+Z, but not Ctrl+Shift+Z under Windows, where its Redo is Ctrl+Y.
+    return takesText(QApplication::focusWidget()) || shownScene().focusItem() != nullptr;
 }
 
 EditionScene& EditionZone::applicationScene() const
@@ -255,6 +375,7 @@ void EditionZone::followStudio()
 void EditionZone::followRunning(bool running)
 {
     m_saveGalaxyAction->setEnabled(!running && !m_galaxyScenes.isEmpty());
+    refreshEditActions();
 }
 
 void EditionZone::leaveRemovedGalaxy()
@@ -324,6 +445,7 @@ void EditionZone::centerOnItem(const ComponentItem* item)
 void EditionZone::remove(const QList<Nebula::Component*>& components)
 {
     m_scene->remove(components);
+    clearHistory(); // Its steps could no longer be undone without them, nor done again
 }
 
 void EditionZone::start()
@@ -346,8 +468,20 @@ void EditionZone::enterGalaxy(Nebula::Galaxy& galaxy)
 {
     auto* scene = new EditionScene(m_studio.application(), Nebula::ComponentFactory::instance(), galaxy, this);
     followScene(*scene);
+    scene->setHistory(m_history);
+    // After the scene itself, which lets go of what goes then: for as long as it is open.
+    connect(&galaxy, &Nebula::Galaxy::aboutToBeReloaded, scene, [this, scene] { leaveBelow(*scene); });
     m_galaxyScenes.append(scene);
     showDepth(m_galaxyScenes.size());
+}
+
+void EditionZone::leaveBelow(const EditionScene& scene)
+{
+    const qsizetype depth = m_galaxyScenes.indexOf(&scene) + 1;
+    if(depth > 0 && depth < m_galaxyScenes.size())
+    {
+        showDepth(depth);
+    }
 }
 
 void EditionZone::showDepth(qsizetype depth)

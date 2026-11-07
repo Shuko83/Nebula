@@ -3,11 +3,13 @@
 
 #pragma once
 
+#include <QKeySequence>
 #include <QList>
 #include <QMessageBox>
 #include <QString>
 #include <QStringList>
 #include <QWidget>
+#include <functional>
 
 #include "LinkStyle.h"
 
@@ -27,6 +29,7 @@ namespace Nebula
 {
 class Component;
 class Galaxy;
+class IHistory;
 class SettingsFile;
 } // namespace Nebula
 
@@ -41,6 +44,10 @@ class SettingsFile;
 // menu starts the application, which is not edited while it runs, and stops it. What its scenes and its field refuse
 // or tell, it tells through its studio, as the plugins a galaxy placed loaded. An overview of the whole scene shown,
 // beside it, follows its view, see createOverview().
+// What is edited in its scenes, and through edit(), is kept in the history it is given, step by step: its Edit menu
+// undoes the last step (Ctrl+Z) and does again the last one undone (Ctrl+Shift+Z), in whichever scene it was done,
+// unless what is typed, in a field or a name edited in place, takes the keys. Nothing is undone while the application
+// runs, nor while a link is drawn or an item dragged.
 class EditionZone : public QWidget
 {
     Q_OBJECT
@@ -66,6 +73,22 @@ class EditionZone : public QWidget
     void addViewActions(QMenu& menu);
     // Adds to menu Start and Stop, which start the application and stop it, each enabled when it can be done.
     void addRunActions(QMenu& menu);
+    // Adds to menu Undo and Redo, see undo() and redo(): the zone's, which work by their shortcuts wherever they are
+    // shown, enabled while it has a history that does them and the application does not run.
+    void addEditActions(QMenu& menu);
+
+    // Keeps the steps of what is edited in its scenes in history from now on, see EditionScene::edit(); none while it
+    // is nullptr, which disables Undo and Redo.
+    void setHistory(Nebula::IHistory* history);
+    // Does change, an edit of what the scene shown shows, a value of one of its components say, as one step of the
+    // history named what, see EditionScene::edit().
+    void edit(const QString& what, const std::function<void()>& change);
+    // Undoes the last step of the history, wherever it was done, unless the keys are for what is typed or it is busy.
+    void undo();
+    // Does again the last step undone, as undo() does.
+    void redo();
+    // Forgets the steps of the history: what they were done to is replaced, by another project say.
+    void clearHistory();
     // A label that tells the zoom level of the view, as it changes; who takes it owns it.
     [[nodiscard]] QLabel* createZoomLabel() const;
     // The whole scene the view shows, small, what the view shows of it framed, see SceneOverview: the one of the
@@ -76,7 +99,7 @@ class EditionZone : public QWidget
     // shown are left; nothing when one of them is not left, or when no component has that name.
     void showComponent(const QString& name);
     // Removes components, some of the application, from it and from its scene, with their links: those of a plugin
-    // about to be unloaded, say.
+    // about to be unloaded, say. Not a step: the history is forgotten, see clearHistory().
     void remove(const QList<Nebula::Component*>& components);
     // Closes the galaxies further than depth down the path, the last one first, asking for each one that changed since
     // it was shown whether to save it: saved, every instance of its file is read again from it; its changes given up,
@@ -98,6 +121,17 @@ class EditionZone : public QWidget
     QWidget* createBar();
     // Save Galaxy, which works by its shortcut wherever it is shown.
     void createSaveGalaxyAction();
+    // Undo and Redo, which work by their shortcuts wherever they are shown.
+    void createEditActions();
+    // A new action of the zone telling text, with shortcuts, the first one shown, which calls step.
+    QAction* createEditAction(const QString& text, const QList<QKeySequence>& shortcuts, void (EditionZone::*step)());
+    // Enables Undo and Redo as the history does them, while the application does not run.
+    void refreshEditActions();
+    // Whether a step of the history can be undone or done again now: there is one, the application does not run, the
+    // scene shown is not busy and the keys are not for what is typed.
+    [[nodiscard]] bool canStep() const;
+    // Whether the keys are for what is typed: in a field, or in a name edited in place in the scene shown.
+    [[nodiscard]] bool isTyping() const;
     // Links: the styles of LinkStyles, one of them checked, the one the links are drawn in.
     void addLinkStyleMenu(QMenu& menu);
     // Theme: the color schemes of ColorSchemes, one of them checked, the one the studio has.
@@ -128,6 +162,9 @@ class EditionZone : public QWidget
     [[nodiscard]] EditionScene& shownScene() const;
     // Shows galaxy, one placed in what the zone shows, in its place, where it is edited.
     void enterGalaxy(Nebula::Galaxy& galaxy);
+    // Closes the scenes further down the path than scene, which shows a galaxy about to be read again, or restored:
+    // they show what it holds, which goes then.
+    void leaveBelow(const EditionScene& scene);
     // Shows what is depth galaxies down the path: the application at 0. Those further down are closed.
     void showDepth(qsizetype depth);
     // Closes the scenes of the galaxies further than depth down the path, the last one first.
@@ -174,6 +211,9 @@ class EditionZone : public QWidget
     QList<EditionScene*> m_galaxyScenes;   // Opened, each of a galaxy of the one before: m_scene, then them
     QWidget* m_path = nullptr;             // Above the view, while a galaxy is shown
     QAction* m_saveGalaxyAction = nullptr; // Enabled while a galaxy is shown and the application does not run
+    QAction* m_undoAction = nullptr;       // Enabled while m_history undoes and the application does not run
+    QAction* m_redoAction = nullptr;       // Enabled while m_history redoes and the application does not run
+    Nebula::IHistory* m_history = nullptr; // Of the steps of its scenes
     EditionView* m_view = nullptr;         // Shows m_scene, or the last of m_galaxyScenes
     ComponentFinder* m_finder = nullptr;   // Above the view, on the right, of what it shows
 };

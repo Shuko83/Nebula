@@ -206,6 +206,7 @@ class TestStudioPlugin : public QObject
 
     void galaxyOpens();
     void windowShowsWhileItRuns();
+    void editMenuFollowsTheHistory();
     void partsInTheWindow();
     void listsAsideWhileDragging();
     void partsGoWithTheStudio();
@@ -302,7 +303,7 @@ QWidget* TestStudioPlugin::overview() const
 void TestStudioPlugin::galaxyOpens()
 {
     openGalaxy();
-    QCOMPARE(m_universe->components().size(), 14);
+    QCOMPARE(m_universe->components().size(), 15);
     // Each of its parts has what it needs.
     for(const std::unique_ptr<Component>& component : m_universe->components())
     {
@@ -321,11 +322,42 @@ void TestStudioPlugin::windowShowsWhileItRuns()
     QCOMPARE(window->size(), QSize(1440, 800));
     QCOMPARE(window->windowTitle(), u"NebulaStudio"_s); // Its project has no file
     // In the order of their bindings.
-    QCOMPARE(menuTitles(*window), QStringList({u"&File"_s, u"&View"_s, u"&Run"_s}));
+    QCOMPARE(menuTitles(*window), QStringList({u"&File"_s, u"&Edit"_s, u"&View"_s, u"&Run"_s}));
     QCOMPARE(window->statusBar()->findChildren<QLabel*>().size(), 2); // Where the plugins are, and the zoom
 
     m_universe->stop();
     QVERIFY(!window->isVisible());
+}
+
+void TestStudioPlugin::editMenuFollowsTheHistory()
+{
+    openGalaxy();
+    Component* history = m_universe->component(u"History"_s);
+    QVERIFY(history != nullptr);
+    QCOMPARE(history->componentId(), u"FabienDG.Nebula.StandardPlugin.HistoryComponent"_s);
+    ignoreSizeHints();
+    QVERIFY(m_universe->start());
+    QMenu* edit = menuOf(*shownWindow(), u"&Edit"_s);
+    QVERIFY(edit != nullptr);
+    QAction* undo = actionOf(*edit, u"&Undo"_s);
+    QAction* redo = actionOf(*edit, u"&Redo"_s);
+    QVERIFY(undo != nullptr && redo != nullptr);
+    QCOMPARE(undo->shortcut(), QKeySequence(QKeySequence::Undo));
+    QCOMPARE(redo->shortcut(), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z));
+    QVERIFY(undo->isEnabled());
+    QVERIFY(redo->isEnabled());
+    undo->trigger(); // Nothing to undo: nothing done, nothing told
+    redo->trigger();
+
+    // As the history does them, once the menu shows.
+    history->setProperty("undoActive", false);
+    emit edit->aboutToShow();
+    QVERIFY(!undo->isEnabled());
+    QVERIFY(redo->isEnabled());
+    history->setProperty("redoActive", false);
+    emit edit->aboutToShow();
+    QVERIFY(!redo->isEnabled());
+    m_universe->stop();
 }
 
 void TestStudioPlugin::partsInTheWindow()

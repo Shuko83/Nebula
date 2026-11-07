@@ -385,13 +385,25 @@ std::pair<const Nebula::Stargate*, QString> PropertyEditor::exposedBy(const Row&
     return {nullptr, {}};
 }
 
+void PropertyEditor::setEdit(Edit edit)
+{
+    m_edit = std::move(edit);
+}
+
 void PropertyEditor::write(const QTableWidgetItem* item)
 {
-    const Row& edited = m_rows.at(item->row());
+    const Row edited = m_rows.at(item->row()); // A copy: writing it can rebuild the rows
     if(edited.object == nullptr || item->column() != PropertyValueColumn)
     {
         return;
     }
-    edited.property.write(edited.object, item->data(Qt::EditRole));
+    const auto change = [&edited, value = item->data(Qt::EditRole)] { edited.property.write(edited.object, value); };
+    m_edit ? m_edit(stepName(edited), change) : change();
     refreshValues(); // What the object made of it: it can adjust a value, or refuse it
+}
+
+QString PropertyEditor::stepName(const Row& edited) const
+{
+    const QString name = edited.name.isEmpty() ? QString::fromLatin1(edited.property.name()) : edited.name;
+    return tr("Change %1 of %2").arg(name, m_component != nullptr ? m_component->objectName() : QString());
 }

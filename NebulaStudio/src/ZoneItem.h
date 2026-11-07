@@ -7,6 +7,7 @@
 #include <QGraphicsItem>
 #include <QList>
 #include <QString>
+#include <functional>
 
 class NameEditor;
 
@@ -29,11 +30,16 @@ class ZoneItem : public QGraphicsItem
     [[nodiscard]] int type() const override;
     // As it was before it started being edited, while it is.
     [[nodiscard]] const QString& title() const;
+    void setTitle(const QString& title);
     [[nodiscard]] const QColor& color() const;
     void setColor(const QColor& color);
     // Edits its title in place, until Enter is pressed or anything else is clicked; Escape gives the edition up. It
-    // must be in a scene.
+    // must be in a scene. What is typed is its title, unless it was given titled, which is called with it instead.
     void editTitle();
+    // Has the edition of its title call titled with what is typed, rather than set it: who calls setTitle() then.
+    void setTitleEdited(std::function<void(const QString&)> titled);
+    // Whether its edges are being dragged, rather than its title.
+    [[nodiscard]] bool isResized() const;
     // Whether the mouse moves it, resizes it and edits its title: it does until told otherwise. When it does not, it
     // takes no click, which reaches what is under it.
     void setEditable(bool editable);
@@ -80,9 +86,10 @@ class ZoneItem : public QGraphicsItem
     QSizeF m_size;
     QString m_title;
     QColor m_color;
-    NameEditor* m_titleEditor = nullptr; // Its child, over its title while it is edited; created when first so
-    bool m_moving = false;               // Whether it is being dragged by its title
-    QList<QGraphicsItem*> m_followers;   // What was in it when that started, and moves with it
-    Qt::Edges m_resizedEdges;            // The edges being dragged; none when it is not being resized
-    QPointF m_grabOffset;                // From those edges to where they were grabbed, in the scene
+    NameEditor* m_titleEditor = nullptr;          // Its child, over its title while it is edited; created when first so
+    std::function<void(const QString&)> m_titled; // Takes what is typed as its title; none sets it
+    bool m_moving = false;                        // Whether it is being dragged by its title
+    QList<QGraphicsItem*> m_followers;            // What was in it when that started, and moves with it
+    Qt::Edges m_resizedEdges;                     // The edges being dragged; none when it is not being resized
+    QPointF m_grabOffset;                         // From those edges to where they were grabbed, in the scene
 };
