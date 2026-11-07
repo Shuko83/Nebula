@@ -85,6 +85,14 @@ class TestSettingsFile : public QObject
     void changesAreWrittenWhileRunning();
     void writeDefaults();
 
+    void readValues_data();
+    void readValues();
+    void readValuesOfAnUnreadableFile_data();
+    void readValuesOfAnUnreadableFile();
+    void writeValue();
+    void writeValueIsRefused_data();
+    void writeValueIsRefused();
+
   private:
     // The application of each test, with a Probe1 and a Panel1, and a settings file in m_directory.
     std::unique_ptr<Universe> m_universe;
@@ -477,6 +485,130 @@ void TestSettingsFile::writeDefaults()
     QVERIFY(m_universe->start());
     QVERIFY(!m_file->writeDefaults());
     QCOMPARE(m_file->errorString(), QStringLiteral("The default values cannot be written while the application runs"));
+    m_universe->stop();
+}
+
+void TestSettingsFile::readValues_data()
+{
+    QTest::addColumn<QByteArray>("content"); // Of the file; none when it is null
+    QTest::addColumn<QVariantList>("values");
+
+    QTest::newRow("no file") << QByteArray() << QVariantList{QVariant(), QVariant(), QVariant()};
+    QTest::newRow("all") << QByteArray(R"({"Probe1": {"properties": {"count": 7, "date": "2026-10-17"}},
+        "Panel1": {"objects": [{"name": "page", "properties": {}}, {"name": "page", "properties": {"level": 4}}]}})")
+                         << QVariantList{QVariant(7), QVariant(QDate(2026, 10, 17)), QVariant(4)};
+    QTest::newRow("some") << QByteArray(R"({"Other": 1, "Probe1": {"properties": {"count": 7}}})")
+                          << QVariantList{QVariant(7), QVariant(), QVariant()};
+    QTest::newRow("another type") << QByteArray(R"({"Probe1": {"properties": {"count": {"not": "an int"}}}})")
+                                  << QVariantList{QVariant(), QVariant(), QVariant()};
+}
+
+void TestSettingsFile::readValues()
+{
+    QFETCH(QByteArray, content);
+    QFETCH(QVariantList, values);
+
+    QVERIFY(m_file->add({.component = m_probe, .object = m_probe, .property = QStringLiteral("count")}));
+    QVERIFY(m_file->add({.component = m_probe, .object = m_probe, .property = QStringLiteral("date")}));
+    QVERIFY(m_file->add({.component = m_panel, .object = m_panel->pages().at(1), .property = QStringLiteral("level")}));
+    QVERIFY(content.isNull() || writeFile(m_file->filePath(), content));
+
+    QString why;
+    // Of the type of their properties, whatever JSON makes of them.
+    QCOMPARE(m_file->readValues(why), std::optional(values));
+    QVERIFY(why.isEmpty());
+    // Neither written nor set aside.
+    QCOMPARE(QFile::exists(m_file->filePath()), !content.isNull());
+}
+
+void TestSettingsFile::readValuesOfAnUnreadableFile_data()
+{
+    QTest::addColumn<QByteArray>("content");
+    QTest::addColumn<QString>("why");
+
+    QTest::newRow("not JSON") << QByteArray("{ count") << QString();
+    QTest::newRow("not an object") << QByteArray("[1, 2]") << QStringLiteral("it does not hold a JSON object");
+}
+
+void TestSettingsFile::readValuesOfAnUnreadableFile()
+{
+    QFETCH(QByteArray, content);
+    QFETCH(QString, why);
+
+    QVERIFY(m_file->add({.component = m_probe, .object = m_probe, .property = QStringLiteral("count")}));
+    QVERIFY(writeFile(m_file->filePath(), content));
+
+    QString read;
+    QCOMPARE(m_file->readValues(read), std::nullopt);
+    QVERIFY(!read.isEmpty());
+    QVERIFY(why.isEmpty() || read == why);
+    // Not set aside: the application does it when it starts.
+    QVERIFY(!QFile::exists(m_file->filePath() + QStringLiteral(".bak")));
+}
+
+void TestSettingsFile::writeValue()
+{
+    m_probe->setProperty("count", 3);
+    QVERIFY(m_file->add({.component = m_probe, .object = m_probe, .property = QStringLiteral("count")}));
+    QVERIFY(m_file->add({.component = m_panel, .object = m_panel->pages().at(1), .property = QStringLiteral("level")}));
+
+    // The file is created with that value only: the application writes the others when it starts.
+    QVERIFY(m_file->writeValue(m_file->entries().at(1), 4));
+    QCOMPARE(readJson(m_file->filePath()), json(R"({
+        "Panel1": {"objects": [{"name": "page", "properties": {}}, {"name": "page", "properties": {"level": 4}}]}})"));
+    // Converted to the type of the property, what else the file holds kept.
+    QVERIFY(m_file->writeValue(m_file->entries().at(0), QStringLiteral("8")));
+    QCOMPARE(readJson(m_file->filePath()), json(R"({"Probe1": {"properties": {"count": 8}},
+        "Panel1": {"objects": [{"name": "page", "properties": {}}, {"name": "page", "properties": {"level": 4}}]}})"));
+    QString why;
+    QCOMPARE(m_file->readValues(why), std::optional(QVariantList{8, 4}));
+    // The project keeps its own.
+    QCOMPARE(m_probe->property("count").toInt(), 3);
+
+    // The values the application starts with.
+    QVERIFY(m_universe->start());
+    QCOMPARE(m_probe->property("count").toInt(), 8);
+    QCOMPARE(m_panel->pages().at(1)->property("level").toInt(), 4);
+    m_universe->stop();
+}
+
+void TestSettingsFile::writeValueIsRefused_data()
+{
+    QTest::addColumn<QByteArray>("content"); // Of the file
+    QTest::addColumn<bool>("running");
+    QTest::addColumn<QString>("property"); // Of Probe1, held or not
+    QTest::addColumn<QVariant>("value");
+    QTest::addColumn<QString>("why");
+
+    const QByteArray readable(R"({"Probe1": {"properties": {"count": 2}}})");
+    QTest::newRow("running") << readable << true << "count" << QVariant(5)
+                             << "A value cannot be written while the application runs";
+    QTest::newRow("not held") << readable << false << "ratio" << QVariant(0.5)
+                              << "settings.json cannot hold this value for ratio";
+    QTest::newRow("another type") << readable << false << "count" << QVariant(QStringLiteral("five"))
+                                  << "settings.json cannot hold this value for count";
+    QTest::newRow("unreadable") << QByteArray("{ count") << false << "count" << QVariant(5) << "cannot be read: ";
+}
+
+void TestSettingsFile::writeValueIsRefused()
+{
+    QFETCH(QByteArray, content);
+    QFETCH(bool, running);
+    QFETCH(QString, property);
+    QFETCH(QVariant, value);
+    QFETCH(QString, why);
+
+    QVERIFY(m_file->add({.component = m_probe, .object = m_probe, .property = QStringLiteral("count")}));
+    QVERIFY(writeFile(m_file->filePath(), content));
+    QVERIFY(!running || m_universe->start());
+
+    QVERIFY(!m_file->writeValue({.component = m_probe, .object = m_probe, .property = property}, value));
+    QVERIFY2(m_file->errorString().contains(why), qPrintable(m_file->errorString()));
+    {
+        QFile file(m_file->filePath());
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), content);
+    } // Closed before the application writes it, as it stops when it ran
     m_universe->stop();
 }
 
