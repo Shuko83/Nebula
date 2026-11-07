@@ -11,8 +11,10 @@
 #include <utility>
 
 class PlaceholderStack;
+class QStackedWidget;
 class QTableWidget;
 class QTableWidgetItem;
+class SettingsValueEditor;
 
 namespace Nebula
 {
@@ -20,6 +22,7 @@ class Component;
 class ComponentFactory;
 class Galaxy;
 struct PropertyObject;
+class SettingsFile;
 class Stargate;
 class Universe;
 } // namespace Nebula
@@ -35,17 +38,27 @@ class Universe;
 // or the galaxy the component is in, exposes it.
 // While the application runs, it only shows the values: they are edited once it is stopped, which gives them back the
 // values of the edition.
+// In place of a component, it shows a settings file of the application, or of one of its galaxies: the values its file
+// holds, edited there, see SettingsValueEditor.
 class PropertyEditor : public QWidget
 {
     Q_OBJECT
 
   public:
-    // The components are those of application, or of its galaxies.
+    // The components and the settings files are those of application, or of its galaxies.
     PropertyEditor(const Nebula::Universe& application, const Nebula::ComponentFactory& factory,
                    QWidget* parent = nullptr);
 
     // Shows the editable properties of component; none when it is nullptr.
     void setComponent(Nebula::Component* component);
+    // Shows the values file holds, in place of a component; none, as setComponent(nullptr) does, when it is nullptr.
+    void setSettingsFile(Nebula::SettingsFile* file);
+    // Shows what is selected in the edition zone: settingsFile, unless it is nullptr, component otherwise.
+    void showSelection(Nebula::Component* component, Nebula::SettingsFile* settingsFile);
+
+  signals:
+    // A value edited could not be written to a settings file; why is a sentence to show.
+    void refused(const QString& why);
 
   protected:
     // Gives the titles of the groups the background of the palette when it changes, as the color scheme does.
@@ -66,10 +79,10 @@ class PropertyEditor : public QWidget
         QPointer<Nebula::Component> component; // Of the property: m_component, or one of a galaxy
     };
 
+    // Its pages, filling it: the one of a component, then the one of a settings file.
+    void layOut();
     // Rebuilds it as component changes its objects, or, a galaxy, is read again; tells it as component is renamed.
     void follow(Nebula::Component* component);
-    // Gives the titles of the groups the background of the palette again: it has no role for them.
-    void colorTitles();
     // rebuild() once the events are processed, once for all the times it is asked meanwhile: a value written from the
     // table can add or destroy objects, its count of widgets say, while the item it was edited in, which rebuild()
     // destroys, tells it.
@@ -106,8 +119,6 @@ class PropertyEditor : public QWidget
     void clearTable();
     // Shows the row row of m_rows.
     void showRow(int row);
-    // Shows title in row, over the whole of it.
-    void showTitle(int row, const QString& title);
     // The name of the property of shown, telling where it is, which file holds it and which stargate exposes it.
     [[nodiscard]] QTableWidgetItem* nameItem(const Row& shown) const;
     // Tells in the tooltip of item where the property of shown is, when it is one a galaxy exposes.
@@ -135,5 +146,7 @@ class PropertyEditor : public QWidget
     bool m_rebuildScheduled = false;
 
     QTableWidget* m_table = nullptr;     // Shown when there is a property to show
-    PlaceholderStack* m_stack = nullptr; // Of m_table and of what tells why there is none
+    PlaceholderStack* m_stack = nullptr; // Of m_table and of what tells why there is none: the page of a component
+    SettingsValueEditor* m_settings = nullptr; // The page of a settings file
+    QStackedWidget* m_pages = nullptr;         // Of a component, or of a settings file
 };

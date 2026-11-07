@@ -23,6 +23,7 @@ class ComponentFactory;
 class Stargate;
 struct ExposedProperty;
 struct PropertyObject;
+struct SettingsEntry;
 } // namespace Nebula
 
 // How NebulaStudio lists the properties of components, to edit them or to choose among them. The dialogs of settings
@@ -72,6 +73,9 @@ bool filterRows(QTreeWidget& tree, int column, const QString& text,
 [[nodiscard]] QStringList groupNames(const QList<Nebula::PropertyObject>& objects);
 // The property name of object; not valid when it has none of that name.
 [[nodiscard]] QMetaProperty metaPropertyOf(const QObject& object, const QString& name);
+// The property of entry as its instance names it: its own name, after the one of its object and a dot when it is of a
+// named one.
+[[nodiscard]] QString propertyPath(const Nebula::SettingsEntry& entry);
 // The stargates among components.
 [[nodiscard]] QList<const Nebula::Stargate*>
 stargatesAmong(const std::vector<std::unique_ptr<Nebula::Component>>& components);

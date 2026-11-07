@@ -14,10 +14,17 @@ EditDialog::EditDialog(QObject& edited, const QIcon& icon, QWidget* parent)
       m_buttons(new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel))
 {
     setWindowIcon(icon);
-    connect(m_buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(m_buttons, &QDialogButtonBox::accepted, this, &EditDialog::accept);
     connect(m_buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    connect(this, &QDialog::accepted, this, [this] { apply(); });
     connect(&edited, &QObject::destroyed, this, &QDialog::reject);
+}
+
+void EditDialog::accept()
+{
+    if(apply())
+    {
+        QDialog::accept();
+    }
 }
 
 DialogHeader& EditDialog::header() const

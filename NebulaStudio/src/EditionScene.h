@@ -51,7 +51,8 @@ class SettingsFile;
 // removes the selected ones. A link, selected by clicking it, is removed the same way, which unbinds its interfaces: by
 // the Delete key, or from the menu opened on it.
 // The menu adds a settings file of the application as well, see SettingsItem, whose properties are chosen at once, and
-// again when it is double-clicked or from its own menu, which writes its default values or removes it.
+// again when it is double-clicked or from its own menu, which shows its text, where it is edited, see
+// SettingsTextDialog, writes its default values or removes it.
 // The menu adds a stargate too, see StargateItem, which exposes what the galaxy the project is has once placed: what
 // it exposes is chosen at once, and again when it is double-clicked or from its own menu, see StargateDialog.
 // Expose..., in the menu of the dot of an interface, adds one that exposes that interface, bound to it, and edits the
@@ -96,6 +97,8 @@ class EditionScene : public QGraphicsScene
     [[nodiscard]] bool isModified() const;
     // The component selected, when a single one is; nullptr otherwise. See selectionChanged().
     [[nodiscard]] Nebula::Component* selectedComponent() const;
+    // The settings file selected, when it is alone; nullptr otherwise.
+    [[nodiscard]] Nebula::SettingsFile* selectedSettingsFile() const;
     // Selects component alone, one of the application, and returns what shows it; nullptr, selecting nothing, when it
     // is not shown.
     ComponentItem* select(const Nebula::Component& component);
@@ -292,7 +295,7 @@ class EditionScene : public QGraphicsScene
     void addComponentActions(ContextMenu& menu, ComponentItem& component, QWidget* parent);
     // Adds to menu what is done to settings; false when it is nullptr.
     bool addSettingsEntries(ContextMenu& menu, SettingsItem* settings, QWidget* parent);
-    // Adds to menu editing settings, writing its default values and removing it.
+    // Adds to menu editing settings, its text, writing its default values and removing it.
     void addSettingsActions(ContextMenu& menu, SettingsItem& settings, QWidget* parent);
     // Adds to menu removing anchor, or the junction it is; false when it is nullptr.
     static bool addAnchorEntries(ContextMenu& menu, AnchorItem* anchor);
@@ -373,6 +376,9 @@ class EditionScene : public QGraphicsScene
     [[nodiscard]] SettingsItem* settingsAt(const QPointF& position) const;
     // Edits the file of item in a dialog of parent, see SettingsDialog, which is left open once this returns.
     void editSettings(const SettingsItem& item, QWidget* parent);
+    // Shows the text of the file of item, where it is edited, in a dialog of parent, see SettingsTextDialog, which is
+    // left open once this returns.
+    static void editText(const SettingsItem& item, QWidget* parent);
     // Writes the default values of the file of item to it, and tells whether it could.
     void writeDefaults(const SettingsItem& item);
     // Removes item, with its links, and its file from the application.

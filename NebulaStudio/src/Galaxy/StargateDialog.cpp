@@ -522,17 +522,18 @@ QString StargateDialog::clashProblem(const Rows& rows, qsizetype index)
         .arg(row->text(ExposesColumn), clash->first->text(ExposesColumn), name);
 }
 
-void StargateDialog::apply()
+bool StargateDialog::apply()
 {
-    if(!m_stargate.isChangeable()) // It started meanwhile
+    if(!m_stargate.isChangeable()) // It started meanwhile: closed all the same, with nothing to give
     {
-        return;
+        return true;
     }
     const Rows rows = checked();
     applyProperties(rows);
     unbindDropped();
     removeUnwanted(rows);
     exposeWanted(rows);
+    return true;
 }
 
 void StargateDialog::applyProperties(const Rows& rows)

@@ -4,15 +4,13 @@
 #include "PropertyEditor.h"
 
 #include <QEvent>
-#include <QHeaderView>
 #include <QLabel>
 #include <QMetaMethod>
 #include <QSignalBlocker>
+#include <QStackedWidget>
 #include <QStringList>
 #include <QTableWidget>
-#include <algorithm>
-#include <array>
-#include <cstdint>
+#include <QVBoxLayout>
 #include <optional>
 #include <utility>
 
@@ -20,40 +18,18 @@
 #include "Nebula/Component/Component.h"
 #include "Nebula/Component/ComponentFactory.h"
 #include "PlaceholderStack.h"
+#include "PropertyTable.h"
 #include "PropertyTree.h"
+#include "Settings/SettingsValueEditor.h"
 #include "Theme.h"
 
 namespace
 {
 
-enum Column : std::uint8_t
-{
-    NameColumn,
-    ValueColumn,
-    ColumnCount,
-};
-
-// The types the default editors of Qt take.
-constexpr std::array EditableTypes{QMetaType::Bool,    QMetaType::Int,   QMetaType::UInt,  QMetaType::Double,
-                                   QMetaType::QString, QMetaType::QDate, QMetaType::QTime, QMetaType::QDateTime};
-
-// Whether a cell edits property: it can be written, and its type is one the default editors of Qt take.
+// Whether a cell edits property: it can be written, and its type has an editor.
 bool isEditable(const QMetaProperty& property)
 {
-    return property.isWritable() &&
-           std::ranges::find(EditableTypes, static_cast<QMetaType::Type>(property.typeId())) != EditableTypes.end();
-}
-
-// The table of the properties: their name, and their value.
-QTableWidget* newPropertyTable()
-{
-    auto* table = new QTableWidget(0, ColumnCount);
-    table->setHorizontalHeaderLabels({PropertyEditor::tr("Property"), PropertyEditor::tr("Value")});
-    table->verticalHeader()->hide();
-    table->horizontalHeader()->setSectionResizeMode(NameColumn, QHeaderView::ResizeToContents);
-    table->horizontalHeader()->setStretchLastSection(true);
-    table->setSelectionMode(QAbstractItemView::SingleSelection);
-    return table;
+    return property.isWritable() && hasEditor(property.metaType());
 }
 
 // Why component shows no property, and what to do instead, %1 standing for its name.
@@ -83,14 +59,26 @@ QFont italic(QFont font)
 PropertyEditor::PropertyEditor(const Nebula::Universe& application, const Nebula::ComponentFactory& factory,
                                QWidget* parent)
     : QWidget(parent), m_application(application), m_factory(factory), m_table(newPropertyTable()),
-      m_stack(new PlaceholderStack(m_table, *this))
+      m_stack(new PlaceholderStack(m_table, *new QWidget)), m_settings(new SettingsValueEditor(application)),
+      m_pages(new QStackedWidget)
 {
+    layOut();
     // Which properties are in italics, which ones a stargate exposes, and whether they are edited.
     connect(&m_application, &Nebula::Universe::settingsFilesChanged, this, &PropertyEditor::rebuild);
     connect(&m_application, &Nebula::Universe::componentsChanged, this, &PropertyEditor::rebuild);
     connect(&m_application, &Nebula::Universe::runningChanged, this, &PropertyEditor::rebuild);
     connect(m_table, &QTableWidget::itemChanged, this, &PropertyEditor::write);
+    connect(m_settings, &SettingsValueEditor::refused, this, &PropertyEditor::refused);
     setComponent(nullptr);
+}
+
+void PropertyEditor::layOut()
+{
+    m_pages->addWidget(m_stack->parentWidget()); // The page of a component
+    m_pages->addWidget(m_settings);
+    auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins({});
+    layout->addWidget(m_pages);
 }
 
 void PropertyEditor::setComponent(Nebula::Component* component)
@@ -102,6 +90,28 @@ void PropertyEditor::setComponent(Nebula::Component* component)
     m_component = component;
     follow(component);
     rebuild();
+    m_settings->setFile(nullptr);
+    m_pages->setCurrentWidget(m_stack->parentWidget());
+}
+
+void PropertyEditor::setSettingsFile(Nebula::SettingsFile* file)
+{
+    setComponent(nullptr);
+    if(file != nullptr)
+    {
+        m_settings->setFile(file);
+        m_pages->setCurrentWidget(m_settings);
+    }
+}
+
+void PropertyEditor::showSelection(Nebula::Component* component, Nebula::SettingsFile* settingsFile)
+{
+    if(settingsFile != nullptr)
+    {
+        setSettingsFile(settingsFile);
+        return;
+    }
+    setComponent(component);
 }
 
 void PropertyEditor::changeEvent(QEvent* event)
@@ -109,7 +119,7 @@ void PropertyEditor::changeEvent(QEvent* event)
     QWidget::changeEvent(event);
     if(event->type() == QEvent::PaletteChange)
     {
-        colorTitles();
+        colorTitles(*m_table);
     }
 }
 
@@ -122,7 +132,7 @@ void PropertyEditor::refreshValues()
         if(shown.object != nullptr && shown.property.isValid())
         {
             // The value itself rather than its text: its type is what gives the cell its editor.
-            m_table->item(row, ValueColumn)->setData(Qt::EditRole, shown.property.read(shown.object));
+            m_table->item(row, PropertyValueColumn)->setData(Qt::EditRole, shown.property.read(shown.object));
         }
     }
 }
@@ -138,18 +148,6 @@ void PropertyEditor::follow(Nebula::Component* component)
     {
         connect(component, &QObject::objectNameChanged, this, &PropertyEditor::refreshPlaceholder);
         connect(component, &Nebula::Component::propertyObjectsChanged, this, &PropertyEditor::scheduleRebuild);
-    }
-}
-
-void PropertyEditor::colorTitles()
-{
-    const QSignalBlocker blocker(m_table); // itemChanged is for the values edited in the table
-    for(int row = 0; row < m_table->rowCount(); ++row)
-    {
-        if(!m_rows.at(row).property.isValid())
-        {
-            m_table->item(row, NameColumn)->setBackground(palette().alternateBase());
-        }
     }
 }
 
@@ -293,22 +291,12 @@ void PropertyEditor::showRow(int row)
     const Row& shown = m_rows.at(row);
     if(!shown.property.isValid())
     {
-        showTitle(row, shown.title);
+        showTitle(*m_table, row, shown.title);
         return;
     }
-    m_table->setItem(row, NameColumn, nameItem(shown));
-    m_table->setItem(row, ValueColumn, new QTableWidgetItem); // Editable, as an item is by default
+    m_table->setItem(row, PropertyNameColumn, nameItem(shown));
+    m_table->setItem(row, PropertyValueColumn, new QTableWidgetItem); // Editable, as an item is by default
     followValue(shown);
-}
-
-void PropertyEditor::showTitle(int row, const QString& title)
-{
-    auto* item = new QTableWidgetItem(title);
-    item->setFlags(Qt::ItemIsEnabled);
-    item->setFont(titleFont(item->font()));
-    item->setBackground(palette().alternateBase()); // Again when the palette changes
-    m_table->setItem(row, NameColumn, item);
-    m_table->setSpan(row, NameColumn, 1, ColumnCount);
 }
 
 QTableWidgetItem* PropertyEditor::nameItem(const Row& shown) const
@@ -369,7 +357,8 @@ void PropertyEditor::followValue(const Row& shown)
 void PropertyEditor::refreshPlaceholder()
 {
     m_stack->placeholder()->setText(m_component == nullptr
-                                        ? tr("Select a component of the application to edit its properties")
+                                        ? tr("Select a component of the application to edit its properties, or a "
+                                             "settings file to edit the values it holds")
                                         : nothingToEdit(*m_component).arg(m_component->objectName()));
 }
 
@@ -399,7 +388,7 @@ std::pair<const Nebula::Stargate*, QString> PropertyEditor::exposedBy(const Row&
 void PropertyEditor::write(const QTableWidgetItem* item)
 {
     const Row& edited = m_rows.at(item->row());
-    if(edited.object == nullptr || item->column() != ValueColumn)
+    if(edited.object == nullptr || item->column() != PropertyValueColumn)
     {
         return;
     }

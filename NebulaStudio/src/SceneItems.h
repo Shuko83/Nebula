@@ -23,6 +23,13 @@ template <typename T> [[nodiscard]] QList<T*> objectsAmong(const QList<QGraphics
     return found;
 }
 
+// The graphics object items has, when it has a single item and it is T, a QObject; nullptr otherwise. The one selected
+// alone, say.
+template <typename T> [[nodiscard]] T* onlyObjectAmong(const QList<QGraphicsItem*>& items)
+{
+    return items.size() == 1 ? qobject_cast<T*>(items.constFirst()->toGraphicsObject()) : nullptr;
+}
+
 // The items among items that are T, which declares its Type: an interface, a link or a zone. In their order.
 template <typename T> [[nodiscard]] QList<T*> itemsAmong(const QList<QGraphicsItem*>& items)
 {

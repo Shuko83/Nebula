@@ -182,6 +182,11 @@ Nebula::Component* EditionZone::selectedComponent() const
     return shownScene().selectedComponent();
 }
 
+Nebula::SettingsFile* EditionZone::selectedSettingsFile() const
+{
+    return shownScene().selectedSettingsFile();
+}
+
 QAction* EditionZone::saveGalaxyAction() const
 {
     return m_saveGalaxyAction;
@@ -293,7 +298,7 @@ void EditionZone::showSelected(const EditionScene& scene)
 {
     if(m_view->scene() == &scene)
     {
-        emit selectionChanged(scene.selectedComponent());
+        emit selectionChanged(scene.selectedComponent(), scene.selectedSettingsFile());
     }
 }
 
@@ -350,7 +355,7 @@ void EditionZone::showDepth(qsizetype depth)
     EditionScene* shown = depth == 0 ? m_scene : m_galaxyScenes.at(depth - 1);
     m_view->showScene(shown); // Before those further down go, its overview with it
     closeGalaxyScenes(depth);
-    emit selectionChanged(shown->selectedComponent());
+    emit selectionChanged(shown->selectedComponent(), shown->selectedSettingsFile());
     m_saveGalaxyAction->setEnabled(depth > 0 && !m_studio.application().isRunning());
     refreshPath();
 }

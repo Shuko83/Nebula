@@ -48,6 +48,7 @@ set(_scene
     "${_studio}/src/PlaceholderStack.cpp" "${_studio}/src/ChoicePanel.cpp"
     "${_studio}/src/Galaxy/StargateItem.cpp" "${_studio}/src/Galaxy/StargateDialog.cpp"
     "${_studio}/src/Settings/SettingsItem.cpp" "${_studio}/src/Settings/SettingsDialog.cpp"
+    "${_studio}/src/Settings/SettingsTextDialog.cpp" "${_studio}/src/FileFollower.cpp"
     ${_resources})
 nebula_add_test(TestEditionScene
     SOURCES ${_scene}
@@ -58,9 +59,24 @@ nebula_add_test(TestComponentFinder
     SOURCES "${_studio}/src/ComponentFinder.cpp" ${_scene}
     INCLUDE_DIRECTORIES "${_studio}/src"
     LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
+# The values of a settings file, which the property editor shows in place of a component.
+set(_settings_values
+    "${_studio}/src/Settings/SettingsValueEditor.cpp" "${_studio}/src/FileFollower.cpp"
+    "${_studio}/src/PlaceholderStack.cpp" "${_studio}/src/PropertyTree.cpp" "${_studio}/src/PropertyTable.cpp"
+    "${_studio}/src/WarningLabel.cpp" "${_studio}/src/Theme.cpp" ${_resources})
 nebula_add_test(TestPropertyEditor
+    SOURCES "${_studio}/src/PropertyEditor.cpp" ${_settings_values}
+    INCLUDE_DIRECTORIES "${_studio}/src"
+    LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
+nebula_add_test(TestSettingsValueEditor
+    SOURCES ${_settings_values}
+    INCLUDE_DIRECTORIES "${_studio}/src"
+    LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
+# The dialog that shows and edits the text of a settings file.
+nebula_add_test(TestSettingsTextDialog
     SOURCES
-        "${_studio}/src/PropertyEditor.cpp" "${_studio}/src/PlaceholderStack.cpp" "${_studio}/src/PropertyTree.cpp"
+        "${_studio}/src/Settings/SettingsTextDialog.cpp" "${_studio}/src/FileFollower.cpp"
+        "${_studio}/src/EditDialog.cpp" "${_studio}/src/DialogHeader.cpp" "${_studio}/src/WarningLabel.cpp"
         "${_studio}/src/Theme.cpp" ${_resources}
     INCLUDE_DIRECTORIES "${_studio}/src"
     LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)

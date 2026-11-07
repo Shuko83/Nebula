@@ -163,7 +163,7 @@ class StargateDialog : public EditDialog
     [[nodiscard]] static QString clashProblem(const Rows& rows, qsizetype index);
 
     // Gives the stargate what was chosen.
-    void apply() override;
+    bool apply() override;
     // The properties no longer exposed, or under another name, first: a name can pass from one to another.
     void applyProperties(const Rows& rows);
     // Withdraws the properties the stargate exposes, but kept.
