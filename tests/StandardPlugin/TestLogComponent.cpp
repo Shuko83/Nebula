@@ -42,7 +42,7 @@ struct Message
 QDebug operator<<(QDebug debug, const Message& message)
 {
     const QDebugStateSaver saver(debug);
-    debug.nospace() << message.type << ' ' << message.category << ' ' << message.text;
+    debug.nospace() << static_cast<int>(message.type) << ' ' << message.category << ' ' << message.text;
     return debug;
 }
 

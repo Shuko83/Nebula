@@ -41,7 +41,9 @@ void Log::write(LogLevel level, const QString& message, const QString& source)
     {
         return;
     }
-    streamOf(level, m_category->category).noquote() << (source.isEmpty() ? message : source + u": " + message);
+    // QStringLiteral: Qt 6.8 adds no char16_t string to a QString.
+    streamOf(level, m_category->category).noquote()
+        << (source.isEmpty() ? message : source + QStringLiteral(": ") + message);
 }
 
 bool Log::isWritten(LogLevel level) const
