@@ -2,16 +2,21 @@
 // SPDX-License-Identifier: MPL-2.0
 
 #include <QFontDatabase>
+#include <QSignalSpy>
+#include <QStackedWidget>
 #include <QStringList>
 #include <QTableWidget>
+#include <QTemporaryDir>
 #include <QTest>
 #include <cstdint>
 #include <memory>
 
 #include "Nebula/Application/Universe.h"
 #include "Nebula/Component/ComponentFactory.h"
+#include "Nebula/Settings/SettingsFile.h"
 #include "Outlets.h"
 #include "PropertyEditor.h"
+#include "Settings/SettingsValueEditor.h"
 #include "TestComponents.h"
 
 namespace
@@ -35,9 +40,25 @@ QStringList column(const QTableWidget& table, int column)
     return texts;
 }
 
+// The table of the properties of a component in editor, rather than the one of the values of a settings file: the page
+// shown is the last child of their stack, as it is raised.
+QTableWidget* componentTable(const PropertyEditor& editor)
+{
+    const auto* settings = editor.findChild<SettingsValueEditor*>();
+    for(QTableWidget* table : editor.findChildren<QTableWidget*>())
+    {
+        if(!settings->isAncestorOf(table))
+        {
+            return table;
+        }
+    }
+    return nullptr;
+}
+
 } // namespace
 
-// PropertyEditor: the properties it shows of a component and of its objects, as they come and go.
+// PropertyEditor: the properties it shows of a component and of its objects, as they come and go, and the values of a
+// settings file in their place.
 class TestPropertyEditor : public QObject
 {
     Q_OBJECT
@@ -48,6 +69,7 @@ class TestPropertyEditor : public QObject
     void cleanup();
 
     void objectsThatFollowAProperty();
+    void settingsFile();
 
   private:
     // An application with an Outlets1, shown by m_editor, whose table is m_table.
@@ -73,7 +95,7 @@ void TestPropertyEditor::init()
     QVERIFY(m_outlets != nullptr);
     m_editor = std::make_unique<PropertyEditor>(*m_application, Nebula::ComponentFactory::instance());
     m_editor->setComponent(m_outlets);
-    m_table = m_editor->findChild<QTableWidget*>();
+    m_table = componentTable(*m_editor);
     QVERIFY(m_table != nullptr);
 }
 
@@ -101,6 +123,36 @@ void TestPropertyEditor::objectsThatFollowAProperty()
     QCOMPARE(m_outlets->count(), 1);
     QTRY_COMPARE(column(*m_table, NameColumn), (QStringList{"count", "active", "object1", "level", "enabled"}));
     QCOMPARE(column(*m_table, ValueColumn).at(0), QStringLiteral("1"));
+}
+
+// A settings file selected is shown in place of a component, what it refuses to write told by the editor.
+void TestPropertyEditor::settingsFile()
+{
+    const QTemporaryDir directory;
+    Nebula::SettingsFile& file = m_application->addSettingsFile();
+    file.setDirectory(directory.path());
+    QVERIFY(file.add({.component = m_outlets, .object = m_outlets, .property = QStringLiteral("count")}));
+    const auto* pages = m_editor->findChild<QStackedWidget*>();
+    auto* settings = m_editor->findChild<SettingsValueEditor*>();
+    const QSignalSpy refused(m_editor.get(), &PropertyEditor::refused);
+
+    m_editor->showSelection(m_outlets, &file);
+    QCOMPARE(pages->currentWidget(), settings);
+    QCOMPARE(settings->file(), &file);
+    auto* values = settings->findChild<QTableWidget*>();
+    values->item(1, ValueColumn)->setData(Qt::EditRole, QStringLiteral("two"));
+    QCOMPARE(refused.count(), 1);
+
+    m_editor->showSelection(m_outlets, nullptr);
+    QVERIFY(pages->currentWidget()->isAncestorOf(m_table));
+    QCOMPARE(settings->file(), nullptr);
+    QCOMPARE(column(*m_table, NameColumn), (QStringList{"count", "active"}));
+
+    // Nothing selected.
+    m_editor->setSettingsFile(&file);
+    m_editor->setSettingsFile(nullptr);
+    QVERIFY(pages->currentWidget()->isAncestorOf(m_table));
+    QCOMPARE(m_table->rowCount(), 0);
 }
 
 QTEST_MAIN(TestPropertyEditor)

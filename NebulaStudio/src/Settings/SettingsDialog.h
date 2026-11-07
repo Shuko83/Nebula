@@ -77,7 +77,7 @@ class SettingsDialog : public EditDialog
     // Once row is checked or unchecked: the rows under it or above it follow, and the number of those held is told.
     void checkChanged(QTreeWidgetItem* row, int column);
     // Gives the file what was edited.
-    void apply() override;
+    bool apply() override;
     // Has the file hold the property of row, or no longer, as row is checked.
     void applyRow(const QTreeWidgetItem& row);
 

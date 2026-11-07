@@ -27,6 +27,7 @@ namespace Nebula
 {
 class Component;
 class Galaxy;
+class SettingsFile;
 } // namespace Nebula
 
 // The edition zone of NebulaStudio: the scene of the application of a Studio, see EditionScene, in its view, see
@@ -53,6 +54,8 @@ class EditionZone : public QWidget
     [[nodiscard]] EditionScene& applicationScene() const;
     // The component selected in the scene shown, when a single one is; nullptr otherwise. See selectionChanged().
     [[nodiscard]] Nebula::Component* selectedComponent() const;
+    // The settings file selected in the scene shown, when it is alone; nullptr otherwise. See selectionChanged().
+    [[nodiscard]] Nebula::SettingsFile* selectedSettingsFile() const;
     // Saves the galaxy shown to its file: enabled while one is shown and the application does not run. It is the
     // zone's, which shows it at the end of the path; a menu shows it too.
     [[nodiscard]] QAction* saveGalaxyAction() const;
@@ -84,9 +87,9 @@ class EditionZone : public QWidget
     bool leaveGalaxies(qsizetype depth, bool closing = false);
 
   signals:
-    // The component selected in the scene shown changed, or another scene is shown: component is the one selected
-    // there, when a single one is; nullptr otherwise.
-    void selectionChanged(Nebula::Component* component);
+    // What is selected in the scene shown changed, or another scene is shown: component is the component selected
+    // there, when a single one is, settingsFile the settings file selected there, when it is alone; nullptr otherwise.
+    void selectionChanged(Nebula::Component* component, Nebula::SettingsFile* settingsFile);
 
   private:
     // The bar above the view: the path, hidden while the application is shown, then the field that finds instances.
@@ -114,7 +117,7 @@ class EditionZone : public QWidget
     void followScene(EditionScene& scene);
     // Tells message through the studio.
     void tell(const QString& message);
-    // Tells which component is selected in scene, when it is the one shown.
+    // Tells what is selected in scene, when it is the one shown.
     void showSelected(const EditionScene& scene);
     // Shows item in the middle of the view, and gives it the keys, as Delete is for it; nothing when item is nullptr.
     void centerOnItem(const ComponentItem* item);

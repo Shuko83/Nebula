@@ -17,6 +17,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
 #include <algorithm>
@@ -24,13 +25,18 @@
 
 #include "AnchorItem.h"
 #include "ComponentItem.h"
+#include "DialogHeader.h"
 #include "EditionScene.h"
 #include "InterfaceItem.h"
 #include "LinkItem.h"
 #include "Nebula/Application/Universe.h"
 #include "Nebula/Component/ComponentFactory.h"
 #include "Nebula/Galaxy/Stargate.h"
+#include "Nebula/Settings/SettingsFile.h"
 #include "Probe.h"
+#include "SceneItems.h"
+#include "Settings/SettingsItem.h"
+#include "Settings/SettingsTextDialog.h"
 #include "TestComponents.h"
 
 namespace
@@ -44,6 +50,8 @@ constexpr QPointF SinkAt(460, 120);
 constexpr QPointF OtherSourceAt(40, 300);
 // Where another sink is shown, below the first one, when a test adds one.
 constexpr QPointF OtherSinkAt(460, 360);
+// Where a settings file is shown, when a test adds one: below the components, in the view.
+constexpr QPointF SettingsAt(240, 460);
 // What the rubber band is dragged around to select both components, in the scene.
 constexpr QPointF AroundFrom(10, 10);
 constexpr QPointF AroundTo(760, 400);
@@ -634,8 +642,13 @@ class TestEditionScene : public QObject
     void rowsSaved();
     void rowsAcrossKinds();
     void rowOfAnInterfaceRenamed();
+    void settingsFileSelected();
+    void settingsFileMenu();
 
   private:
+    // Shows in the scene a settings file of the application, written to directory, at SettingsAt; returns its item.
+    SettingsItem* addSettingsFile(const QString& directory);
+
     // The middle of the link, moved down by offset: where nothing else is shown, below it.
     [[nodiscard]] QPointF belowLink(qreal offset) const;
     // Adds Sink2 to the application, whose interfaces are bound to nothing, and shows it at OtherSinkAt: the scene
@@ -2152,6 +2165,56 @@ void TestEditionScene::rowOfAnInterfaceRenamed()
     QVERIFY(typeName(*m_scene, *item, QStringLiteral("renamed")));
     QCOMPARE(refused.size(), 1);
     QCOMPARE(shownRows(*item), (QStringList{QStringLiteral("second"), QStringLiteral("renamed")}));
+}
+
+SettingsItem* TestEditionScene::addSettingsFile(const QString& directory)
+{
+    // As a project of NebulaStudio holds it; the scene shows it again, the components and their link too.
+    QJsonObject project = m_scene->save();
+    project.insert(u"settings", QJsonArray{QJsonObject{{QStringLiteral("file"), QStringLiteral("settings.json")},
+                                                       {QStringLiteral("directory"), directory},
+                                                       {QStringLiteral("x"), SettingsAt.x()},
+                                                       {QStringLiteral("y"), SettingsAt.y()}}});
+    m_link = nullptr;
+    if(!m_scene->load(project).isEmpty())
+    {
+        return nullptr;
+    }
+    const QList<SettingsItem*> shown = objectsAmong<SettingsItem>(m_scene->items());
+    return shown.size() == 1 ? shown.constFirst() : nullptr;
+}
+
+// A settings file selected alone is the one selected, which the property editor shows.
+void TestEditionScene::settingsFileSelected()
+{
+    const QTemporaryDir directory;
+    SettingsItem* item = addSettingsFile(directory.path());
+    QVERIFY(item != nullptr);
+
+    item->setSelected(true);
+    QCOMPARE(m_scene->selectedSettingsFile(), m_application->settingsFiles().front().get());
+    QCOMPARE(m_scene->selectedComponent(), nullptr);
+    componentItem(*m_scene, QStringLiteral("Source1"))->setSelected(true);
+    QCOMPARE(m_scene->selectedSettingsFile(), nullptr); // Not alone
+    QCOMPARE(m_scene->selectedComponent(), nullptr);
+}
+
+// The menu of a settings file shows its text, where it is edited, in a dialog.
+void TestEditionScene::settingsFileMenu()
+{
+    const QTemporaryDir directory;
+    SettingsItem* item = addSettingsFile(directory.path());
+    QVERIFY(item != nullptr);
+
+    // The dialog shown asks for the size of its contents, which the offscreen platform does not follow.
+    QTest::ignoreMessage(QtWarningMsg, "This plugin does not support propagateSizeHints()");
+    QCOMPARE(chooseFromMenu(*m_view, item->pos(), QStringLiteral("View and edit file...")),
+             (QStringList{"Edit settings file...", "View and edit file...", "Write default values",
+                          "Remove settings file"}));
+    const std::unique_ptr<SettingsTextDialog> dialog(m_view->findChild<SettingsTextDialog*>());
+    QVERIFY(dialog != nullptr);
+    QVERIFY(dialog->isVisible());
+    QCOMPARE(dialog->findChild<DialogHeader*>()->title(), QStringLiteral("settings.json"));
 }
 
 QTEST_MAIN(TestEditionScene)
