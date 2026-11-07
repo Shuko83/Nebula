@@ -9,6 +9,7 @@
 #include <QList>
 #include <QStringList>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -35,6 +36,7 @@ namespace Nebula
 class Component;
 class ComponentFactory;
 class Galaxy;
+class IHistory;
 class Stargate;
 class Universe;
 class SettingsFile;
@@ -76,6 +78,9 @@ class SettingsFile;
 // where it is edited as the application is.
 // The links it shows are those of the bindings of the components, drawn again whenever they change from here, in the
 // style it is given: curves until another one is chosen. A link drawn again keeps its anchors, see LinkAnchors.
+// Each edit it does, from its mouse, its menus, its keys or the dialogs it opens, and those done through edit(), is a
+// step of the history it is given, which undoes it and does it again, see SceneCommand: a drag, from the press of the
+// button to its release, is one step, and so is what an entry of a menu does.
 class EditionScene : public QGraphicsScene
 {
     Q_OBJECT
@@ -122,6 +127,24 @@ class EditionScene : public QGraphicsScene
     // saved, see save().
     void setLinkStyle(LinkStyle style);
 
+    // Gives history the steps of its edits from now on; none is kept while it is nullptr. See edit().
+    void setHistory(Nebula::IHistory* history);
+    // Does change, an edit of what it shows, then gives its history what changed as one step named what, Rename
+    // Greeter1 to Sensor say, which undoes it, see SceneCommand: nothing when nothing changed. An edit done while
+    // another one is, a gesture of the mouse included, is a step of its own, which the other one starts after.
+    void edit(const QString& what, const std::function<void()>& change);
+    // What it shows, as save() writes it, but the files of the galaxies of the application, which are whole: what a
+    // step of its history goes back to, wherever the project is saved meanwhile.
+    [[nodiscard]] QJsonObject snapshot() const;
+    // Shows state, one of its snapshots, unless it shows it already, the components selected staying so, then tells
+    // what, unless it is empty. When only what its items show differs, they are shown again; when the components, their
+    // links or its settings files differ, the application is loaded again, see load(), or the galaxy is given state,
+    // see Nebula::Universe::restoreGalaxy(); when only its description does, the application is given it. Returns
+    // whether it changed anything: nothing while the application runs, which it tells.
+    bool restore(const QJsonObject& state, const QString& what = {});
+    // Whether a link is drawn or an item is dragged: what is dragged could be removed from under the cursor.
+    [[nodiscard]] bool isBusy() const;
+
   signals:
     // What was just asked of it is not done; why is a sentence to show.
     void refused(const QString& why);
@@ -162,6 +185,13 @@ class EditionScene : public QGraphicsScene
         QPointF position;
     };
 
+    // What the left button of the mouse does from its press on: one step of the history once it is released.
+    struct Gesture
+    {
+        QJsonObject before; // The snapshot of the scene before it
+        QString what;       // What it does, once known
+    };
+
     // Whether what it shows is edited: while the application does not run.
     [[nodiscard]] bool isEditable() const;
     // Whether it is editable; tells why it is not through refused() when it is not.
@@ -170,8 +200,44 @@ class EditionScene : public QGraphicsScene
     void setEditable(bool editable);
     // Tells through refused() why what was asked is not done: the application runs.
     void refuseEdition();
-    // Whether a link is drawn or an item is dragged: what is dragged could be removed from under the cursor.
-    [[nodiscard]] bool isBusy() const;
+
+    // Does change, which returns what it did, as one step of its history, see edit().
+    void step(const std::function<QString()>& change);
+    // Gives its history the step what, from before, one of its snapshots, to what it shows now; nothing when they are
+    // the same.
+    void record(const QString& what, const QJsonObject& before);
+    // Has the steps going on, which started before the one that just ended at state, start after it: they no longer
+    // hold it.
+    void startAfter(const QJsonObject& state);
+    // Starts a gesture, when event is the press of the left button while it is editable.
+    void beginGesture(const QGraphicsSceneMouseEvent& event);
+    // Tells what the gesture going on does; nothing when there is none.
+    void nameGesture(const QString& what);
+    // Ends the gesture going on, one step of the history; nothing when there is none.
+    void endGesture();
+    // What dragging the item the mouse grabbed does: moving or resizing a zone, moving an anchor or a junction, or the
+    // items selected.
+    [[nodiscard]] QString dragName() const;
+    // The item selected, by its name, when it is alone; how many are otherwise.
+    [[nodiscard]] QString selectionName() const;
+    // Shows menu where event opened it, and does what the entry chosen is for, as one step of the history, which tells
+    // the component under the cursor when there is one.
+    void execMenu(ContextMenu& menu, const QGraphicsSceneContextMenuEvent& event);
+
+    // The components of what it shows: those of the galaxy, or of the application.
+    [[nodiscard]] const std::vector<std::unique_ptr<Nebula::Component>>& shownComponents() const;
+    // Shows state, one of its snapshots that it does not show: see restore().
+    void restoreState(const QJsonObject& state);
+    // Gives the application the description of wanted, when it is all its content, as contentOf() tells it, differs by
+    // from current; returns whether it did. Not in a galaxy, whose description is the one of its file.
+    bool restoreDescription(const QJsonObject& current, const QJsonObject& wanted);
+    // Shows its items again as state, one of its snapshots of what it shows now, tells.
+    void restoreItems(const QJsonObject& state);
+    // Gives the application, or the galaxy, the components, links and settings files state, one of its snapshots,
+    // holds, then shows them as it tells; tells what could not be restored.
+    void restoreContent(const QJsonObject& state);
+    // Gives the galaxy what state holds; returns what could not be restored.
+    QStringList restoreGalaxy(const QJsonObject& state);
 
     // Shows the galaxy as its file holds it now, and takes that as saved, see isModified().
     void showGalaxy();
@@ -218,6 +284,9 @@ class EditionScene : public QGraphicsScene
     // Tells what galaxy, just placed, misses of its file, when it misses anything.
     void tellProblems(const Nebula::Galaxy& galaxy);
 
+    // What the release of a button of the mouse does but end the gesture: ends the link being drawn, or lets its items
+    // take it.
+    void releaseButton(QGraphicsSceneMouseEvent& event);
     // Starts drawing a link where event, the press of the left button, is: from the dot of an interface, or with Shift
     // held, from a link or an anchor. Returns whether it did.
     bool startLinkAt(const QGraphicsSceneMouseEvent& event);
@@ -338,8 +407,13 @@ class EditionScene : public QGraphicsScene
     [[nodiscard]] ComponentItem* newGalaxyItem(Nebula::Galaxy& galaxy);
     // The component shown at position, or whose interface is; nullptr when there is none.
     [[nodiscard]] ComponentItem* componentAt(const QPointF& position) const;
-    // Names component name, as typed in place of its name; tells why through refused() when it cannot be.
+    // Names component name, as typed in place of its name, one step of the history; tells why through refused() when it
+    // cannot be.
+    void renameEdited(Nebula::Component& component, const QString& name);
+    // Names component name; tells why through refused() when it cannot be.
     void rename(Nebula::Component& component, const QString& name);
+    // Titles zone title, as typed in place of its title, one step of the history.
+    void retitle(ZoneItem& zone, const QString& title);
     // Removes item, with the links of its interfaces, and its component from the application.
     void remove(ComponentItem& item);
     // Empties the edition zone, while the components it shows still exist.
@@ -402,10 +476,13 @@ class EditionScene : public QGraphicsScene
     // Shows stargate next to the dot of exposed, which it exposes as name, and edits that name at once: the dot of the
     // stargate faces the one of exposed, on its edge across from it.
     void showExposing(Nebula::Stargate& stargate, const QString& name, const InterfaceItem& exposed);
-    // Names name, an interface of stargate of kind, as its item shows it, newName, as typed in place of its name;
-    // tells why through refused() when it cannot be.
+    // Names name, an interface of stargate of kind, as its item shows it, newName, as typed in place of its name, one
+    // step of the history; tells why through refused() when it cannot be.
     void renameExposed(Nebula::Stargate& stargate, InterfaceItem::Kind kind, const QString& name,
                        const QString& newName);
+    // Names name, an interface of stargate of kind, newName; tells why through refused() when it cannot be.
+    void renameInterface(Nebula::Stargate& stargate, InterfaceItem::Kind kind, const QString& name,
+                         const QString& newName);
     // Draws the grid of the edition zone across rect.
     void drawGrid(QPainter& painter, const QRectF& rect) const;
     // Draws how to fill the edition zone, while nothing is in it.
@@ -422,4 +499,7 @@ class EditionScene : public QGraphicsScene
     LinkStyle m_linkStyle = LinkStyle::Curved;  // Of its links, and of m_pendingLink
     LinkAnchors m_anchors;                      // Of its links, which they outlive
     std::size_t m_zoneCount = 0;                // The zones added so far: each takes the next color
+    Nebula::IHistory* m_history = nullptr;      // Of its steps; none are kept without it
+    std::optional<Gesture> m_gesture;           // Going on, from the press of the left button to its release
+    QList<QJsonObject*> m_pending;              // What the steps going on start from: see startAfter()
 };

@@ -25,9 +25,11 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <initializer_list>
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "AnchorItem.h"
@@ -41,7 +43,9 @@
 #include "LinkItem.h"
 #include "Nebula/Application/Universe.h"
 #include "Nebula/Component/ComponentFactory.h"
+#include "Nebula/Standard/IHistory.h"
 #include "PositionJson.h"
+#include "SceneCommand.h"
 #include "SceneItems.h"
 #include "Settings/SettingsDialog.h"
 #include "Settings/SettingsItem.h"
@@ -149,6 +153,75 @@ QJsonObject sidesJson(const QList<InterfaceItem*>& items)
         }
     }
     return json;
+}
+
+// json without keys.
+QJsonObject without(QJsonObject json, std::initializer_list<QStringView> keys)
+{
+    for(const QStringView key : keys)
+    {
+        json.remove(key);
+    }
+    return json;
+}
+
+// Each object of array without keys.
+QJsonArray withoutEach(const QJsonArray& array, std::initializer_list<QStringView> keys)
+{
+    QJsonArray stripped;
+    for(const auto& value : array)
+    {
+        stripped.append(without(value.toObject(), keys));
+    }
+    return stripped;
+}
+
+// What project, a snapshot of a scene, holds of the application or of the galaxy itself: its components, their links
+// and its settings files, as Universe saves them, without what only the items of the scene show.
+QJsonObject contentOf(const QJsonObject& project)
+{
+    QJsonObject content = without(project, {u"zones"});
+    content.insert(u"components",
+                   withoutEach(project.value(u"components").toArray(), {u"x", u"y", u"color", u"sides", u"rows"}));
+    content.insert(u"settings", withoutEach(project.value(u"settings").toArray(), {u"x", u"y"}));
+    content.insert(u"bindings", withoutEach(project.value(u"bindings").toArray(), {u"anchors"}));
+    return content;
+}
+
+// what, a step of the history, about subject, the component it was done to: Remove component (Greeter1). what alone
+// when there is none.
+QString about(const QString& what, const QString& subject)
+{
+    return what.isEmpty() || subject.isEmpty() ? what : EditionScene::tr("%1 (%2)").arg(what, subject);
+}
+
+// What dragging zone does.
+QString zoneDragName(const ZoneItem& zone)
+{
+    return zone.isResized() ? EditionScene::tr("Resize zone %1").arg(zone.title())
+                            : EditionScene::tr("Move zone %1").arg(zone.title());
+}
+
+// What dragging anchor does.
+QString anchorDragName(const AnchorItem& anchor)
+{
+    return anchor.isJunction() ? EditionScene::tr("Move junction point") : EditionScene::tr("Move anchor point");
+}
+
+// What item, one the scene shows, is named in a step of the history: the name of its component, of its file or its
+// title; what it is otherwise.
+QString itemName(const QGraphicsItem& item)
+{
+    if(const auto* component = qobject_cast<const ComponentItem*>(item.toGraphicsObject()))
+    {
+        return component->component().objectName();
+    }
+    if(const auto* settings = qobject_cast<const SettingsItem*>(item.toGraphicsObject()))
+    {
+        return settings->file().fileName();
+    }
+    const auto* zone = qgraphicsitem_cast<const ZoneItem*>(&item);
+    return zone != nullptr ? zone->title() : EditionScene::tr("link");
 }
 
 // Inserts value into json as key, unless it is empty.
@@ -429,6 +502,15 @@ std::optional<QMetaType> interfaceType(const InterfaceItem& item)
 QString qualifiedName(const InterfaceItem& provided)
 {
     return provided.component().objectName() + u'.' + provided.name();
+}
+
+// What binding one and other, an interface consumed and a provided one, whichever is which, is in the history: Bind
+// Window1.content to Ticker1.display.
+QString bindingName(const InterfaceItem& one, const InterfaceItem& other)
+{
+    const InterfaceItem& consumed = isProvided(one) ? other : one;
+    const InterfaceItem& provided = isProvided(one) ? one : other;
+    return EditionScene::tr("Bind %1 to %2").arg(qualifiedName(consumed), qualifiedName(provided));
 }
 
 // Tells in bindMenu, rather than leaving it empty, that no interface shown can be bound to consumed.
@@ -782,6 +864,193 @@ void EditionScene::setLinkStyle(LinkStyle style)
     }
 }
 
+void EditionScene::setHistory(Nebula::IHistory* history)
+{
+    m_history = history;
+}
+
+void EditionScene::edit(const QString& what, const std::function<void()>& change)
+{
+    step(
+        [&what, &change]
+        {
+            change();
+            return what;
+        });
+}
+
+void EditionScene::step(const std::function<QString()>& change)
+{
+    QJsonObject before = snapshot();
+    m_pending.append(&before);
+    const QString what = change();
+    m_pending.removeOne(&before);
+    record(what, before);
+}
+
+void EditionScene::record(const QString& what, const QJsonObject& before)
+{
+    const QJsonObject after = snapshot();
+    if(after == before)
+    {
+        return;
+    }
+    startAfter(after);
+    if(m_history != nullptr) // Done already: pushing it changes nothing
+    {
+        m_history->push(std::make_unique<SceneCommand>(*this, what.isEmpty() ? tr("Edit") : what, before, after));
+    }
+}
+
+void EditionScene::startAfter(const QJsonObject& state)
+{
+    std::ranges::for_each(m_pending, [&state](QJsonObject* before) { *before = state; });
+    if(m_gesture)
+    {
+        m_gesture->before = state;
+    }
+}
+
+QJsonObject EditionScene::snapshot() const
+{
+    if(m_galaxy != nullptr)
+    {
+        return save(); // Its galaxies are relative to its file, which stays
+    }
+    const QString filePath = m_application.filePath();
+    m_application.setFilePath({}); // Without a file, the files of its galaxies are whole
+    QJsonObject state = save();
+    m_application.setFilePath(filePath);
+    return state;
+}
+
+bool EditionScene::restore(const QJsonObject& state, const QString& what)
+{
+    if(!checkEditable() || snapshot() == state)
+    {
+        return false;
+    }
+    const QStringList selected = selectedNames();
+    m_gesture.reset(); // What it started from is no longer shown: it is not a step
+    restoreState(state);
+    selectNamed(selected);
+    if(!what.isEmpty())
+    {
+        emit told(what);
+    }
+    return true;
+}
+
+bool EditionScene::isBusy() const
+{
+    return m_linkSource != nullptr || mouseGrabberItem() != nullptr;
+}
+
+const std::vector<std::unique_ptr<Nebula::Component>>& EditionScene::shownComponents() const
+{
+    return m_galaxy != nullptr ? m_galaxy->components() : m_application.components();
+}
+
+void EditionScene::restoreState(const QJsonObject& state)
+{
+    const QJsonObject current = contentOf(snapshot());
+    const QJsonObject wanted = contentOf(state);
+    if(current != wanted && !restoreDescription(current, wanted))
+    {
+        restoreContent(state);
+    }
+    else if(snapshot() != state)
+    {
+        restoreItems(state);
+    }
+}
+
+bool EditionScene::restoreDescription(const QJsonObject& current, const QJsonObject& wanted)
+{
+    if(m_galaxy != nullptr || without(current, {u"description"}) != without(wanted, {u"description"}))
+    {
+        return false;
+    }
+    m_application.setDescription(wanted.value(u"description").toString());
+    return true;
+}
+
+void EditionScene::restoreItems(const QJsonObject& state)
+{
+    removeItems();
+    show(shownComponents(), shownFiles(), state);
+    setEditable(isEditable());
+}
+
+void EditionScene::restoreContent(const QJsonObject& state)
+{
+    const QStringList problems = m_galaxy != nullptr ? restoreGalaxy(state) : load(state);
+    if(!problems.isEmpty())
+    {
+        emit refused(tr("Not everything could be restored: %1").arg(problems.join(u' ')));
+    }
+}
+
+QStringList EditionScene::restoreGalaxy(const QJsonObject& state)
+{
+    const QJsonObject saved = m_saved; // Still what its file holds: shown again, it is not saved
+    QStringList problems = m_application.restoreGalaxy(*m_galaxy, state);
+    m_saved = saved;
+    return problems;
+}
+
+void EditionScene::beginGesture(const QGraphicsSceneMouseEvent& event)
+{
+    if(isEditable() && event.button() == Qt::LeftButton)
+    {
+        m_gesture = Gesture{.before = snapshot(), .what = {}};
+    }
+}
+
+void EditionScene::nameGesture(const QString& what)
+{
+    if(m_gesture && !what.isEmpty())
+    {
+        m_gesture->what = what;
+    }
+}
+
+void EditionScene::endGesture()
+{
+    if(m_gesture)
+    {
+        const Gesture gesture = *std::exchange(m_gesture, std::nullopt);
+        record(gesture.what, gesture.before);
+    }
+}
+
+QString EditionScene::dragName() const
+{
+    const QGraphicsItem* grabbed = mouseGrabberItem();
+    if(const auto* zone = qgraphicsitem_cast<const ZoneItem*>(grabbed))
+    {
+        return zoneDragName(*zone);
+    }
+    if(const auto* anchor = qgraphicsitem_cast<const AnchorItem*>(grabbed))
+    {
+        return anchorDragName(*anchor);
+    }
+    return grabbed != nullptr ? tr("Move %1").arg(selectionName()) : QString();
+}
+
+QString EditionScene::selectionName() const
+{
+    const QList<QGraphicsItem*> selected = selectedItems();
+    return selected.size() == 1 ? itemName(*selected.first()) : tr("%n items", nullptr, int(selected.size()));
+}
+
+void EditionScene::execMenu(ContextMenu& menu, const QGraphicsSceneContextMenuEvent& event)
+{
+    const ComponentItem* item = componentAt(event.scenePos()); // Before it is chosen: it may remove the component
+    const QString subject = item != nullptr ? item->component().objectName() : QString();
+    step([&menu, &event, &subject] { return about(menu.exec(event.screenPos()), subject); });
+}
+
 void EditionScene::dragEnterEvent(QGraphicsSceneDragDropEvent* event)
 {
     acceptComponent(*event, isEditable());
@@ -794,6 +1063,7 @@ void EditionScene::dragMoveEvent(QGraphicsSceneDragDropEvent* event)
 
 void EditionScene::dropEvent(QGraphicsSceneDragDropEvent* event)
 {
+    const QJsonObject before = snapshot();
     Nebula::Component* component = dropped(*event->mimeData());
     if(component == nullptr)
     {
@@ -801,6 +1071,7 @@ void EditionScene::dropEvent(QGraphicsSceneDragDropEvent* event)
         return;
     }
     selectOnly(*showComponent(*component, event->scenePos()));
+    record(tr("Add %1").arg(component->objectName()), before);
     acceptDrop(*event);
 }
 
@@ -838,9 +1109,11 @@ void EditionScene::tellProblems(const Nebula::Galaxy& galaxy)
 
 void EditionScene::mousePressEvent(QGraphicsSceneMouseEvent* event)
 {
+    beginGesture(*event);
     if(!isEditable() || event->button() != Qt::LeftButton || !startLinkAt(*event))
     {
         QGraphicsScene::mousePressEvent(event);
+        nameGesture(dragName()); // What the item it pressed does, as it is dragged
         return;
     }
     event->accept(); // Not passed to the items: a component would move, a link would be selected
@@ -914,13 +1187,22 @@ void EditionScene::drawPendingLink(const InterfaceItem* hovered, const QPointF& 
 
 void EditionScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 {
-    if(m_linkSource == nullptr || event->button() != Qt::LeftButton)
+    releaseButton(*event);
+    if(event->button() == Qt::LeftButton)
     {
-        QGraphicsScene::mouseReleaseEvent(event);
+        endGesture(); // Once the items let go of what they dragged
+    }
+}
+
+void EditionScene::releaseButton(QGraphicsSceneMouseEvent& event)
+{
+    if(m_linkSource == nullptr || event.button() != Qt::LeftButton)
+    {
+        QGraphicsScene::mouseReleaseEvent(&event);
         return;
     }
-    finishLink(event->scenePos());
-    event->accept();
+    finishLink(event.scenePos());
+    event.accept();
 }
 
 void EditionScene::finishLink(const QPointF& position)
@@ -931,6 +1213,7 @@ void EditionScene::finishLink(const QPointF& position)
     endLink();
     if(target != nullptr && isEditable()) // Not when it was started while the link was drawn
     {
+        nameGesture(bindingName(*source, *target));
         branch ? linkThrough(*branch, *target) : link(*source, *target);
     }
 }
@@ -982,9 +1265,11 @@ bool EditionScene::goesThrough(const Branch& branch, LinkItem& link)
 
 void EditionScene::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
 {
+    beginGesture(*event); // The second press of the double-click, which its release ends
     if(!isEditable() || event->button() != Qt::LeftButton || !doubleClick(event->scenePos(), event->widget()))
     {
-        QGraphicsScene::mouseDoubleClickEvent(event);
+        QGraphicsScene::mouseDoubleClickEvent(event); // Which presses an item that does nothing else of it
+        nameGesture(dragName());
         return;
     }
     event->accept();
@@ -1010,6 +1295,7 @@ bool EditionScene::removeAnchorAt(const QPointF& position)
     AnchorItem* anchor = anchorAt(position);
     if(anchor != nullptr)
     {
+        nameGesture(anchor->isJunction() ? tr("Remove junction point") : tr("Remove anchor point"));
         anchor->isJunction() ? LinkItem::removeJunction(*anchor) : LinkItem::removeAnchor(*anchor);
     }
     return anchor != nullptr;
@@ -1020,6 +1306,7 @@ bool EditionScene::anchorLinkAt(const QPointF& position)
     LinkItem* link = linkAt(position);
     if(link != nullptr)
     {
+        nameGesture(tr("Add anchor point"));
         link->addAnchor(position);
     }
     return link != nullptr;
@@ -1056,7 +1343,7 @@ bool EditionScene::showDotMenu(const QGraphicsSceneContextMenuEvent& event)
     ContextMenu menu(event.widget());
     addSideEntries(menu, *dot);
     addSwapEntries(menu, *dot);
-    menu.exec(event.screenPos());
+    execMenu(menu, event);
     return true;
 }
 
@@ -1097,7 +1384,7 @@ void EditionScene::showMenu(const QGraphicsSceneContextMenuEvent& event)
         addSceneEntries(menu, position, event.widget());
     }
     addZoneEntries(menu, position, event.widget());
-    menu.exec(event.screenPos());
+    execMenu(menu, event);
 }
 
 bool EditionScene::addComponentEntries(ContextMenu& menu, ComponentItem* component, const QPointF& position,
@@ -1352,7 +1639,7 @@ bool EditionScene::removeOnDelete(const QKeyEvent& event)
     }
     if(checkEditable())
     {
-        removeSelected();
+        edit(tr("Remove %1").arg(selectionName()), [this] { removeSelected(); });
     }
     return true;
 }
@@ -1403,11 +1690,6 @@ void EditionScene::refuseEdition()
     emit refused(tr("The application is not edited while it runs: stop it first"));
 }
 
-bool EditionScene::isBusy() const
-{
-    return m_linkSource != nullptr || mouseGrabberItem() != nullptr;
-}
-
 InterfaceItem* EditionScene::interfaceAt(const QPointF& position) const
 {
     return firstAmong<InterfaceItem>(items(position));
@@ -1447,7 +1729,7 @@ ComponentItem* EditionScene::showComponent(Nebula::Component& component, const Q
     // Its links again, once its interfaces were shown again.
     connect(item, &ComponentItem::interfacesRebuilt, this, &EditionScene::refreshLinks);
     connect(item, &ComponentItem::nameEdited, this,
-            [this, &component](const QString& name) { rename(component, name); });
+            [this, &component](const QString& name) { renameEdited(component, name); });
     place(*item, position);
     return item;
 }
@@ -1497,6 +1779,12 @@ ComponentItem* EditionScene::componentAt(const QPointF& position) const
         }
     }
     return nullptr;
+}
+
+void EditionScene::renameEdited(Nebula::Component& component, const QString& name)
+{
+    edit(tr("Rename %1 to %2").arg(component.objectName(), name),
+         [this, &component, &name] { rename(component, name); });
 }
 
 void EditionScene::rename(Nebula::Component& component, const QString& name)
@@ -1585,8 +1873,14 @@ ZoneItem* EditionScene::addZone(const QPointF& position, const QSizeF& size, con
 {
     const QColor next(ZoneColors.at(m_zoneCount++ % ZoneColors.size()));
     auto* zone = new ZoneItem(size, title, color.isValid() ? color : next);
+    zone->setTitleEdited([this, zone](const QString& typed) { retitle(*zone, typed); });
     place(*zone, position);
     return zone;
+}
+
+void EditionScene::retitle(ZoneItem& zone, const QString& title)
+{
+    edit(tr("Rename zone %1 to %2").arg(zone.title(), title), [&zone, &title] { zone.setTitle(title); });
 }
 
 SettingsItem* EditionScene::showSettings(Nebula::SettingsFile& file, const QPointF& position)
@@ -1604,7 +1898,11 @@ SettingsItem* EditionScene::settingsAt(const QPointF& position) const
 
 void EditionScene::editSettings(const SettingsItem& item, QWidget* parent)
 {
-    openDialog(*new SettingsDialog(item.file(), m_application, m_factory, parent));
+    auto* dialog = new SettingsDialog(item.file(), m_application, m_factory, parent);
+    // What it gives the file, one step: nothing else is edited meanwhile, the dialog blocks its window.
+    connect(dialog, &QDialog::accepted, this,
+            [this, before = snapshot(), file = &item.file()] { record(tr("Edit %1").arg(file->fileName()), before); });
+    openDialog(*dialog);
 }
 
 void EditionScene::editText(const SettingsItem& item, QWidget* parent)
@@ -1680,6 +1978,9 @@ void EditionScene::editStargate(const StargateItem& item, QWidget* parent)
     }
     auto* dialog = new StargateDialog(item.stargate(), m_application, m_factory, parent);
     connect(dialog, &QDialog::accepted, this, &EditionScene::refreshLinks); // What it bound and unbound
+    // Then what it changed, one step, as SettingsDialog does.
+    connect(dialog, &QDialog::accepted, this, [this, before = snapshot(), stargate = &item.stargate()]
+            { record(tr("Edit %1").arg(stargate->objectName()), before); });
     openDialog(*dialog);
 }
 
@@ -1710,6 +2011,13 @@ void EditionScene::showExposing(Nebula::Stargate& stargate, const QString& name,
 
 void EditionScene::renameExposed(Nebula::Stargate& stargate, InterfaceItem::Kind kind, const QString& name,
                                  const QString& newName)
+{
+    edit(tr("Rename %1 to %2").arg(name, newName),
+         [this, &stargate, kind, &name, &newName] { renameInterface(stargate, kind, name, newName); });
+}
+
+void EditionScene::renameInterface(Nebula::Stargate& stargate, InterfaceItem::Kind kind, const QString& name,
+                                   const QString& newName)
 {
     // What the stargate consumes, on its left edge, the galaxy provides, and the other way round.
     const Nebula::Exposure exposure =

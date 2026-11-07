@@ -3,6 +3,10 @@
     "description": "NebulaStudio, assembled from the components of StudioPlugin: start it to run NebulaStudio",
     "plugins": [
         {
+            "id": "FabienDG.Nebula.StandardPlugin",
+            "file": "plugins/StandardPlugin.nbdl"
+        },
+        {
             "id": "FabienDG.Nebula.StudioPlugin",
             "file": "plugins/StudioPlugin.nbdl"
         }
@@ -29,6 +33,17 @@
             "y": 1740,
             "properties": {
                 "file": ""
+            }
+        },
+        {
+            "name": "History",
+            "type": "FabienDG.Nebula.StandardPlugin.HistoryComponent",
+            "x": 1310,
+            "y": 1940,
+            "properties": {
+                "maxSize": 100,
+                "undoActive": true,
+                "redoActive": true
             }
         },
         {
@@ -138,6 +153,12 @@
             "consumed": "studio",
             "provider": "Studio",
             "provided": "studio"
+        },
+        {
+            "consumer": "Edition",
+            "consumed": "history",
+            "provider": "History",
+            "provided": "history"
         },
         {
             "consumer": "Project",
@@ -299,6 +320,12 @@
             "consumer": "Window",
             "consumed": "menus",
             "provider": "Edition",
+            "provided": "editMenu"
+        },
+        {
+            "consumer": "Window",
+            "consumed": "menus",
+            "provider": "Edition",
             "provided": "viewMenu"
         },
         {
@@ -333,7 +360,7 @@
             "x": 1190,
             "y": 1220,
             "width": 260,
-            "height": 700
+            "height": 880
         },
         {
             "title": "Parts",

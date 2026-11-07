@@ -38,9 +38,10 @@ nebula_add_test(TestPreferences
     SOURCES "${_studio}/src/Preferences.cpp"
     INCLUDE_DIRECTORIES "${_studio}/src"
     LINK_LIBRARIES Qt6::Core)
-# The edition zone, with its items and the dialogs it opens.
+# The edition zone, with its items, the dialogs it opens and the steps of its history, which needs Nebula::Standard.
 set(_scene
-    "${_studio}/src/EditionScene.cpp" "${_studio}/src/ContextMenu.cpp" "${_studio}/src/ComponentItem.cpp"
+    "${_studio}/src/EditionScene.cpp" "${_studio}/src/SceneCommand.cpp" "${_studio}/src/ContextMenu.cpp"
+    "${_studio}/src/ComponentItem.cpp"
     "${_studio}/src/InterfaceItem.cpp" "${_studio}/src/LinkItem.cpp" "${_studio}/src/AnchorItem.cpp"
     "${_studio}/src/LinkAnchors.cpp" "${_studio}/src/DashedLinkItem.cpp" "${_studio}/src/NameEditor.cpp"
     "${_studio}/src/ZoneItem.cpp" "${_studio}/src/Theme.cpp" "${_studio}/src/EditDialog.cpp"
@@ -53,12 +54,17 @@ set(_scene
 nebula_add_test(TestEditionScene
     SOURCES ${_scene}
     INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
+    LINK_LIBRARIES TestComponents Nebula::Standard Qt6::Widgets Qt6::Svg)
+# The steps of the history of the edition zone: each edit undone, then done again.
+nebula_add_test(TestSceneCommand
+    SOURCES ${_scene}
+    INCLUDE_DIRECTORIES "${_studio}/src"
+    LINK_LIBRARIES TestComponents Nebula::Standard Qt6::Widgets Qt6::Svg)
 # The field that finds the instances of the edition zone.
 nebula_add_test(TestComponentFinder
     SOURCES "${_studio}/src/ComponentFinder.cpp" ${_scene}
     INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
+    LINK_LIBRARIES TestComponents Nebula::Standard Qt6::Widgets Qt6::Svg)
 # The values of a settings file, which the property editor shows in place of a component.
 set(_settings_values
     "${_studio}/src/Settings/SettingsValueEditor.cpp" "${_studio}/src/FileFollower.cpp"
@@ -92,7 +98,7 @@ nebula_add_test(TestSettingsDialog
 nebula_add_test(TestStargateDialog
     SOURCES ${_scene}
     INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
+    LINK_LIBRARIES TestComponents Nebula::Standard Qt6::Widgets Qt6::Svg)
 nebula_add_test(TestGalaxyModel
     SOURCES "${_studio}/src/Galaxy/GalaxyModel.cpp" "${_studio}/src/Theme.cpp" ${_resources}
     INCLUDE_DIRECTORIES "${_studio}/src"

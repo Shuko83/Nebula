@@ -32,10 +32,18 @@ class ContextMenu
     QActionGroup& addGroup();
     void addSeparator();
     // Shows it at position, the one of the screen, and does what the entry chosen is for, in a submenu or not;
-    // nothing when none is.
-    void exec(const QPoint& position);
+    // nothing when none is. Returns what it did, as a step of a history names it: the text of the entry, after the
+    // title of its submenu, without mnemonic nor ellipsis, Bind to Ticker1.display say; empty when none was chosen.
+    QString exec(const QPoint& position);
 
   private:
+    // An entry of the menu, or of one of its submenus.
+    struct Entry
+    {
+        std::function<void()> chosen; // What it does
+        QString step;                 // What it does, as a history names it
+    };
+
     QMenu m_menu;
-    QHash<const QAction*, std::function<void()>> m_chosen; // What each entry does
+    QHash<const QAction*, Entry> m_entries;
 };

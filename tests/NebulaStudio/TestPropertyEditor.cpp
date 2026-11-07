@@ -9,6 +9,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <cstdint>
+#include <functional>
 #include <memory>
 
 #include "Nebula/Application/Universe.h"
@@ -69,6 +70,7 @@ class TestPropertyEditor : public QObject
     void cleanup();
 
     void objectsThatFollowAProperty();
+    void writtenThroughItsEdit();
     void settingsFile();
 
   private:
@@ -123,6 +125,33 @@ void TestPropertyEditor::objectsThatFollowAProperty()
     QCOMPARE(m_outlets->count(), 1);
     QTRY_COMPARE(column(*m_table, NameColumn), (QStringList{"count", "active", "object1", "level", "enabled"}));
     QCOMPARE(column(*m_table, ValueColumn).at(0), QStringLiteral("1"));
+}
+
+// A value edited is written through the edit it is given, a step of the history of NebulaStudio, named after the
+// property and the component; one the edit does not write is not written.
+void TestPropertyEditor::writtenThroughItsEdit()
+{
+    m_outlets->setObjectName(QStringLiteral("Outlets1"));
+    QStringList steps;
+    bool writes = true;
+    m_editor->setEdit(
+        [&steps, &writes](const QString& what, const std::function<void()>& change)
+        {
+            steps.append(what);
+            if(writes)
+            {
+                change();
+            }
+        });
+    m_table->item(0, ValueColumn)->setData(Qt::EditRole, 2);
+    QCOMPARE(steps, QStringList{QStringLiteral("Change count of Outlets1")});
+    QCOMPARE(m_outlets->count(), 2);
+
+    writes = false;
+    m_table->item(0, ValueColumn)->setData(Qt::EditRole, 5);
+    QCOMPARE(steps.size(), 2);
+    QCOMPARE(m_outlets->count(), 2);
+    QCOMPARE(column(*m_table, ValueColumn).at(0), QStringLiteral("2")); // What it holds, shown again
 }
 
 // A settings file selected is shown in place of a component, what it refuses to write told by the editor.

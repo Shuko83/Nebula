@@ -35,6 +35,9 @@ std::unique_ptr<QWidget> PropertyEditorComponent::createPart(Studio& studio)
     auto editor = std::make_unique<PropertyEditor>(studio.application(), Nebula::ComponentFactory::instance());
     // A value of a settings file it does not write, in the status bar.
     QObject::connect(editor.get(), &PropertyEditor::refused, &studio, &Studio::tell);
+    // Each value written, a step of the history of the zone, which undoes it.
+    editor->setEdit([this](const QString& what, const std::function<void()>& change)
+                    { m_zone != nullptr ? m_zone->edit(what, change) : change(); });
     if(m_zone != nullptr)
     {
         showSelection(*m_zone, *editor);

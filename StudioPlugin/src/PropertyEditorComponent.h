@@ -11,7 +11,8 @@ class PropertyEditor;
 // The editor of the properties of the component selected in the edition zone it consumes as "zone", or of the values
 // the settings file selected there holds, see PropertyEditor, one of the application of the Studio it consumes as
 // "studio": it cannot do without either, and provides the editor as "widget". A value it does not write to a settings
-// file is told through the studio. It needs a QApplication.
+// file is told through the studio. Each value of a component written is a step of the history of the zone, see
+// EditionZone::edit(). It needs a QApplication.
 class PropertyEditorComponent : public StudioPartComponent
 {
     Q_OBJECT
