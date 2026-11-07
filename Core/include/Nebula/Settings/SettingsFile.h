@@ -9,6 +9,7 @@
 #include <QObject>
 #include <QString>
 #include <QVariant>
+#include <optional>
 
 #include "Core_export.h"
 
@@ -93,7 +94,19 @@ class CORE_EXPORT SettingsFile : public QObject
     // of those it holds for them. Returns false, with errorString() set, while the application runs, nothing being
     // written then, and when the file cannot be written.
     bool writeDefaults();
-    // Why writeDefaults() returned false, or failed() was last emitted.
+    // What its file holds now for each of its entries, in their order, read from it: the value the property of the
+    // entry would have, of the type of that property; invalid for an entry it holds no value for, or one the property
+    // cannot have, as for each of them when the file does not exist. nullopt, with why set, when it cannot be read, or
+    // does not hold a JSON object. While the application runs, what it last wrote there: it writes the changes once
+    // the events are processed.
+    [[nodiscard]] std::optional<QVariantList> readValues(QString& why) const;
+    // Writes value to its file for entry, one of its entries, what else the file holds kept, creating it when it does
+    // not exist: the property of entry has value the next time the application starts. Returns false, writing
+    // nothing, with errorString() set, while the application runs, which writes the file itself, when entry is not
+    // one of its entries, when its property cannot have value or JSON cannot hold it, and when the file cannot be
+    // read, which writeDefaults() would set aside, or written.
+    bool writeValue(const SettingsEntry& entry, const QVariant& value);
+    // Why writeDefaults() or writeValue() returned false, or failed() was last emitted.
     [[nodiscard]] QString errorString() const;
 
     // Whether a settings file can hold property of object, component itself or one of its objects: as a project, see
@@ -128,6 +141,8 @@ class CORE_EXPORT SettingsFile : public QObject
     [[nodiscard]] bool isFreeFileName(const QString& fileName) const;
     // Whether entry can be added: of a component it holds the properties of, held by a project, and by no file yet.
     [[nodiscard]] bool canAdd(const SettingsEntry& entry) const;
+    // Writes value to its file for entry, as writeValue() does once it accepted it.
+    bool writeJsonValue(const SettingsEntry& entry, const QJsonValue& value);
     // Gives the properties it holds the values of its file, writes their default values to it first when it does not
     // exist or misses some, and follows their changes.
     void start();
