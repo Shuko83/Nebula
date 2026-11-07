@@ -22,7 +22,7 @@ ctest -C Debug --output-on-failure
 - Avec Visual Studio, chaque test est un projet du dossier `tests` de la solution, débogable tel quel : son
   environnement de débogage (`VS_DEBUGGER_ENVIRONMENT`) contient déjà ce qu'il faut.
 
-Un test échoué fait échouer la CI (étape **Test** de `cmake-win-msvc-2022_Qt6.8.yml`) : une PR ne se fusionne
+Un test échoué fait échouer la CI (étape **Test** de `cmake-win-msvc-2022_Qt6.12.yml`) : une PR ne se fusionne
 qu'avec des tests verts.
 
 ## Organisation
