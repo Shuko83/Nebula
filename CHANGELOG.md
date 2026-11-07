@@ -19,6 +19,15 @@ to it.
   hold for every message of the process, those of every plugin, of Core and of Qt included, on top of the rules of the
   application: what drives it drives the log for everyone. Its properties follow, so that a settings file keeps the
   level the user chose.
+- The values of a settings file in NebulaStudio (#133): selected alone in the edition zone, a settings file shows,
+  beside it, in place of the properties of an instance, the values its file holds for the properties it holds, under
+  the names of their instances; a property the file holds no value for shows its default value, in italics. A value
+  edited there is written to the file at once, and what another program writes to the file, or the application while
+  it runs, is shown at once; while it runs, the values are only shown. **View and edit file...**, in the context menu
+  of a settings file, shows its text in a dialog, which writes what is typed to the file once it is a JSON object, and
+  follows the file as well.
+- `SettingsFile::readValues()`, what its file holds for each of its entries, and `SettingsFile::writeValue()`, which
+  writes a value to its file for one of them (#133).
 
 ### Changed
 
