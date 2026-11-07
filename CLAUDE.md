@@ -44,9 +44,9 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   de même pour `ExampleUniverseApp` (et `ExampleApp` pour ceux de `plugins/`), dans `exemple/CMakeLists.txt` :
   construire l'un reconstruit les plugins du dépôt, et recopie la galaxy de NebulaStudio dans `scene/`.
 - Tests : `tests/`, un exécutable Qt Test par classe, lancés par `ctest -C <config>` depuis le build (option
-  `NEBULA_BUILD_TESTS`, `ON` par défaut), voir [docs/testing.md](docs/testing.md). CI : Windows, MSVC 2022, Qt 6.8,
-  Release, puis `ctest`. `release.yml` fait la même compilation sur un tag
-  de version (`0.2.0`) et publie la release (voir Process) ; sur une PR qui le modifie, il s'exécute sans rien publier et dépose le zip
+  `NEBULA_BUILD_TESTS`, `ON` par défaut), voir [docs/testing.md](docs/testing.md). CI : Windows, MSVC 2022, Qt 6.12
+  (la dernière 6.12.x, issue #141 : la CI ne vérifie plus aucune version antérieure), Release, puis `ctest`.
+  `release.yml` fait la même compilation sur un tag de version (`0.2.0`) et publie la release (voir Process) ; sur une PR qui le modifie, il s'exécute sans rien publier et dépose le zip
   en artefact. Il ajoute au paquet la licence de Space Grotesk à côté de chaque application (NebulaStudio.exe et
   `StudioPlugin.nbdl` la contiennent) et la galaxy de NebulaStudio dans `scene/` de NebulaStudio et d'ExampleUniverseApp.
 - C++ récent requis (concepts, `std::ranges`, initialiseurs désignés, `std::type_identity_t`).

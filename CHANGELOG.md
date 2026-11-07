@@ -20,6 +20,11 @@ to it.
   application: what drives it drives the log for everyone. Its properties follow, so that a settings file keeps the
   level the user chose.
 
+### Changed
+
+- The package is built with Qt 6.12, formerly Qt 6.8 (#141), as the continuous integration builds and tests Nebula:
+  its zip is named `Nebula-<version>-win64-msvc2022-qt6.12.zip`, and a plugin built against it is built with Qt 6.12.
+
 ## [2.1.0] - 2026-11-03
 
 ### Added
