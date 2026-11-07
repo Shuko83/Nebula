@@ -28,6 +28,15 @@ to it.
   follows the file as well.
 - `SettingsFile::readValues()`, what its file holds for each of its entries, and `SettingsFile::writeValue()`, which
   writes a value to its file for one of them (#133).
+- `HistoryComponent` (#132), in `StandardPlugin`: the history of what an application does that can be undone. It
+  provides `history`, a `Nebula::IHistory`, which executes the `Nebula::Command` pushed to it, then undoes it and does
+  it again one step at a time; a `Nebula::CompositeCommand` makes one step of several. It keeps `maxSize` commands, and
+  `undoActive` and `redoActive` turn undoing and redoing off.
+- Undo and redo in NebulaStudio (#132): its **Edit** menu undoes the last edit of the application, or of a galaxy
+  opened, with Ctrl+Z, and does it again with Ctrl+Shift+Z. Each edit is one step, a drag from the press of the button
+  to its release included, and undoing it gives back exactly what was there, the links of an instance removed included.
+  NebulaStudio keeps them in the `HistoryComponent` of its galaxy.
+- `Universe::restoreGalaxy()`, which gives a galaxy placed what was saved of it, without reading its file (#132).
 
 ### Changed
 
