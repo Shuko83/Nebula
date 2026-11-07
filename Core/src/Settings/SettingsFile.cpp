@@ -46,6 +46,21 @@ QJsonValue currentValue(const SettingsEntry& entry)
     return ProjectJson::toJson(propertyOf(entry).read(entry.object)).value_or(QJsonValue());
 }
 
+// value, as a file holds it, as the property of entry would have it; invalid when it cannot have it, or value is
+// undefined.
+QVariant propertyValue(const SettingsEntry& entry, const QJsonValue& value)
+{
+    QVariant converted = value.toVariant();
+    return converted.convert(propertyOf(entry).metaType()) ? converted : QVariant();
+}
+
+// value, given to the property of entry, as a file holds it; nullopt when the property cannot have it, or JSON cannot
+// hold it.
+std::optional<QJsonValue> jsonValue(const SettingsEntry& entry, QVariant value)
+{
+    return value.convert(propertyOf(entry).metaType()) ? ProjectJson::toJson(value) : std::nullopt;
+}
+
 // Whether an object of the "objects" of a component, as a project holds them, is named name.
 auto isNamed(const QString& name)
 {
@@ -140,6 +155,18 @@ void setValue(QJsonObject& content, const SettingsEntry& entry, const QJsonValue
     }
 }
 
+// The values content holds for entries, in their order, as their properties would have them; invalid where it holds
+// none they can have.
+QVariantList valuesIn(const QJsonObject& content, const QList<SettingsEntry>& entries)
+{
+    QVariantList values;
+    for(const SettingsEntry& entry : entries)
+    {
+        values.append(propertyValue(entry, valueOf(content, entry)));
+    }
+    return values;
+}
+
 // content with the current values of entries.
 QJsonObject withCurrentValues(QJsonObject content, const QList<SettingsEntry>& entries)
 {
@@ -176,16 +203,17 @@ std::optional<QJsonObject> setAside(const QString& filePath, const QString& why,
     return setAside ? std::optional(QJsonObject()) : std::nullopt;
 }
 
-// What the settings file filePath holds: nothing when it does not exist. A file that cannot be read is set aside, see
-// setAside().
+// What the settings file filePath holds: nothing when it does not exist. nullopt, with why set, when it cannot be read.
+std::optional<QJsonObject> readExisting(const QString& filePath, QString& why)
+{
+    return QFile::exists(filePath) ? readObject(filePath, why) : std::optional(QJsonObject());
+}
+
+// What the settings file filePath holds, see readExisting(). A file that cannot be read is set aside, see setAside().
 std::optional<QJsonObject> readSettings(const QString& filePath, QString& problem)
 {
-    if(!QFile::exists(filePath))
-    {
-        return QJsonObject();
-    }
     QString why;
-    const std::optional<QJsonObject> content = readObject(filePath, why);
+    const std::optional<QJsonObject> content = readExisting(filePath, why);
     return content ? content : setAside(filePath, why, problem);
 }
 
@@ -339,6 +367,36 @@ bool SettingsFile::writeDefaults()
     QString problem;
     const std::optional<QJsonObject> content = readSettings(filePath(), problem);
     return content ? writeSettings(filePath(), withCurrentValues(*content, m_entries), m_errorString) : refuse(problem);
+}
+
+std::optional<QVariantList> SettingsFile::readValues(QString& why) const
+{
+    const std::optional<QJsonObject> content = readExisting(filePath(), why);
+    return content ? std::optional(valuesIn(*content, m_entries)) : std::nullopt;
+}
+
+bool SettingsFile::writeValue(const SettingsEntry& entry, const QVariant& value)
+{
+    // Not an entry, its object may be gone: its property is not looked at then.
+    const std::optional<QJsonValue> json = m_entries.contains(entry) ? jsonValue(entry, value) : std::nullopt;
+    if(m_running || !json)
+    {
+        return refuse(m_running ? QStringLiteral("A value cannot be written while the application runs")
+                                : QStringLiteral("%1 cannot hold this value for %2").arg(m_fileName, entry.property));
+    }
+    return writeJsonValue(entry, *json);
+}
+
+bool SettingsFile::writeJsonValue(const SettingsEntry& entry, const QJsonValue& value)
+{
+    QString why;
+    std::optional<QJsonObject> content = readExisting(filePath(), why);
+    if(!content)
+    {
+        return refuse(QStringLiteral("%1 cannot be read: %2").arg(QDir::toNativeSeparators(filePath()), why));
+    }
+    setValue(*content, entry, value);
+    return writeSettings(filePath(), *content, m_errorString);
 }
 
 QString SettingsFile::errorString() const
