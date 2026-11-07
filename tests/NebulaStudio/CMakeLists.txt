@@ -61,7 +61,7 @@ nebula_add_test(TestComponentFinder
 nebula_add_test(TestPropertyEditor
     SOURCES
         "${_studio}/src/PropertyEditor.cpp" "${_studio}/src/PlaceholderStack.cpp" "${_studio}/src/PropertyTree.cpp"
-        "${_studio}/src/Theme.cpp" ${_resources}
+        "${_studio}/src/PropertyTable.cpp" "${_studio}/src/Theme.cpp" ${_resources}
     INCLUDE_DIRECTORIES "${_studio}/src"
     LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
 # The dialog of a settings file.

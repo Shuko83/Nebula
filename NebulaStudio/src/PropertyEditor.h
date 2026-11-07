@@ -68,8 +68,6 @@ class PropertyEditor : public QWidget
 
     // Rebuilds it as component changes its objects, or, a galaxy, is read again; tells it as component is renamed.
     void follow(Nebula::Component* component);
-    // Gives the titles of the groups the background of the palette again: it has no role for them.
-    void colorTitles();
     // rebuild() once the events are processed, once for all the times it is asked meanwhile: a value written from the
     // table can add or destroy objects, its count of widgets say, while the item it was edited in, which rebuild()
     // destroys, tells it.
@@ -106,8 +104,6 @@ class PropertyEditor : public QWidget
     void clearTable();
     // Shows the row row of m_rows.
     void showRow(int row);
-    // Shows title in row, over the whole of it.
-    void showTitle(int row, const QString& title);
     // The name of the property of shown, telling where it is, which file holds it and which stargate exposes it.
     [[nodiscard]] QTableWidgetItem* nameItem(const Row& shown) const;
     // Tells in the tooltip of item where the property of shown is, when it is one a galaxy exposes.
