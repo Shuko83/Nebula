@@ -267,7 +267,7 @@ void SettingsDialog::checkChanged(QTreeWidgetItem* row, int column)
     }
 }
 
-void SettingsDialog::apply()
+bool SettingsDialog::apply()
 {
     m_file.setName(m_fileName->text().trimmed());
     m_file.setDirectory(m_directory->text().trimmed());
@@ -276,6 +276,7 @@ void SettingsDialog::apply()
     {
         applyRow(**row);
     }
+    return true;
 }
 
 void SettingsDialog::applyRow(const QTreeWidgetItem& row)

@@ -254,6 +254,13 @@ QMetaProperty metaPropertyOf(const QObject& object, const QString& name)
     return metaObject->property(metaObject->indexOfProperty(name.toLatin1().constData()));
 }
 
+QString propertyPath(const Nebula::SettingsEntry& entry)
+{
+    const QList<Nebula::PropertyObject> objects = entry.component->propertyObjects();
+    const auto object = std::ranges::find(objects, entry.object, &Nebula::PropertyObject::object);
+    return object != objects.end() && !object->name.isEmpty() ? object->name + u'.' + entry.property : entry.property;
+}
+
 QList<const Nebula::Stargate*> stargatesAmong(const std::vector<std::unique_ptr<Nebula::Component>>& components)
 {
     QList<const Nebula::Stargate*> stargates;
