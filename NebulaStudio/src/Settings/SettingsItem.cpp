@@ -12,13 +12,13 @@
 #include <QPolygonF>
 #include <QStringList>
 #include <QStyleOptionGraphicsItem>
-#include <algorithm>
 
 #include "ComponentItem.h"
 #include "DashedLinkItem.h"
 #include "ItemShapes.h"
 #include "Nebula/Component/Component.h"
 #include "Nebula/Settings/SettingsFile.h"
+#include "PropertyTree.h"
 #include "Theme.h"
 
 namespace
@@ -65,14 +65,7 @@ void paintSheet(QPainter& painter, const QPalette& palette, bool selected)
 // when it is of a named one.
 QString entryName(const Nebula::SettingsEntry& entry)
 {
-    QString name = entry.component->objectName() + u'.';
-    const QList<Nebula::PropertyObject> objects = entry.component->propertyObjects();
-    const auto object = std::ranges::find(objects, entry.object, &Nebula::PropertyObject::object);
-    if(object != objects.end() && !object->name.isEmpty())
-    {
-        name += object->name + u'.';
-    }
-    return name + entry.property;
+    return entry.component->objectName() + u'.' + propertyPath(entry);
 }
 
 } // namespace

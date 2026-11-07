@@ -7,8 +7,10 @@
 #include <QLabel>
 #include <QMetaMethod>
 #include <QSignalBlocker>
+#include <QStackedWidget>
 #include <QStringList>
 #include <QTableWidget>
+#include <QVBoxLayout>
 #include <optional>
 #include <utility>
 
@@ -18,6 +20,7 @@
 #include "PlaceholderStack.h"
 #include "PropertyTable.h"
 #include "PropertyTree.h"
+#include "Settings/SettingsValueEditor.h"
 #include "Theme.h"
 
 namespace
@@ -56,14 +59,26 @@ QFont italic(QFont font)
 PropertyEditor::PropertyEditor(const Nebula::Universe& application, const Nebula::ComponentFactory& factory,
                                QWidget* parent)
     : QWidget(parent), m_application(application), m_factory(factory), m_table(newPropertyTable()),
-      m_stack(new PlaceholderStack(m_table, *this))
+      m_stack(new PlaceholderStack(m_table, *new QWidget)), m_settings(new SettingsValueEditor(application)),
+      m_pages(new QStackedWidget)
 {
+    layOut();
     // Which properties are in italics, which ones a stargate exposes, and whether they are edited.
     connect(&m_application, &Nebula::Universe::settingsFilesChanged, this, &PropertyEditor::rebuild);
     connect(&m_application, &Nebula::Universe::componentsChanged, this, &PropertyEditor::rebuild);
     connect(&m_application, &Nebula::Universe::runningChanged, this, &PropertyEditor::rebuild);
     connect(m_table, &QTableWidget::itemChanged, this, &PropertyEditor::write);
+    connect(m_settings, &SettingsValueEditor::refused, this, &PropertyEditor::refused);
     setComponent(nullptr);
+}
+
+void PropertyEditor::layOut()
+{
+    m_pages->addWidget(m_stack->parentWidget()); // The page of a component
+    m_pages->addWidget(m_settings);
+    auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins({});
+    layout->addWidget(m_pages);
 }
 
 void PropertyEditor::setComponent(Nebula::Component* component)
@@ -75,6 +90,28 @@ void PropertyEditor::setComponent(Nebula::Component* component)
     m_component = component;
     follow(component);
     rebuild();
+    m_settings->setFile(nullptr);
+    m_pages->setCurrentWidget(m_stack->parentWidget());
+}
+
+void PropertyEditor::setSettingsFile(Nebula::SettingsFile* file)
+{
+    setComponent(nullptr);
+    if(file != nullptr)
+    {
+        m_settings->setFile(file);
+        m_pages->setCurrentWidget(m_settings);
+    }
+}
+
+void PropertyEditor::showSelection(Nebula::Component* component, Nebula::SettingsFile* settingsFile)
+{
+    if(settingsFile != nullptr)
+    {
+        setSettingsFile(settingsFile);
+        return;
+    }
+    setComponent(component);
 }
 
 void PropertyEditor::changeEvent(QEvent* event)
@@ -320,7 +357,8 @@ void PropertyEditor::followValue(const Row& shown)
 void PropertyEditor::refreshPlaceholder()
 {
     m_stack->placeholder()->setText(m_component == nullptr
-                                        ? tr("Select a component of the application to edit its properties")
+                                        ? tr("Select a component of the application to edit its properties, or a "
+                                             "settings file to edit the values it holds")
                                         : nothingToEdit(*m_component).arg(m_component->objectName()));
 }
 

@@ -45,6 +45,7 @@
 #include "SceneItems.h"
 #include "Settings/SettingsDialog.h"
 #include "Settings/SettingsItem.h"
+#include "Settings/SettingsTextDialog.h"
 #include "Theme.h"
 #include "ZoneItem.h"
 
@@ -617,10 +618,14 @@ void EditionScene::selectOnly(QGraphicsItem& item)
 Nebula::Component* EditionScene::selectedComponent() const
 {
     // Not a settings file nor a link, which can be selected too.
-    const QList<QGraphicsItem*> selected = selectedItems();
-    const auto* item =
-        selected.size() == 1 ? qobject_cast<const ComponentItem*>(selected.constFirst()->toGraphicsObject()) : nullptr;
+    const auto* item = onlyObjectAmong<const ComponentItem>(selectedItems());
     return item != nullptr ? &item->component() : nullptr;
+}
+
+Nebula::SettingsFile* EditionScene::selectedSettingsFile() const
+{
+    const auto* item = onlyObjectAmong<const SettingsItem>(selectedItems());
+    return item != nullptr ? &item->file() : nullptr;
 }
 
 ComponentItem* EditionScene::select(const Nebula::Component& component)
@@ -1210,6 +1215,9 @@ void EditionScene::addSettingsActions(ContextMenu& menu, SettingsItem& settings,
         tr("Edit settings file..."), [this, item = &settings, parent] { editSettings(*item, parent); },
         icon(GlossaryTerm::Comet));
     menu.add(
+        tr("View and edit file..."), [item = &settings, parent] { editText(*item, parent); }, {},
+        tr("Shows the text of the file, where the values of the user are, and writes it as it is typed"));
+    menu.add(
         tr("Write default values"), [this, item = &settings] { writeDefaults(*item); }, {},
         tr("Writes the values of the project to the file, in place of those of the user"));
     menu.add(tr("Remove settings file"), [this, item = &settings] { remove(*item); });
@@ -1597,6 +1605,11 @@ SettingsItem* EditionScene::settingsAt(const QPointF& position) const
 void EditionScene::editSettings(const SettingsItem& item, QWidget* parent)
 {
     openDialog(*new SettingsDialog(item.file(), m_application, m_factory, parent));
+}
+
+void EditionScene::editText(const SettingsItem& item, QWidget* parent)
+{
+    openDialog(*new SettingsTextDialog(item.file(), parent));
 }
 
 void EditionScene::writeDefaults(const SettingsItem& item)

@@ -14,11 +14,11 @@ NEBULA_REGISTER_COMPONENT(StudioPlugin, PropertyEditorComponent);
 namespace
 {
 
-// Has editor show the component selected in zone, from now on.
+// Has editor show the component, or the settings file, selected in zone, from now on.
 void showSelection(const EditionZone& zone, PropertyEditor& editor)
 {
-    QObject::connect(&zone, &EditionZone::selectionChanged, &editor, &PropertyEditor::setComponent);
-    editor.setComponent(zone.selectedComponent());
+    QObject::connect(&zone, &EditionZone::selectionChanged, &editor, &PropertyEditor::showSelection);
+    editor.showSelection(zone.selectedComponent(), zone.selectedSettingsFile());
 }
 
 } // namespace
@@ -33,6 +33,8 @@ PropertyEditorComponent::PropertyEditorComponent()
 std::unique_ptr<QWidget> PropertyEditorComponent::createPart(Studio& studio)
 {
     auto editor = std::make_unique<PropertyEditor>(studio.application(), Nebula::ComponentFactory::instance());
+    // A value of a settings file it does not write, in the status bar.
+    QObject::connect(editor.get(), &PropertyEditor::refused, &studio, &Studio::tell);
     if(m_zone != nullptr)
     {
         showSelection(*m_zone, *editor);

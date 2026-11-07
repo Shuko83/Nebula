@@ -8,13 +8,16 @@
 class EditionZone;
 class PropertyEditor;
 
-// The editor of the properties of the component selected in the edition zone it consumes as "zone", see
-// PropertyEditor, one of the application of the Studio it consumes as "studio": it cannot do without either, and
-// provides the editor as "widget". It needs a QApplication.
+// The editor of the properties of the component selected in the edition zone it consumes as "zone", or of the values
+// the settings file selected there holds, see PropertyEditor, one of the application of the Studio it consumes as
+// "studio": it cannot do without either, and provides the editor as "widget". A value it does not write to a settings
+// file is told through the studio. It needs a QApplication.
 class PropertyEditorComponent : public StudioPartComponent
 {
     Q_OBJECT
-    Q_CLASSINFO("description", "The properties of the component selected in the edition zone of NebulaStudio")
+    Q_CLASSINFO("description",
+                "The properties of the component, or the values of the settings file, selected in the edition zone of "
+                "NebulaStudio")
     Q_CLASSINFO("category", "NebulaStudio")
 
   public:
