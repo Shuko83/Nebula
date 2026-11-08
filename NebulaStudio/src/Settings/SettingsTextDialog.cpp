@@ -6,16 +6,15 @@
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
-#include <QFileInfo>
 #include <QFontDatabase>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QPlainTextEdit>
-#include <QSaveFile>
 #include <QVBoxLayout>
 
 #include "DialogHeader.h"
 #include "FileFollower.h"
+#include "Nebula/Application/WholeFile.h"
 #include "Nebula/Settings/SettingsFile.h"
 #include "Theme.h"
 #include "WarningLabel.h"
@@ -39,17 +38,6 @@ QString readText(const QString& filePath)
 {
     QFile file(filePath);
     return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()) : QString();
-}
-
-// Writes text to the file filePath, whole or not at all, creating its directory when needed; false, with why set, when
-// it cannot.
-bool writeText(const QString& filePath, const QString& text, QString& why)
-{
-    QSaveFile file(filePath);
-    const bool written = QDir().mkpath(QFileInfo(filePath).absolutePath()) && file.open(QIODevice::WriteOnly) &&
-                         file.write(text.toUtf8()) >= 0 && file.commit();
-    why = written ? QString() : file.errorString();
-    return written;
 }
 
 // Why json is not JSON, as error tells it, with the line where it stops being.
@@ -143,7 +131,7 @@ void SettingsTextDialog::check()
 bool SettingsTextDialog::apply()
 {
     QString why;
-    if(writeText(m_file.filePath(), m_text->toPlainText(), why))
+    if(Nebula::WholeFile::write(m_file.filePath(), m_text->toPlainText().toUtf8(), why))
     {
         return true;
     }
