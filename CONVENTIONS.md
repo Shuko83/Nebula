@@ -154,6 +154,10 @@ Décrits dans [docs/testing.md](docs/testing.md). L'essentiel :
 - `QTest::failOnWarning()` dans `init()`, `QTest::ignoreMessage()` pour un avertissement attendu.
 - Une fonction de test n'est pas tenue à la dizaine de lignes de « Découpage ».
 - Une classe ajoutée ou un comportement changé l'est avec ses tests, dans la même PR.
+- Le code qu'ajoute ou change une PR passe la quality gate de SonarQube Cloud, que la CI attend (issue #147) : Sonar
+  way, qui lui demande la note A en sécurité, fiabilité et maintenabilité, 80 % de ses lignes couvertes par les tests,
+  3 % de lignes dupliquées au plus, et chacun de ses security hotspots revu. Une PR qui ne la passe pas ne se fusionne
+  pas.
 
 ## Commits, branches et PR
 

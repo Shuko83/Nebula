@@ -26,7 +26,8 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `CHANGELOG.md` | — | Ce qui change d'une version à l'autre, la dernière en premier, au format Keep a Changelog, en anglais : une section `## [x.y.z] - <date>` par version (Added, Changed, Removed, Fixed) et son lien vers la release en bas |
 | `docs/glossary.md` | — | Glossaire Nebula (Nebula, Univers, Galaxy, Astre, Comet, Stargate), en anglais puis en français, référencé par le README : le vocabulaire à employer pour nommer code, documentation et interface ; Nebula et Univers (la classe `Universe`) sont déjà employés, Galaxy pour un fichier de projet (`GalaxyInfo`, onglet **Galaxies**), et Stargate pour ce qu'une galaxy expose (`Stargate`) |
 | `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Application/` (`TestNebulaApplication`, `QTEST_APPLESS_MAIN` : chaque test construit sa `NebulaApplication`, l'une après l'autre, avec sa ligne de commande), `Core/` (une par classe, `TestUniverse` avec les morceaux de projet copiés et collés, `TestGalaxy` pour les galaxies posées, leurs interfaces, leurs propriétés exposées, leur édition, leur relecture et leur copier-coller, `TestStargate` pour la Stargate dans l'application qui l'édite) et `NebulaStudio/` (Colors, Theme avec les bords de son style et le schéma choisi, PluginModel, ComponentModel, EditionView, SceneOverview, DragAside, EditionScene pour ses liens et son copier-coller, SceneCommand pour les étapes de son historique, ComponentFinder, PropertyEditor pour ses groupes et son édition et la page d'un fichier de réglages, SettingsDialog, SettingsValueEditor et SettingsTextDialog pour les valeurs et le texte d'un fichier de réglages, suivi sur le disque, GalaxyModel, Preferences, sources recompilées), `StudioPlugin/` (`TestStudioPlugin` : ses composants chargés depuis le plugin, la galaxy de NebulaStudio ouverte, lancée et relue), `StandardPlugin/` (`TestLogComponent` : le `LogComponent` chargé depuis le plugin, consommé par les interfaces de `Nebula::Standard`, et le niveau du processus vu d'une catégorie du test ; `TestHistoryComponent` : ses commandes faites, défaites et refaites, sa taille, ses options et les commandes composées), `exemple/` (`TestWidgetsPlugin` : ses composants chargés depuis le plugin et assemblés), `Package/` (issue #139, pas des exécutables Qt Test : `TestPackageName`, `cmake -P` de `cmake/PackageName.cmake` et du nom de ce build, et sous Windows `TestVersionDetails<Cible>`, un script PowerShell qui lit la ressource de version de `NebulaStudio`, `Core` et `StandardPlugin`), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`, `Outlets` : autant d'interfaces et d'objets que son `count`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`, et `Plugins/`, les plugins de test construits par `nebula_add_test_plugin()` (`nebula_add_plugin()`, puis retirés du paquet) : `FirstPlugin` (`Alpha`) et `ThirdPlugin` (`Gamma`, `Delta`) dans `test-plugins/`, `SecondPlugin` (`Beta`) dans `other-test-plugins/`, à côté des tests mais pas dans leur `plugins/` (`NEBULA_TEST_PLUGINS_DIR`, `NEBULA_OTHER_TEST_PLUGINS_DIR`). `PluginManager`, les plugins d'un projet ou d'une galaxy et `PluginModel` se testent sur eux : seul `TestWidgetsPlugin` dépend d'un exemple, celui qu'il teste (issue #83). Rien n'est installé |
-| `docs/testing.md` | — | Lancer, déboguer et écrire les tests, en français |
+| `docs/testing.md` | — | Lancer, déboguer et écrire les tests, et mesurer ce qu'ils couvrent, en français |
+| `sonar-project.properties` | — | Issue #147 : ce qu'analyse SonarQube Cloud, que la CI complète de ce que donne le build (voir Build) |
 | `CFmake/` | non suivi, dépôt à part | Ne fait pas partie du build : ne pas y toucher |
 
 ## Build
@@ -62,6 +63,18 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   `QT_EMAIL` et `QT_PASSWORD` du dépôt, sans lesquels la CI s'arrête (une PR depuis un fork n'y a pas accès) :
   aqtinstall 3.3.0, sa dernière version publiée, ne trouve pas Qt 6.11 et plus, rangées par architecture dans le dépôt
   de Qt ; à retirer quand une version publiée le fera.
+  Analyse SonarQube Cloud (issue #147), dans le même job : `sonar-project.properties` (organisation `shuko83`, projet
+  `Shuko83_Nebula`, `sonar.sources` = `Core`, `Application`, `Plugins`, `NebulaStudio`, `StudioPlugin`, `exemple`,
+  `sonar.tests` = `tests`) ; Release compilé avec les PDB (`/Zi`, `/DEBUG /OPT:REF /OPT:ICF`, sur la ligne de
+  `cmake`, pas dans les `CMakeLists.txt` : le paquet de `release.yml` n'en a pas), build sous le build-wrapper de
+  SonarQube (`compile_commands.json` dans `build-wrapper/`), puis `ctest` lancé par OpenCppCoverage (`choco`,
+  `--cover_children`, qui rend le code de sortie des tests), qui écrit `coverage.xml` en Cobertura
+  (`sonar.cfamily.cobertura.reportPaths`) sans les tests, `build/` ni CMakeUtils ; `sonar.projectVersion` =
+  `CMAKE_PROJECT_VERSION` du cache, d'où part le nouveau code de `main`. `sonar.qualitygate.wait=true` : l'étape, donc
+  la CI, échoue quand le nouveau code ne passe pas la quality gate, Sonar way, la seule du plan Free (notes A en
+  sécurité, fiabilité et maintenabilité, 80 % couvert, 3 % dupliqué au plus, hotspots revus). Le token est le secret
+  `SONAR_TOKEN`, vérifié avant le build ; l'analyse automatique de SonarQube Cloud est désactivée (elle ferait échouer
+  celle de la CI).
   `release.yml` fait la même compilation sur un tag de version (`0.2.0`) et publie la release (voir Process) ; sur une PR qui le modifie, il s'exécute sans rien publier et dépose le zip
   en artefact. Il ajoute au paquet la licence de Space Grotesk à côté de chaque application (NebulaStudio.exe et
   `StudioPlugin.nbdl` la contiennent) et la galaxy de NebulaStudio dans `scene/` de NebulaStudio et d'ExampleUniverseApp.
@@ -741,6 +754,14 @@ ini, celui des formats qui n'ont pas le leur).
   ne s'y change qu'à la main. La fenêtre du texte n'a ni coloration ni mise en forme : elle écrit ce qui est tapé. Un
   dossier de fichier qui n'existe pas encore n'est suivi qu'une fois créé par NebulaStudio ou l'application (le
   `FileFollower` est remis à chaque relecture) : un autre programme qui le crée n'est pas vu avant.
+- Analyse SonarQube Cloud (#147) : le plan Free n'a que la quality gate Sonar way, qu'on ne copie ni ne change (ni
+  ses 80 % de couverture, ni ses règles : le profil Sonar way du C++, qui ne suit ni `CONVENTIONS.md` ni
+  `.clang-tidy`) ; le plan OSS, pour un projet public sous licence libre, le permettrait. La couverture n'est que celle
+  des tests de `tests/`, sous Windows, d'un Release optimisé (`/O2 /Ob2`) : une fonction inlinée n'a pas toujours ses
+  lignes, et une PR qui change ce que les tests n'exercent pas (voir Tests ci-dessus) ne passe la gate qu'avec des
+  tests. OpenCppCoverage n'a plus de version depuis 0.9.9.0 (2020). Rien ne lance l'analyse en local ni avant la PR.
+  Une PR depuis un fork n'a pas le secret : la CI s'arrête, comme pour Qt. Aucune règle de `main` n'exige la CI verte :
+  une PR rouge reste fusionnable sur GitHub.
 
 ## Pièges
 

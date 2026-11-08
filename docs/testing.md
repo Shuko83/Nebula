@@ -25,6 +25,24 @@ ctest -C Debug --output-on-failure
 Un test échoué fait échouer la CI (étape **Test** de `cmake-win-msvc-2022_Qt6.12.yml`) : une PR ne se fusionne
 qu'avec des tests verts.
 
+### Couverture
+
+La CI lance les tests sous [OpenCppCoverage](https://github.com/OpenCppCoverage/OpenCppCoverage), qui mesure ce
+qu'ils couvrent du code du dépôt (`Core`, `Application`, `Plugins`, `NebulaStudio`, `StudioPlugin`, `exemple`), sans
+celui des tests ni ce que CMake génère, et l'envoie à SonarQube Cloud (issue #147). La quality gate du projet demande
+que 80 % des lignes qu'ajoute ou change une PR soient couvertes : en deçà, l'étape **Analyze on SonarQube Cloud** fait
+échouer la CI, et la PR ne se fusionne pas. La page de la PR sur
+[SonarQube Cloud](https://sonarcloud.io/project/overview?id=Shuko83_Nebula) montre les lignes non couvertes.
+
+Pour la mesurer en local, d'un build Debug (OpenCppCoverage lit les lignes dans les PDB, qu'un build Release n'a
+pas), depuis la racine du dépôt :
+
+```bash
+OpenCppCoverage --cover_children --modules <build> --sources <dépôt> --excluded_sources <dépôt>\tests --excluded_sources <build> --working_dir <build> -- ctest -C Debug
+```
+
+Le rapport HTML est écrit dans `CoverageReport-<date>/`.
+
 ## Organisation
 
 | Dossier | Contenu |
