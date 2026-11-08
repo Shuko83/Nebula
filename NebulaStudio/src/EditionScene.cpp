@@ -1942,8 +1942,7 @@ ComponentItem* EditionScene::newItem(Nebula::Component& component)
     {
         return newGalaxyItem(*galaxy);
     }
-    const std::optional<Nebula::ComponentInfo> info = m_factory.component(component.componentId());
-    return new ComponentItem(component, info ? info->name : QString());
+    return new ComponentItem(component, componentNameOf(component, m_factory));
 }
 
 ComponentItem* EditionScene::newStargateItem(Nebula::Stargate& stargate)
@@ -1959,8 +1958,8 @@ ComponentItem* EditionScene::newStargateItem(Nebula::Stargate& stargate)
 
 ComponentItem* EditionScene::newGalaxyItem(Nebula::Galaxy& galaxy)
 {
-    auto* item = new ComponentItem(galaxy, galaxy.galaxyName());
-    item->setIcon(icon(GlossaryTerm::Galaxy));
+    auto* item = new ComponentItem(galaxy, componentNameOf(galaxy, m_factory));
+    item->setIcon(componentIconOf(galaxy));
     item->setOpenable(aboutGalaxy(galaxy), tr("Double-click below its name to open it"));
     connect(item, &ComponentItem::openRequested, this, [this, opened = &galaxy] { emit galaxyOpened(*opened); });
     return item;

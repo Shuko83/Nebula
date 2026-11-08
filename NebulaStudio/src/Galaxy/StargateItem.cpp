@@ -9,8 +9,8 @@
 
 #include "DashedLinkItem.h"
 #include "InterfaceItem.h"
+#include "Nebula/Component/ComponentFactory.h"
 #include "Nebula/Galaxy/Stargate.h"
-#include "Theme.h"
 
 namespace
 {
@@ -40,9 +40,10 @@ void appendList(QStringList& about, const QString& format, const QStringList& it
 
 } // namespace
 
-StargateItem::StargateItem(Nebula::Stargate& stargate) : ComponentItem(stargate, tr("Stargate")), m_stargate(stargate)
+StargateItem::StargateItem(Nebula::Stargate& stargate)
+    : ComponentItem(stargate, componentNameOf(stargate, Nebula::ComponentFactory::instance())), m_stargate(stargate)
 {
-    setIcon(icon(GlossaryTerm::Stargate));
+    setIcon(componentIconOf(stargate));
     setInterfacesRenamable(true);
     connect(&m_stargate, &Nebula::Stargate::changed, this,
             [this]

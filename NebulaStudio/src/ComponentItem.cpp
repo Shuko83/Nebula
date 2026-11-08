@@ -12,6 +12,7 @@
 #include <QPolygonF>
 #include <QStyleOptionGraphicsItem>
 #include <algorithm>
+#include <optional>
 #include <utility>
 
 #include "Colors.h"
@@ -19,6 +20,9 @@
 #include "ItemShapes.h"
 #include "NameEditor.h"
 #include "Nebula/Component/Component.h"
+#include "Nebula/Component/ComponentFactory.h"
+#include "Nebula/Galaxy/Galaxy.h"
+#include "Nebula/Galaxy/Stargate.h"
 #include "SceneItems.h"
 #include "Theme.h"
 
@@ -686,4 +690,27 @@ qreal ComponentItem::rowsTop() const
 QList<ComponentItem*> componentItems(const QGraphicsScene& scene)
 {
     return objectsAmong<ComponentItem>(scene.items());
+}
+
+QString componentNameOf(const Nebula::Component& instance, const Nebula::ComponentFactory& factory)
+{
+    if(qobject_cast<const Nebula::Stargate*>(&instance) != nullptr)
+    {
+        return ComponentItem::tr("Stargate");
+    }
+    if(const auto* galaxy = qobject_cast<const Nebula::Galaxy*>(&instance))
+    {
+        return galaxy->galaxyName();
+    }
+    const std::optional<Nebula::ComponentInfo> info = factory.component(instance.componentId());
+    return info ? info->name : QString();
+}
+
+QIcon componentIconOf(const Nebula::Component& instance)
+{
+    if(qobject_cast<const Nebula::Stargate*>(&instance) != nullptr)
+    {
+        return icon(GlossaryTerm::Stargate);
+    }
+    return qobject_cast<const Nebula::Galaxy*>(&instance) != nullptr ? icon(GlossaryTerm::Galaxy) : QIcon();
 }
