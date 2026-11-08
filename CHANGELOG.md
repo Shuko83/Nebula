@@ -56,6 +56,8 @@ to it.
 - `Universe::saveInstances()`, which writes some instances and the bindings between them as a piece of a project, and
   `Universe::insertInstances()`, which places such a piece in the application or in one of its galaxies, under free
   names, or nothing when one of them cannot be placed (#136).
+- `Nebula::WholeFile::write()` (#152), which writes a file whole or not at all, its directory created when needed,
+  attempting again a replacement Windows refuses, as Nebula writes its settings files and NebulaStudio its projects.
 
 ### Changed
 
@@ -68,6 +70,13 @@ to it.
   followed by its platform, its compiler and its Qt, `NebulaStudio (win-x64, MSVC 19.44.35211.0, Qt 6.12.0)`, which
   Windows shows as the name of an executable in the Task Manager as well; its numeric version has the four numbers of
   the version. The binaries keep their names.
+
+### Fixed
+
+- On Windows, a settings file, a project, a galaxy or the text of a settings file written while something looks at it
+  is no longer refused now and then, "Access is denied" (#152): NebulaStudio follows the files it shows, which made
+  the second of two writings close together fail at times, when a value was edited in the inspector of a settings
+  file or written by the application running. Its replacement is attempted again, ten times at most, 10 ms apart.
 
 ## [2.1.0] - 2026-11-03
 
