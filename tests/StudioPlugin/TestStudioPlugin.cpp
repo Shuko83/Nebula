@@ -30,6 +30,7 @@
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QToolButton>
 #include <QTreeView>
 #include <QWindow>
 #include <algorithm>
@@ -137,6 +138,13 @@ void leave(const QWidget& widget)
     QApplication::sendEvent(widget.windowHandle(), &event);
 }
 
+// Writes content to the file named fileName in directory.
+bool write(const QTemporaryDir& directory, const QString& fileName, const QByteArray& content)
+{
+    QFile file(directory.filePath(fileName));
+    return file.open(QIODevice::WriteOnly) && file.write(content) == content.size();
+}
+
 // The field of the Galaxies tab in widget, which tells the directory listed; nullptr when there is none.
 QLineEdit* galaxyDirectoryIn(const QWidget& widget)
 {
@@ -236,6 +244,7 @@ class TestStudioPlugin : public QObject
     void partsGoWithTheStudio();
     void stoppingStopsTheApplicationAssembled();
     void projectFileOpensAsItStarts();
+    void instancesFoundInGalaxies();
     void themeChosenInTheViewMenu();
     void overviewShownFromTheViewMenu();
     void galaxyDirectory_data();
@@ -567,6 +576,55 @@ void TestStudioPlugin::projectFileOpensAsItStarts()
     QMainWindow* window = shownWindow();
     QVERIFY(window != nullptr);
     QTRY_COMPARE(window->windowTitle(), u"Clock.nbp - NebulaStudio"_s);
+}
+
+// The field above the edition zone finds an instance in a galaxy placed in the project, and opens that galaxy to show
+// it, then one in a galaxy of that galaxy, opened in it; it leaves them to show one of the application.
+void TestStudioPlugin::instancesFoundInGalaxies()
+{
+    const QTemporaryDir directory;
+    QVERIFY(write(directory, u"Inner.nbp"_s,
+                  R"({"version": 1, "components": [{"name": "Stargate1", "type": "Nebula.Stargate"}]})"));
+    QVERIFY(write(directory, u"Gate.nbp"_s, R"({"version": 1, "components": [
+        {"name": "Stargate1", "type": "Nebula.Stargate"},
+        {"name": "Inner1", "type": "Nebula.Galaxy", "galaxy": "Inner.nbp", "x": 400}]})"));
+    QVERIFY(write(directory, u"Gates.nbp"_s, R"({"version": 1, "components": [
+        {"name": "Gate1", "type": "Nebula.Galaxy", "galaxy": "Gate.nbp", "x": 1000, "y": 800}]})"));
+    openGalaxy();
+    QVERIFY(m_universe->component(u"Project"_s)->setProperty("file", directory.filePath(u"Gates.nbp"_s)));
+    ignoreSizeHints();
+    QVERIFY(m_universe->start());
+    QTRY_COMPARE(shownWindow()->windowTitle(), u"Gates.nbp - NebulaStudio"_s);
+    const QWidget* edition = widgetOf(*m_universe->component(u"Edition"_s));
+    const auto* view = edition->findChild<QGraphicsView*>();
+    auto* field = edition->findChild<QLineEdit*>();
+    QVERIFY(view != nullptr && field != nullptr);
+    const QGraphicsScene* application = view->scene();
+    const auto find = [field](const QString& text)
+    {
+        field->setText(text);
+        QTest::keyClick(field, Qt::Key_Return);
+    };
+
+    find(u"gate1.stargate1"_s);
+    const QPointer<QGraphicsScene> gate = view->scene();
+    QVERIFY(gate != application);
+    QCOMPARE(gate->selectedItems().size(), 1);
+    QVERIFY(std::ranges::any_of(edition->findChildren<QLabel*>(),
+                                [](const QLabel* label) { return label->text() == u"Gate1"_s; })); // Its path
+
+    // Inner1 opened in Gate1, which stays open: its scene too, a button of the path.
+    find(u"gate1.inner1.stargate1"_s);
+    QVERIFY(!gate.isNull());
+    QVERIFY(view->scene() != gate && view->scene() != application);
+    QCOMPARE(view->scene()->selectedItems().size(), 1);
+    QVERIFY(std::ranges::any_of(edition->findChildren<QToolButton*>(),
+                                [](const QToolButton* button) { return button->text() == u"Gate1"_s; }));
+
+    find(u"gate1"_s);
+    QCOMPARE(view->scene(), application);
+    QCOMPARE(application->selectedItems().size(), 1);
+    m_universe->stop();
 }
 
 // The color scheme chosen in View > Theme gives the application its palette at once, and the preferences of the user

@@ -162,7 +162,7 @@ void clearLayout(QLayout& layout)
 EditionZone::EditionZone(Studio& studio, QWidget* parent)
     : QWidget(parent), m_studio(studio),
       m_scene(new EditionScene(studio.application(), Nebula::ComponentFactory::instance(), this)), m_path(createRow()),
-      m_view(createEditionView(*m_scene)), m_finder(new ComponentFinder(*m_view))
+      m_view(createEditionView(*m_scene)), m_finder(new ComponentFinder(studio.application(), *m_view))
 {
     createSaveGalaxyAction();
     createEditActions();
@@ -191,6 +191,7 @@ QWidget* EditionZone::createBar()
     // Where the galaxy shown is: the application, then the galaxies it is in, each a button that shows it again.
     m_path->hide();
     connect(m_finder, &ComponentFinder::told, this, &EditionZone::tell);
+    connect(m_finder, &ComponentFinder::galaxyRequested, this, &EditionZone::showGalaxy);
     QWidget* bar = createRow();
     auto* layout = static_cast<QHBoxLayout*>(bar->layout());
     layout->addWidget(m_path, 1);
@@ -533,6 +534,45 @@ void EditionZone::enterGalaxy(Nebula::Galaxy& galaxy)
     connect(&galaxy, &Nebula::Galaxy::aboutToBeReloaded, scene, [this, scene] { leaveBelow(*scene); });
     m_galaxyScenes.append(scene);
     showDepth(m_galaxyScenes.size());
+}
+
+void EditionZone::showGalaxy(const QStringList& path)
+{
+    if(leaveGalaxies(depthAlong(path)))
+    {
+        openAlong(path);
+    }
+}
+
+qsizetype EditionZone::depthAlong(const QStringList& path) const
+{
+    qsizetype depth = 0;
+    while(depth < m_galaxyScenes.size() && depth < path.size() &&
+          m_galaxyScenes.at(depth)->galaxy()->objectName() == path.at(depth))
+    {
+        ++depth;
+    }
+    return depth;
+}
+
+void EditionZone::openAlong(const QStringList& path)
+{
+    for(qsizetype depth = m_galaxyScenes.size(); depth < path.size(); ++depth)
+    {
+        Nebula::Galaxy* galaxy = shownGalaxyNamed(path.at(depth));
+        if(galaxy == nullptr)
+        {
+            return;
+        }
+        enterGalaxy(*galaxy);
+    }
+}
+
+Nebula::Galaxy* EditionZone::shownGalaxyNamed(const QString& name) const
+{
+    const Nebula::Galaxy* shown = shownScene().galaxy();
+    return qobject_cast<Nebula::Galaxy*>(shown != nullptr ? shown->component(name)
+                                                          : m_studio.application().component(name));
 }
 
 void EditionZone::leaveBelow(const EditionScene& scene)

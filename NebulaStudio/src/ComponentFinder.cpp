@@ -11,14 +11,23 @@
 #include <QStandardItemModel>
 #include <QTreeView>
 #include <algorithm>
+#include <initializer_list>
 #include <iterator>
+#include <memory>
 
 #include "ComponentItem.h"
+#include "EditionScene.h"
+#include "Nebula/Application/Universe.h"
 #include "Nebula/Component/Component.h"
+#include "Nebula/Component/ComponentFactory.h"
+#include "Nebula/Galaxy/Galaxy.h"
+#include "SceneItems.h"
 #include "Theme.h"
 
 namespace
 {
+
+using Instance = ComponentFinder::Instance;
 
 // Wide enough for the name of an instance and the name of its component, side by side in the popup, which is as wide.
 constexpr int FieldWidth = 280;
@@ -39,64 +48,151 @@ class NameCompleter : public QCompleter
     }
 };
 
-// Whether item is named text, whatever its case.
-bool isNamed(const ComponentItem& item, const QString& text)
+// The names of galaxies.
+QStringList namesOf(const QList<Nebula::Galaxy*>& galaxies)
 {
-    return item.component().objectName().compare(text, Qt::CaseInsensitive) == 0;
+    QStringList names;
+    for(const Nebula::Galaxy* galaxy : galaxies)
+    {
+        names.append(galaxy->objectName());
+    }
+    return names;
 }
 
-// Whether the name of item, or the name of its component, holds text, whatever its case.
-bool holds(const ComponentItem& item, const QString& text)
+// component, in galaxies, one in the other from the application down: its name after theirs.
+Instance instanceOf(Nebula::Component& component, const QList<Nebula::Galaxy*>& galaxies)
 {
-    return item.component().objectName().contains(text, Qt::CaseInsensitive) ||
-           item.componentName().contains(text, Qt::CaseInsensitive);
+    return {.component = &component,
+            .galaxies = galaxies,
+            .name = (namesOf(galaxies) << component.objectName()).join(u'.'),
+            .componentName = componentNameOf(component, Nebula::ComponentFactory::instance())};
 }
 
-// The instances scene shows, in the order of their names, whatever their case, the numbers in them read as numbers:
+// Appends to instances those in galaxies, one in the other from the application down, the last one, or the
+// application when there is none, and those of the galaxies they hold, at any depth.
+void appendInstances(const Nebula::Universe& application, const QList<Nebula::Galaxy*>& galaxies,
+                     QList<Instance>& instances)
+{
+    for(const std::unique_ptr<Nebula::Component>& component :
+        application.components(galaxies.isEmpty() ? nullptr : galaxies.constLast()))
+    {
+        instances.append(instanceOf(*component, galaxies));
+        if(auto* galaxy = qobject_cast<Nebula::Galaxy*>(component.get()))
+        {
+            appendInstances(application, QList<Nebula::Galaxy*>(galaxies) << galaxy, instances);
+        }
+    }
+}
+
+// Whether left comes before right: the fewer galaxies it is in, the sooner, then in the order collator gives their
+// names.
+bool comesBefore(const QCollator& collator, const Instance& left, const Instance& right)
+{
+    if(left.galaxies.size() != right.galaxies.size())
+    {
+        return left.galaxies.size() < right.galaxies.size();
+    }
+    return collator.compare(left.name, right.name) < 0;
+}
+
+// The instances of application, those of its galaxies at any depth among them: its own first, then those one galaxy
+// down, and so on, each level in the order of their names, whatever their case, the numbers in them read as numbers:
 // Greeter2 before Greeter10.
-QList<ComponentItem*> sortedItems(const QGraphicsScene& scene)
+QList<Instance> sortedInstances(const Nebula::Universe& application)
 {
+    QList<Instance> instances;
+    appendInstances(application, {}, instances);
     QCollator collator;
     collator.setCaseSensitivity(Qt::CaseInsensitive);
     collator.setNumericMode(true);
-    QList<ComponentItem*> items = componentItems(scene);
-    std::ranges::sort(
-        items, [&collator](const ComponentItem* left, const ComponentItem* right)
-        { return collator.compare(left->component().objectName(), right->component().objectName()) < 0; });
-    return items;
+    std::ranges::sort(instances, [&collator](const Instance& left, const Instance& right)
+                      { return comesBefore(collator, left, right); });
+    return instances;
 }
 
-// What text finds among items: the one named text alone, when one is; those that hold it otherwise, in their order.
-QList<ComponentItem*> findAmong(const QList<ComponentItem*>& items, const QString& text)
+// Whether the name of instance, after those of its galaxies, is text, whatever its case.
+bool isNamed(const Instance& instance, const QString& text)
 {
-    const auto named = std::ranges::find_if(items, [&text](const ComponentItem* item) { return isNamed(*item, text); });
-    if(named != items.end())
+    return instance.name.compare(text, Qt::CaseInsensitive) == 0;
+}
+
+// Whether its own name is text, whatever its case.
+bool hasOwnName(const Instance& instance, const QString& text)
+{
+    return instance.component->objectName().compare(text, Qt::CaseInsensitive) == 0;
+}
+
+// Whether its name, after those of its galaxies, or the name of its component, holds text, whatever its case.
+bool holds(const Instance& instance, const QString& text)
+{
+    return instance.name.contains(text, Qt::CaseInsensitive) ||
+           instance.componentName.contains(text, Qt::CaseInsensitive);
+}
+
+// Those of instances that matches tells match text, in their order.
+QList<Instance> matching(const QList<Instance>& instances, const QString& text,
+                         bool (*matches)(const Instance&, const QString&))
+{
+    QList<Instance> found;
+    std::ranges::copy_if(instances, std::back_inserter(found),
+                         [&text, matches](const Instance& instance) { return matches(instance, text); });
+    return found;
+}
+
+// What text finds among instances: the one named text, when one is; those whose own name it is otherwise, in galaxies;
+// those that hold it otherwise. In their order.
+QList<Instance> findAmong(const QList<Instance>& instances, const QString& text)
+{
+    for(const auto matches : {&isNamed, &hasOwnName})
     {
-        return {*named};
+        if(QList<Instance> found = matching(instances, text, matches); !found.isEmpty())
+        {
+            return found;
+        }
     }
-    QList<ComponentItem*> holding;
-    std::ranges::copy_if(items, std::back_inserter(holding),
-                         [&text](const ComponentItem* item) { return holds(*item, text); });
-    return holding;
+    return matching(instances, text, &holds);
 }
 
-// What text finds among the instances scene shows, see findAmong(); none when text is empty, or when there is no scene.
-QList<ComponentItem*> findIn(const QGraphicsScene* scene, const QString& text)
+// The components whose items are selected in scene; none when there is no scene.
+QList<const Nebula::Component*> selectedIn(const QGraphicsScene* scene)
 {
-    return text.isEmpty() || scene == nullptr ? QList<ComponentItem*>() : findAmong(sortedItems(*scene), text);
+    QList<const Nebula::Component*> selected;
+    if(scene != nullptr)
+    {
+        for(const ComponentItem* item : objectsAmong<ComponentItem>(scene->selectedItems()))
+        {
+            selected.append(&item->component());
+        }
+    }
+    return selected;
 }
 
-// The rank, among found, of the one after the first one selected: the first one when none is, or after the last one.
-qsizetype nextRank(const QList<ComponentItem*>& found)
+// Whether instance is in galaxy, or in a galaxy it holds, at any depth: whatever it is in when galaxy is nullptr, the
+// application.
+bool isIn(const Instance& instance, const Nebula::Galaxy* galaxy)
 {
-    const auto selected = std::ranges::find_if(found, &ComponentItem::isSelected);
-    return selected == found.end() ? 0 : (std::distance(found.begin(), selected) + 1) % found.size();
+    return galaxy == nullptr || std::ranges::find(instance.galaxies, galaxy) != instance.galaxies.end();
+}
+
+// The rank, among found, of the one after the first one selected, the first one after the last one; when none is, the
+// first one in shown, or in a galaxy it holds, see isIn(), or the first one when none is there.
+qsizetype nextRank(const QList<Instance>& found, const QList<const Nebula::Component*>& selected,
+                   const Nebula::Galaxy* shown)
+{
+    const auto first = std::ranges::find_if(found, [&selected](const Instance& instance)
+                                            { return selected.contains(instance.component); });
+    if(first != found.end())
+    {
+        return (std::distance(found.begin(), first) + 1) % found.size();
+    }
+    const auto in = std::ranges::find_if(found, [shown](const Instance& instance) { return isIn(instance, shown); });
+    return in != found.end() ? std::distance(found.begin(), in) : 0;
 }
 
 // Tells that the one of found at rank is found, and, when there are others, which one it is and how to go to the next.
-QString foundText(const QList<ComponentItem*>& found, qsizetype rank)
+QString foundText(const QList<Instance>& found, qsizetype rank)
 {
-    const QString name = found.at(rank)->component().objectName();
+    const QString& name = found.at(rank).name;
     return found.size() == 1 ? ComponentFinder::tr("%1 found").arg(name)
                              : ComponentFinder::tr("%1 found, %2 of %3: Enter shows the next one")
                                    .arg(name)
@@ -104,14 +200,13 @@ QString foundText(const QList<ComponentItem*>& found, qsizetype rank)
                                    .arg(found.size());
 }
 
-// A row of the completions: the name of item, after the icon of its component, then the name of its component.
-QList<QStandardItem*> completionRow(const ComponentItem& item)
+// A row of the completions: the name of instance, after the icon of its component, then the name of its component.
+QList<QStandardItem*> completionRow(const Instance& instance)
 {
-    const QIcon& componentIcon = item.componentIcon();
-    auto* name = new QStandardItem(componentIcon.isNull() ? icon(GlossaryTerm::Astre) : componentIcon,
-                                   item.component().objectName());
-    name->setData(name->text() + u'\n' + item.componentName(), SearchRole);
-    return {name, new QStandardItem(item.componentName())};
+    const QIcon componentIcon = componentIconOf(*instance.component);
+    auto* name = new QStandardItem(componentIcon.isNull() ? icon(GlossaryTerm::Astre) : componentIcon, instance.name);
+    name->setData(instance.name + u'\n' + instance.componentName, SearchRole);
+    return {name, new QStandardItem(instance.componentName)};
 }
 
 // The popup of the completions: the name of each instance, as wide as it needs, then the name of its component. Set
@@ -139,12 +234,12 @@ QCompleter* createCompleter(QStandardItemModel& completions, QLineEdit& field)
 
 } // namespace
 
-ComponentFinder::ComponentFinder(QGraphicsView& view, QWidget* parent)
-    : QLineEdit(parent), m_view(view), m_completions(new QStandardItemModel(this))
+ComponentFinder::ComponentFinder(const Nebula::Universe& application, QGraphicsView& view, QWidget* parent)
+    : QLineEdit(parent), m_application(application), m_view(view), m_completions(new QStandardItemModel(this))
 {
     setPlaceholderText(tr("Find instances"));
-    setToolTip(tr("Find the instances of the edition zone by their name, or by the name of their component: Enter "
-                  "shows the next one"));
+    setToolTip(tr("Find the instances of the application, and of its galaxies, by their name, or by the name of their "
+                  "component: Enter shows the next one, opening the galaxy it is in"));
     setClearButtonEnabled(true);
     setMinimumWidth(FieldWidth);
     // Before the completer looks among them: the line edit tells that its text was edited, then has it look.
@@ -156,32 +251,77 @@ ComponentFinder::ComponentFinder(QGraphicsView& view, QWidget* parent)
 
 ComponentItem* ComponentFinder::find(const QString& text)
 {
-    const QList<ComponentItem*> found = findIn(m_view.scene(), text);
+    const QList<Instance> found = text.isEmpty() ? QList<Instance>() : findAmong(sortedInstances(m_application), text);
     if(found.isEmpty() && !text.isEmpty())
     {
-        emit told(
-            tr("No instance in the edition zone has \"%1\" in its name or in the name of its component").arg(text));
+        emit told(tr("No instance of the application, nor of its galaxies, has \"%1\" in its name or in the name of "
+                     "its component")
+                      .arg(text));
     }
-    return found.isEmpty() ? nullptr : showFound(found, nextRank(found));
+    return found.isEmpty() ? nullptr : showFound(found, nextRank(found, selectedIn(m_view.scene()), shownGalaxy()));
 }
 
 void ComponentFinder::refreshCompletions()
 {
     m_completions->setRowCount(0);
-    const QGraphicsScene* scene = m_view.scene();
-    const QList<ComponentItem*> items = scene != nullptr ? sortedItems(*scene) : QList<ComponentItem*>();
-    for(const ComponentItem* item : items)
+    for(const Instance& instance : sortedInstances(m_application))
     {
-        m_completions->appendRow(completionRow(*item));
+        m_completions->appendRow(completionRow(instance));
     }
 }
 
-ComponentItem* ComponentFinder::showFound(const QList<ComponentItem*>& found, qsizetype rank)
+Nebula::Galaxy* ComponentFinder::shownGalaxy() const
 {
-    ComponentItem* item = found.at(rank);
-    m_view.scene()->clearSelection();
-    item->setSelected(true);
-    m_view.centerOn(item);
-    emit told(foundText(found, rank));
+    const auto* scene = qobject_cast<const EditionScene*>(m_view.scene());
+    return scene != nullptr ? scene->galaxy() : nullptr;
+}
+
+QStringList ComponentFinder::shownPath() const
+{
+    QStringList path;
+    for(const Nebula::Galaxy* galaxy = shownGalaxy(); galaxy != nullptr; galaxy = m_application.galaxyOf(*galaxy))
+    {
+        path.prepend(galaxy->objectName());
+    }
+    return path;
+}
+
+ComponentItem* ComponentFinder::showFound(const QList<Instance>& found, qsizetype rank)
+{
+    // By their names: the galaxies left to show the one it is in may be read again, and what they hold with them.
+    const Instance& instance = found.at(rank);
+    return showFound(namesOf(instance.galaxies), instance.component->objectName(), foundText(found, rank));
+}
+
+ComponentItem* ComponentFinder::showFound(const QStringList& path, const QString& name, const QString& what)
+{
+    if(shownPath() != path)
+    {
+        emit galaxyRequested(path);
+    }
+    return select(shownItem(path, name), what);
+}
+
+ComponentItem* ComponentFinder::shownItem(const QStringList& path, const QString& name) const
+{
+    if(m_view.scene() == nullptr || shownPath() != path)
+    {
+        return nullptr;
+    }
+    const QList<ComponentItem*> items = componentItems(*m_view.scene());
+    const auto named =
+        std::ranges::find(items, name, [](const ComponentItem* item) { return item->component().objectName(); });
+    return named != items.end() ? *named : nullptr;
+}
+
+ComponentItem* ComponentFinder::select(ComponentItem* item, const QString& what)
+{
+    if(item != nullptr)
+    {
+        m_view.scene()->clearSelection();
+        item->setSelected(true);
+        m_view.centerOn(item);
+        emit told(what);
+    }
     return item;
 }

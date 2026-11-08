@@ -38,8 +38,9 @@ class SettingsFile;
 // a scene of its own, where it is edited as the application is, under a path back to the application, each level a
 // button that shows it again once those further down are left: leaving a galaxy changed since it was shown asks
 // whether to save it, see leaveGalaxies(). Save Galaxy writes the galaxy shown to its file, then reads every instance
-// of that file again from it. On the right of the path, a field finds the instances the view shows by their name or
-// the one of their component, see ComponentFinder, and shows the one found in its middle. Its View menu gives the keys
+// of that file again from it. On the right of the path, a field finds the instances of the application, and of its
+// galaxies at any depth, by their name or the one of their component, see ComponentFinder, and shows the one found in
+// the middle of the view, once the galaxy it is in is shown there, see showGalaxy(). Its View menu gives the keys
 // to that field, zooms the view and chooses how the links of every scene are drawn, as its studio keeps it; its Run
 // menu starts the application, which is not edited while it runs, and stops it. What its scenes and its field refuse
 // or tell, it tells through its studio, as the plugins a galaxy placed loaded. An overview of the whole scene shown,
@@ -122,7 +123,7 @@ class EditionZone : public QWidget
   private:
     // The bar above the view: the path, hidden while the application is shown, then the field that finds instances.
     void layOut();
-    // The path to the galaxy shown, then on the right the field that finds the instances the view shows.
+    // The path to the galaxy shown, then on the right the field that finds the instances, which it shows.
     QWidget* createBar();
     // Save Galaxy, which works by its shortcut wherever it is shown.
     void createSaveGalaxyAction();
@@ -182,6 +183,18 @@ class EditionZone : public QWidget
     [[nodiscard]] EditionScene& shownScene() const;
     // Shows galaxy, one placed in what the zone shows, in its place, where it is edited.
     void enterGalaxy(Nebula::Galaxy& galaxy);
+    // Shows the galaxy at the end of path, the names of the galaxies from the application down to it, where the field
+    // found an instance: the application when path is empty. The galaxies shown on the way to it stay open, the others
+    // are left, as leaveGalaxies() does, then those further down the way are opened. It stops where one of them is not
+    // left, or is no longer there.
+    void showGalaxy(const QStringList& path);
+    // How many of the galaxies down the path are on the way to the one at the end of path, see showGalaxy().
+    [[nodiscard]] qsizetype depthAlong(const QStringList& path) const;
+    // Opens the galaxies of path, see showGalaxy(), past those shown, one in the other; it stops at one that is not
+    // there.
+    void openAlong(const QStringList& path);
+    // The galaxy named name among the components of the scene shown; nullptr when none is.
+    [[nodiscard]] Nebula::Galaxy* shownGalaxyNamed(const QString& name) const;
     // Closes the scenes further down the path than scene, which shows a galaxy about to be read again, or restored:
     // they show what it holds, which goes then.
     void leaveBelow(const EditionScene& scene);
@@ -239,5 +252,5 @@ class EditionZone : public QWidget
     QAction* m_duplicateAction = nullptr;  // As m_cutAction
     Nebula::IHistory* m_history = nullptr; // Of the steps of its scenes
     EditionView* m_view = nullptr;         // Shows m_scene, or the last of m_galaxyScenes
-    ComponentFinder* m_finder = nullptr;   // Above the view, on the right, of what it shows
+    ComponentFinder* m_finder = nullptr;   // Above the view, on the right, of the instances of the application
 };
