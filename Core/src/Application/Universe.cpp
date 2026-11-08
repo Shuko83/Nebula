@@ -292,19 +292,124 @@ QJsonObject bindingJson(const Binding& binding)
             {QStringLiteral("provided"), binding.provided}};
 }
 
-// The bindings of components as a project holds them: one for each of what a list is bound to, in its order, which
-// binding them again keeps.
-QJsonArray bindingsJson(const std::vector<std::unique_ptr<Component>>& components)
+// The bindings of component to one of components.
+QList<Binding> bindingsAmong(Component& component, const QList<Component*>& components)
+{
+    QList<Binding> bindings = bindingsOf(component);
+    bindings.removeIf([&components](const Binding& binding) { return !components.contains(binding.provider.data()); });
+    return bindings;
+}
+
+// The bindings of components to one of them as a project holds them: one for each of what a list is bound to, in its
+// order, which binding them again keeps.
+QJsonArray bindingsJson(const QList<Component*>& components)
 {
     QJsonArray json;
-    for(const std::unique_ptr<Component>& component : components)
+    for(Component* component : components)
     {
-        for(const Binding& binding : bindingsOf(*component))
-        {
-            json.append(bindingJson(binding));
-        }
+        std::ranges::for_each(bindingsAmong(*component, components),
+                              [&json](const Binding& binding) { json.append(bindingJson(binding)); });
     }
     return json;
+}
+
+// Whether json, a component of a project, is a stargate.
+bool isStargate(const QJsonObject& json)
+{
+    return json.value(u"type").toString() == Stargate::Id;
+}
+
+// The binding json, as a project holds it, between components named again as names tells, by the names they had;
+// nullopt when one of them is not among those names.
+std::optional<QJsonObject> renamedBinding(QJsonObject json, const QHash<QString, QString>& names)
+{
+    for(const QStringView key : {u"consumer", u"provider"})
+    {
+        const auto name = names.constFind(json.value(key).toString());
+        if(name == names.constEnd())
+        {
+            return std::nullopt;
+        }
+        json.insert(key, *name);
+    }
+    return json;
+}
+
+// The component json, as a project holds it, named again as names tells, by the name it had; nullopt when it is not
+// among those names.
+std::optional<QJsonObject> renamedComponent(QJsonObject json, const QHash<QString, QString>& names)
+{
+    const auto name = names.constFind(json.value(u"name").toString());
+    if(name == names.constEnd())
+    {
+        return std::nullopt;
+    }
+    json.insert(u"name", *name);
+    return json;
+}
+
+// What rename makes of each of items, as a project holds them, in their order: those it makes nothing of left out.
+template <typename Rename> QJsonArray renamedEach(const QJsonArray& items, Rename rename)
+{
+    QJsonArray renamed;
+    for(const QJsonValue& value : items)
+    {
+        if(const std::optional<QJsonObject> json = rename(value.toObject()))
+        {
+            renamed.append(*json);
+        }
+    }
+    return renamed;
+}
+
+// The names of components, those of a project, in their order, but those of its stargates.
+QStringList placedNames(const QJsonArray& components)
+{
+    QStringList names;
+    for(const QJsonValue& value : components)
+    {
+        if(!isStargate(value.toObject()))
+        {
+            names.append(value.toObject().value(u"name").toString());
+        }
+    }
+    return names;
+}
+
+// name without the number it ends with, and the number after that one: 3 for Counter2, 2 when it ends with none.
+std::pair<QString, qlonglong> nextNumbered(const QString& name)
+{
+    qsizetype end = name.size();
+    while(end > 0 && name.at(end - 1).isDigit())
+    {
+        --end;
+    }
+    return {name.first(end), end < name.size() ? name.sliced(end).toLongLong() + 1 : 2};
+}
+
+// name, unless isTaken tells it is taken: then the one nextNumbered() starts from, or the first number after it that
+// is not.
+template <typename IsTaken> QString derivedName(const QString& name, IsTaken isTaken)
+{
+    auto [base, number] = nextNumbered(name);
+    QString derived = name;
+    for(; isTaken(derived); ++number)
+    {
+        derived = base + QString::number(number);
+    }
+    return derived;
+}
+
+// Whether inserted, the components placed of those of instances, a piece of a project, are all of them, and some;
+// problems tells why when there are none.
+bool isWhole(const QList<Component*>& inserted, const QJsonObject& instances, QStringList& problems)
+{
+    const qsizetype count = instances.value(u"components").toArray().size();
+    if(count == 0)
+    {
+        problems.append(QStringLiteral("There is no instance to place"));
+    }
+    return count > 0 && inserted.size() == count;
 }
 
 // Binds what binding tells; false when its consumer or its provider is gone, or they cannot be bound.
@@ -767,7 +872,9 @@ Component* Universe::instantiate(const QString& componentId, const QString& name
 
 Galaxy* Universe::instantiateGalaxy(const QString& filePath, const QString& name, Galaxy* galaxy)
 {
-    const std::optional<Scope> scope = placingScope(galaxy);
+    const std::optional<Scope> scope =
+        placingScope(galaxy, QStringLiteral("A galaxy cannot be placed while the application runs"),
+                     QStringLiteral("A galaxy is only placed in the application, or in one of its galaxies"));
     std::unique_ptr<Galaxy> placed = scope ? createGalaxy(filePath, name, *scope, m_errorString) : nullptr;
     if(placed == nullptr)
     {
@@ -812,6 +919,31 @@ bool Universe::remove(Component& instance)
     tellComponentsChanged(*where);
     tellSettingsFilesOf(removed.get()); // Its files are no longer among those of the application
     return true;
+}
+
+QJsonObject Universe::saveInstances(const QList<Component*>& instances) const
+{
+    const QList<Component*> saved = m_running ? QList<Component*>() : savedInstances(instances);
+    if(saved.isEmpty())
+    {
+        return {};
+    }
+    // Their galaxies whole: they are placed again wherever the project is.
+    return {{QStringLiteral("plugins"), pluginsJson(saved)},
+            {QStringLiteral("components"), componentsJson(saved, {})},
+            {QStringLiteral("bindings"), bindingsJson(saved)}};
+}
+
+QList<Component*> Universe::insertInstances(const QJsonObject& instances, Galaxy* galaxy, QStringList& problems)
+{
+    const std::optional<Scope> scope =
+        placingScope(galaxy, QStringLiteral("Instances cannot be placed while the application runs"),
+                     QStringLiteral("Instances are only placed in the application, or in one of its galaxies"));
+    if(!scope || !loadInstancePlugins(galaxyInfo({}, instances)))
+    {
+        return {};
+    }
+    return insert(*scope, freelyNamed(*scope, instances), problems);
 }
 
 const std::vector<std::unique_ptr<Component>>& Universe::components() const
@@ -1449,15 +1581,21 @@ bool Universe::knowsPlugins(const QString& nativePath, const GalaxyInfo& info, Q
 
 bool Universe::loadPlugins(const QString& nativePath, const GalaxyInfo& info, QString& error)
 {
-    const auto unloadable =
-        std::ranges::find_if_not(info.plugins, [this](const QString& pluginId) { return loadPlugin(pluginId); });
-    if(unloadable == info.plugins.end())
+    const std::optional<QString> unloadable = firstUnloadable(info.plugins);
+    if(!unloadable)
     {
         return true;
     }
     error = QStringLiteral("%1 needs the plugin %2, which cannot be loaded: %3")
                 .arg(nativePath, *unloadable, m_plugins.errorString());
     return false;
+}
+
+std::optional<QString> Universe::firstUnloadable(const QStringList& pluginIds)
+{
+    const auto unloadable =
+        std::ranges::find_if_not(pluginIds, [this](const QString& pluginId) { return loadPlugin(pluginId); });
+    return unloadable != pluginIds.end() ? std::optional(*unloadable) : std::nullopt;
 }
 
 std::unique_ptr<Galaxy> Universe::createGalaxy(const QString& filePath, const QString& name, const Scope& parent,
@@ -1525,16 +1663,15 @@ void Universe::settleGalaxy(Galaxy& galaxy)
     }
 }
 
-std::optional<Universe::Scope> Universe::placingScope(Galaxy* galaxy)
+std::optional<Universe::Scope> Universe::placingScope(Galaxy* galaxy, const QString& whileRunning,
+                                                      const QString& elsewhere)
 {
     // Not holding the file of galaxy is enough for each instance of that file to hold it once it is saved: the galaxies
     // another instance is in hold that file too.
     const std::optional<Scope> scope = m_running ? std::nullopt : galaxyScope(galaxy);
     if(!scope)
     {
-        m_errorString = m_running
-                            ? QStringLiteral("A galaxy cannot be placed while the application runs")
-                            : QStringLiteral("A galaxy is only placed in the application, or in one of its galaxies");
+        m_errorString = m_running ? whileRunning : elsewhere;
     }
     return scope;
 }
@@ -1618,20 +1755,98 @@ QJsonObject Universe::exposedValues(const Galaxy& galaxy) const
     return values;
 }
 
+QList<Component*> Universe::savedInstances(const QList<Component*>& instances) const
+{
+    const auto first =
+        std::ranges::find_if(instances, [this](const Component* instance) { return pathTo(*instance).has_value(); });
+    // In the order of where they are, rather than in the one they are given in.
+    QList<Component*> saved = first != instances.end() ? pointers(components(galaxyOf(**first))) : QList<Component*>();
+    saved.removeIf([&instances](const Component* component)
+                   { return !instances.contains(component) || qobject_cast<const Stargate*>(component) != nullptr; });
+    return saved;
+}
+
+bool Universe::loadInstancePlugins(const GalaxyInfo& instances)
+{
+    if(const QStringList missing = missingPlugins(instances); !missing.isEmpty())
+    {
+        return refuse(QStringLiteral("They need plugins the application does not know: %1").arg(missing.join(u", ")));
+    }
+    const std::optional<QString> unloadable = firstUnloadable(instances.plugins);
+    return !unloadable || refuse(QStringLiteral("They need the plugin %1, which cannot be loaded: %2")
+                                     .arg(*unloadable, m_plugins.errorString()));
+}
+
+QJsonObject Universe::freelyNamed(const Scope& scope, const QJsonObject& instances) const
+{
+    const QJsonArray components = instances.value(u"components").toArray();
+    const QHash<QString, QString> names = freeNames(scope, components);
+    const auto component = [&names](const QJsonObject& json) { return renamedComponent(json, names); };
+    const auto binding = [&names](const QJsonObject& json) { return renamedBinding(json, names); };
+    return {{QStringLiteral("components"), renamedEach(components, component)},
+            {QStringLiteral("bindings"), renamedEach(instances.value(u"bindings").toArray(), binding)}};
+}
+
+QHash<QString, QString> Universe::freeNames(const Scope& scope, const QJsonArray& components) const
+{
+    QHash<QString, QString> names; // By the names they have in components: those after them do not take theirs
+    const auto isTaken = [this, &scope, &names](const QString& name)
+    { return names.values().contains(name) || scopeComponent(scope, name) != nullptr; };
+    for(const QString& name : placedNames(components))
+    {
+        names.insert(name, derivedName(name, isTaken));
+    }
+    return names;
+}
+
+QList<Component*> Universe::insert(const Scope& scope, const QJsonObject& instances, QStringList& problems)
+{
+    const auto first = static_cast<qsizetype>(scopeComponents(scope).size());
+    QStringList loaded = loadScope(scope, instances);
+    const QList<Component*> inserted = pointers(scopeComponents(scope)).sliced(first);
+    if(!isWhole(inserted, instances, loaded)) // One of them is missing: none of them is placed
+    {
+        return withdraw(inserted, loaded);
+    }
+    settleInserted(scope, inserted);
+    problems.append(loaded);
+    return inserted;
+}
+
+QList<Component*> Universe::withdraw(const QList<Component*>& inserted, const QStringList& problems)
+{
+    for(Component* instance : inserted | std::views::reverse)
+    {
+        remove(*instance);
+    }
+    refuse(problems.join(u'\n'));
+    return {};
+}
+
+void Universe::settleInserted(const Scope& scope, const QList<Component*>& inserted)
+{
+    m_errorString.clear();
+    if(scope.galaxy != nullptr) // adopt() tells it in the application
+    {
+        std::ranges::for_each(inserted, [this](const Component* instance) { tellSettingsFilesOf(instance); });
+    }
+}
+
 QJsonObject Universe::saveProject(const std::vector<std::unique_ptr<Component>>& components,
                                   const std::vector<std::unique_ptr<SettingsFile>>& files, const QString& directory,
                                   const QString& description) const
 {
+    const QList<Component*> saved = pointers(components);
     QJsonObject project{{QStringLiteral("version"), ProjectVersion}};
     insertUnlessEmpty(project, u"description", description);
-    project.insert(u"plugins", pluginsJson(components));
-    project.insert(u"components", componentsJson(components, directory));
-    project.insert(u"bindings", bindingsJson(components));
+    project.insert(u"plugins", pluginsJson(saved));
+    project.insert(u"components", componentsJson(saved, directory));
+    project.insert(u"bindings", bindingsJson(saved));
     insertUnlessEmpty(project, u"settings", jsonArray(files, settingsFileJson));
     return project;
 }
 
-QJsonArray Universe::pluginsJson(const std::vector<std::unique_ptr<Component>>& components) const
+QJsonArray Universe::pluginsJson(const QList<Component*>& components) const
 {
     QJsonArray plugins;
     for(const auto& [pluginId, filePath] : pluginFiles(components))
@@ -1644,10 +1859,10 @@ QJsonArray Universe::pluginsJson(const std::vector<std::unique_ptr<Component>>& 
     return plugins;
 }
 
-std::map<QString, QString> Universe::pluginFiles(const std::vector<std::unique_ptr<Component>>& components) const
+std::map<QString, QString> Universe::pluginFiles(const QList<Component*>& components) const
 {
     std::map<QString, QString> files; // By plugin id: each of them once
-    for(const std::unique_ptr<Component>& component : components)
+    for(const Component* component : components)
     {
         addPluginFiles(*component, files);
     }
@@ -1658,7 +1873,7 @@ void Universe::addPluginFiles(const Component& component, std::map<QString, QStr
 {
     if(const auto* galaxy = qobject_cast<const Galaxy*>(&component))
     {
-        files.merge(pluginFiles(galaxy->components()));
+        files.merge(pluginFiles(pointers(galaxy->components())));
     }
     else if(const std::optional<PluginInfo> plugin = pluginOf(component))
     {
@@ -1672,11 +1887,10 @@ std::optional<PluginInfo> Universe::pluginOf(const Component& component) const
     return info ? m_plugins.plugin(info->pluginId) : std::nullopt;
 }
 
-QJsonArray Universe::componentsJson(const std::vector<std::unique_ptr<Component>>& components,
-                                    const QString& directory) const
+QJsonArray Universe::componentsJson(const QList<Component*>& components, const QString& directory) const
 {
-    return jsonArray(components, [this, &directory](const std::unique_ptr<Component>& component)
-                     { return componentJson(*component, directory); });
+    return jsonArray(components,
+                     [this, &directory](const Component* component) { return componentJson(*component, directory); });
 }
 
 QJsonObject Universe::componentJson(const Component& component, const QString& directory) const

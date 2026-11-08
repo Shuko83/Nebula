@@ -58,6 +58,39 @@ QStringList names(const Universe& universe)
     return names;
 }
 
+// The names of components, in their order.
+QStringList namesOf(const QList<Nebula::Component*>& components)
+{
+    QStringList names;
+    for(const Nebula::Component* component : components)
+    {
+        names.append(component->objectName());
+    }
+    return names;
+}
+
+// The names of the components of instances, as saveInstances() writes them, in their order.
+QStringList namesIn(const QJsonObject& instances)
+{
+    QStringList names;
+    const QJsonArray components = instances.value(u"components").toArray();
+    for(const QJsonValue& component : components)
+    {
+        names.append(component.toObject().value(u"name").toString());
+    }
+    return names;
+}
+
+// What the binding of consumed, an interface of consumer, to provided, one of provider, is in a project.
+QJsonObject bindingJson(const QString& consumer, const QString& consumed, const QString& provider,
+                        const QString& provided)
+{
+    return {{QStringLiteral("consumer"), consumer},
+            {QStringLiteral("consumed"), consumed},
+            {QStringLiteral("provider"), provider},
+            {QStringLiteral("provided"), provided}};
+}
+
 } // namespace
 
 // Universe: how it assembles an application, saves and loads it as a project, runs it, and unloads its plugins.
@@ -77,6 +110,16 @@ class TestUniverse : public QObject
     void remove();
     void removeUnbindsWhatItProvides();
     void componentsOf();
+
+    void saveInstances();
+    void saveInstancesLeavesOut();
+    void insertInstances_data();
+    void insertInstances();
+    void insertInstancesWithTheirValues();
+    void insertInstancesBindings();
+    void insertInstancesRefused_data();
+    void insertInstancesRefused();
+    void insertInstancesLoadsTheirPlugins();
 
     void read_data();
     void read();
@@ -236,6 +279,222 @@ void TestUniverse::componentsOf()
     Panel* panel = ::instantiate<Panel>(universe);
     QCOMPARE(universe.componentsOf(TestComponents::Id), (QList<Nebula::Component*>{probe, panel}));
     QVERIFY(universe.componentsOf(QStringLiteral("Unknown")).isEmpty());
+}
+
+void TestUniverse::saveInstances()
+{
+    Universe universe;
+    Source* source = ::instantiate<Source>(universe);
+    Sink* sink = ::instantiate<Sink>(universe);
+    Sink* other = ::instantiate<Sink>(universe);
+    Probe* probe = ::instantiate<Probe>(universe);
+    QVERIFY(sink->bindInterface(QStringLiteral("object"), *source, QStringLiteral("object")));
+    QVERIFY(other->bindInterface(QStringLiteral("object"), *source, QStringLiteral("object")));
+    QVERIFY(probe->setProperty("count", 5));
+
+    // As a project holds them, in the order they were instantiated rather than the one they are given in.
+    const QJsonObject saved = universe.saveInstances({probe, sink, source});
+    const QJsonArray all = universe.save().value(u"components").toArray();
+    QCOMPARE(saved.value(u"components").toArray(), (QJsonArray{all.at(0), all.at(1), all.at(3)}));
+    // Bound to one another only: not Sink2, which is not copied.
+    QCOMPARE(saved.value(u"bindings").toArray(),
+             QJsonArray{bindingJson(QStringLiteral("Sink1"), QStringLiteral("object"), QStringLiteral("Source1"),
+                                    QStringLiteral("object"))});
+    QCOMPARE(saved.value(u"plugins").toArray(), QJsonArray()); // Those of the tests are in no plugin file
+    QCOMPARE(saved.keys(), (QStringList{"bindings", "components", "plugins"}));
+}
+
+void TestUniverse::saveInstancesLeavesOut()
+{
+    Universe universe;
+    Probe* probe = ::instantiate<Probe>(universe);
+    Nebula::Stargate* stargate = universe.addStargate();
+    Universe other;
+    Probe* foreign = ::instantiate<Probe>(other);
+
+    // Neither a stargate, nor an instance of another application.
+    QCOMPARE(namesIn(universe.saveInstances({foreign, stargate, probe})), QStringList{"Probe1"});
+    QVERIFY(universe.saveInstances({stargate}).isEmpty());
+    QVERIFY(universe.saveInstances({foreign}).isEmpty());
+    QVERIFY(universe.saveInstances({}).isEmpty());
+    // Nothing while it runs.
+    QVERIFY(universe.start());
+    QVERIFY(universe.saveInstances({probe}).isEmpty());
+    universe.stop();
+}
+
+void TestUniverse::insertInstances_data()
+{
+    QTest::addColumn<QStringList>("copied");   // Probes, in their order
+    QTest::addColumn<QStringList>("existing"); // Probes of the application they are placed in
+    QTest::addColumn<QStringList>("named");    // Those placed
+
+    QTest::newRow("free") << QStringList{"Probe1"} << QStringList{} << QStringList{"Probe1"};
+    QTest::newRow("taken") << QStringList{"Probe1"} << QStringList{"Probe1"} << QStringList{"Probe2"};
+    QTest::newRow("the next one taken") << QStringList{"Probe1"} << QStringList{"Probe1", "Probe2"}
+                                        << QStringList{"Probe3"};
+    QTest::newRow("after its number") << QStringList{"Counter2"} << QStringList{"Counter2"} << QStringList{"Counter3"};
+    QTest::newRow("its number long") << QStringList{"Counter09"} << QStringList{"Counter09"}
+                                     << QStringList{"Counter10"};
+    QTest::newRow("without number") << QStringList{"Display"} << QStringList{"Display"} << QStringList{"Display2"};
+    QTest::newRow("a number only") << QStringList{"7"} << QStringList{"7"} << QStringList{"8"};
+    QTest::newRow("among those placed") << QStringList{"Probe1", "Probe2"} << QStringList{"Probe1"}
+                                        << QStringList{"Probe2", "Probe3"};
+    QTest::newRow("in their order") << QStringList{"B", "A"} << QStringList{} << QStringList{"B", "A"};
+}
+
+void TestUniverse::insertInstances()
+{
+    QFETCH(QStringList, copied);
+    QFETCH(QStringList, existing);
+    QFETCH(QStringList, named);
+
+    Universe source;
+    QList<Nebula::Component*> instances;
+    for(const QString& name : std::as_const(copied))
+    {
+        instances.append(::instantiate<Probe>(source, name));
+    }
+    Universe universe;
+    for(const QString& name : std::as_const(existing))
+    {
+        QVERIFY(::instantiate<Probe>(universe, name) != nullptr);
+    }
+    const QSignalSpy componentsChanged(&universe, &Universe::componentsChanged);
+
+    QStringList problems;
+    const QList<Nebula::Component*> inserted = universe.insertInstances(source.saveInstances(instances), {}, problems);
+    QCOMPARE(problems, QStringList());
+    QVERIFY(universe.errorString().isEmpty());
+    QCOMPARE(namesOf(inserted), named);
+    QCOMPARE(names(universe), existing + named); // After the others, in their order
+    QCOMPARE(componentsChanged.count(), named.size());
+}
+
+void TestUniverse::insertInstancesWithTheirValues()
+{
+    Universe universe;
+    Probe* probe = ::instantiate<Probe>(universe);
+    auto* outlets = ::instantiate<Outlets>(universe);
+    QVERIFY(probe->setProperty("count", 5));
+    QVERIFY(probe->setProperty("text", QStringLiteral("copied")));
+    outlets->setCount(2);
+    outlets->setActive(2);
+    outlets->objects().at(1)->setProperty("level", 4);
+
+    // Placed again in the same application: as they were copied, under other names.
+    QStringList problems;
+    const QList<Nebula::Component*> inserted =
+        universe.insertInstances(universe.saveInstances({probe, outlets}), nullptr, problems);
+    QCOMPARE(problems, QStringList());
+    QCOMPARE(namesOf(inserted), (QStringList{"Probe2", "Outlets2"}));
+    QCOMPARE(inserted.at(0)->property("count").toInt(), 5);
+    QCOMPARE(inserted.at(0)->property("text").toString(), QStringLiteral("copied"));
+    const auto* placed = qobject_cast<const Outlets*>(inserted.at(1));
+    QCOMPARE(placed->count(), 2); // Its objects, then the values of their properties
+    QCOMPARE(placed->active(), 2);
+    QCOMPARE(placed->objects().at(1)->property("level").toInt(), 4);
+    // The copies are others: the originals stay as they are.
+    QVERIFY(inserted.at(0) != probe);
+    QVERIFY(inserted.at(0)->setProperty("count", 1));
+    QCOMPARE(probe->property("count").toInt(), 5);
+}
+
+void TestUniverse::insertInstancesBindings()
+{
+    Universe universe;
+    Source* first = ::instantiate<Source>(universe);
+    Source* second = ::instantiate<Source>(universe);
+    Sink* sink = ::instantiate<Sink>(universe);
+    ::instantiate<Sink>(universe, QStringLiteral("Sink2")); // Which the copy of Sink1 cannot be named after
+    QVERIFY(sink->bindInterface(QStringLiteral("object"), *first, QStringLiteral("object")));
+    QVERIFY(sink->bindInterface(QStringLiteral("objects"), *second, QStringLiteral("object")));
+    QVERIFY(sink->bindInterface(QStringLiteral("objects"), *first, QStringLiteral("object")));
+
+    // Copied with Source1 only: bound to its copy, not to Source2, which is not copied.
+    QStringList problems;
+    const QList<Nebula::Component*> inserted =
+        universe.insertInstances(universe.saveInstances({first, sink}), nullptr, problems);
+    QCOMPARE(problems, QStringList());
+    QCOMPARE(namesOf(inserted), (QStringList{"Source3", "Sink3"}));
+    const Nebula::Component* copy = inserted.at(1);
+    QCOMPARE(copy->binding(QStringLiteral("object")).provider, inserted.at(0));
+    const QList<Nebula::InterfaceBinding> list = copy->bindings(QStringLiteral("objects"));
+    QCOMPARE(list.size(), 1);
+    QCOMPARE(list.first().provider, inserted.at(0));
+    // The originals keep their own.
+    QCOMPARE(sink->binding(QStringLiteral("object")).provider, first);
+    QCOMPARE(sink->bindings(QStringLiteral("objects")).size(), 2);
+}
+
+void TestUniverse::insertInstancesRefused_data()
+{
+    QTest::addColumn<QByteArray>("instances");
+    QTest::addColumn<bool>("running");
+    QTest::addColumn<bool>("elsewhere"); // Placed in a galaxy of another application
+    QTest::addColumn<QString>("error");
+
+    const QByteArray probe = R"({"components": [{"name": "Probe1", "type": "Test.Probe"}]})";
+    QTest::newRow("while running") << probe << true << false << "Instances cannot be placed while the application runs";
+    QTest::newRow("elsewhere") << probe << false << true
+                               << "Instances are only placed in the application, or in one of its galaxies";
+    QTest::newRow("none") << QByteArray(R"({"components": []})") << false << false << "There is no instance to place";
+    QTest::newRow("unknown plugin") << QByteArray(R"({"plugins": [{"id": "Other.Plugin", "file": "other.nbdl"}],
+                                                     "components": [{"name": "Probe1", "type": "Test.Probe"}]})")
+                                    << false << false
+                                    << "They need plugins the application does not know: Other.Plugin";
+    // The first one placed is removed: none of them is.
+    QTest::newRow("one missing") << QByteArray(R"({"components": [{"name": "Probe1", "type": "Test.Probe"},
+                                                                  {"name": "X", "type": "Test.Unknown"}]})")
+                                 << false << false << "X is missing: no loaded plugin provides Test.Unknown";
+}
+
+void TestUniverse::insertInstancesRefused()
+{
+    QFETCH(QByteArray, instances);
+    QFETCH(bool, running);
+    QFETCH(bool, elsewhere);
+    QFETCH(QString, error);
+
+    const QTemporaryDir directory;
+    QFile file(directory.filePath(QStringLiteral("Empty.nbp")));
+    QVERIFY(file.open(QIODevice::WriteOnly) && file.write(R"({"version": 1})") > 0);
+    file.close();
+    Universe other;
+    Nebula::Galaxy* galaxy = elsewhere ? other.instantiateGalaxy(file.fileName()) : nullptr;
+    QCOMPARE(galaxy != nullptr, elsewhere);
+
+    Universe universe;
+    ::instantiate<Probe>(universe);
+    if(running)
+    {
+        QVERIFY(universe.start());
+    }
+    QStringList problems;
+    QVERIFY(universe.insertInstances(project(instances), galaxy, problems).isEmpty());
+    QCOMPARE(universe.errorString(), error);
+    QCOMPARE(problems, QStringList());
+    QCOMPARE(names(universe), QStringList{"Probe1"});
+    universe.stop();
+}
+
+void TestUniverse::insertInstancesLoadsTheirPlugins()
+{
+    Universe universe;
+    universe.plugins().scan(QStringLiteral(NEBULA_TEST_PLUGINS_DIR));
+    QVERIFY(!universe.plugins().isLoaded(FirstPluginId));
+    const QJsonObject instances = project(R"({"plugins": [{"id": "FabienDG.Nebula.FirstPlugin", "file": "nowhere"}],
+        "components": [{"name": "Alpha1", "type": "FabienDG.Nebula.FirstPlugin.Alpha"}]})");
+
+    // Found by its id, not by its file, and loaded.
+    QStringList problems;
+    const QList<Nebula::Component*> inserted = universe.insertInstances(instances, nullptr, problems);
+    QVERIFY2(!inserted.isEmpty(), qPrintable(universe.errorString()));
+    QVERIFY(universe.plugins().isLoaded(FirstPluginId));
+    QCOMPARE(inserted.first()->componentId(), AlphaId);
+    // And saved with them.
+    QCOMPARE(universe.saveInstances(inserted).value(u"plugins").toArray().first().toObject().value(u"id").toString(),
+             FirstPluginId);
 }
 
 void TestUniverse::read_data()
