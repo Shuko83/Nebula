@@ -18,11 +18,12 @@ class IHistory;
 // The edition zone of NebulaStudio, see EditionZone, built around the Studio it consumes as "studio", whose
 // application it shows and edits, and the galaxies placed there: it provides it as "widget", a QWidget, and as "zone",
 // for the parts that follow what is selected there or show a component there, a PropertyEditorComponent say. It also
-// provides its Edit menu, as "editMenu", which undoes and redoes what is edited, its View menu, as "viewMenu", which
-// zooms it and chooses how the links are drawn, its Run menu, as "runMenu", which starts and stops the application, and
-// the label that tells its zoom level, as "zoomLabel": a StudioWindowComponent shows them. All of them for as long as
-// it has the studio. What is edited is kept in the history it consumes as "history", a Nebula::IHistory, the one of a
-// HistoryComponent of StandardPlugin say: nothing is undone without it. It needs a QApplication.
+// provides its Edit menu, as "editMenu", which undoes and redoes what is edited, and cuts, copies, pastes and
+// duplicates the instances it shows, its View menu, as "viewMenu", which zooms it and chooses how the links are drawn,
+// its Run menu, as "runMenu", which starts and stops the application, and the label that tells its zoom level, as
+// "zoomLabel": a StudioWindowComponent shows them. All of them for as long as it has the studio. What is edited is kept
+// in the history it consumes as "history", a Nebula::IHistory, the one of a HistoryComponent of StandardPlugin say:
+// nothing is undone without it. It needs a QApplication.
 class EditionZoneComponent : public StudioPartComponent
 {
     Q_OBJECT

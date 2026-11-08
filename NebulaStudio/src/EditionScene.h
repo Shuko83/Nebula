@@ -71,8 +71,11 @@ class SettingsFile;
 // up to it: from there on, the two part. Double-clicking a junction, or Remove junction point in its menu, has each
 // link through it go from its provided interface again. Clicking the line links share selects them all, see LinkItem,
 // and so does the menu opened on it: Remove links removes them all.
+// Cut, Copy and Duplicate, in the menu of an instance, do to it what copy(), cut() and duplicate() do to the instances
+// selected, to all of them when it is one of them; Paste, in the menu of the edition zone, places those of the
+// clipboard where it was opened, see pasteAt().
 // None of this is done while the application runs, see Universe: its components can still be selected, but nothing is
-// dropped, moved, linked, renamed, recolored, added or removed until it is stopped.
+// dropped, moved, linked, renamed, recolored, added, pasted or removed until it is stopped.
 // A galaxy dragged from a GalaxyModel is placed in the application the same way, see Universe::instantiateGalaxy();
 // double-clicking it below its name asks for it to be opened, see galaxyOpened(), in another scene that shows it, and
 // where it is edited as the application is.
@@ -121,6 +124,26 @@ class EditionScene : public QGraphicsScene
     // Removes components, some of the application, from it and from the edition zone, with their links.
     void remove(const QList<Nebula::Component*>& components);
 
+    // Whether instances are selected that copy() copies: components or galaxies placed, not stargates.
+    [[nodiscard]] bool canCopy() const;
+    // Copies to the clipboard the instances selected, components and galaxies placed, with the links between them and
+    // all the scene shows of them, see CopiedInstances; not the stargates. Nothing while the application runs, which it
+    // tells.
+    void copy();
+    // Copies the instances selected, as copy() does, then removes what is selected, as Delete does: one step of the
+    // history.
+    void cut();
+    // Places in what it shows the instances the clipboard holds, as their copy shows them, two steps of the grid
+    // further right and down, and two more at each paste of the same instances in a row: one step of the history. Each
+    // keeps its name, unless another instance has it, see Nebula::Universe::insertInstances(), and the links between
+    // them are drawn again, through their anchors and junctions; they are selected alone then. Nothing is placed when
+    // one of them cannot be, which it tells: a plugin unknown, or a galaxy that would hold itself, say.
+    void paste();
+    // Places the instances the clipboard holds as paste() does, the top left corner of what they cover at position.
+    void pasteAt(const QPointF& position);
+    // Places a copy of the instances selected, as paste() places those of the clipboard, which it leaves as it is.
+    void duplicate();
+
     // How its links are drawn, and the one being drawn.
     [[nodiscard]] LinkStyle linkStyle() const;
     // Draws its links in style from now on, those it shows already included. Only what is seen changes: it is not
@@ -154,6 +177,8 @@ class EditionScene : public QGraphicsScene
     void galaxyOpened(Nebula::Galaxy& galaxy);
     // galaxy was dropped and placed in the application, which loaded the plugins it needs.
     void galaxyPlaced(Nebula::Galaxy& galaxy);
+    // Instances were pasted or duplicated, see paste(): the application loaded the plugins they need.
+    void instancesPlaced();
 
   protected:
     void dragEnterEvent(QGraphicsSceneDragDropEvent* event) override;
@@ -190,6 +215,13 @@ class EditionScene : public QGraphicsScene
     {
         QJsonObject before; // The snapshot of the scene before it
         QString what;       // What it does, once known
+    };
+
+    // The instances pasted last, see paste(), and how many times in a row.
+    struct Pasted
+    {
+        QJsonObject instances; // As they were copied
+        int count = 0;
     };
 
     // Whether what it shows is edited: while the application does not run.
@@ -262,8 +294,8 @@ class EditionScene : public QGraphicsScene
     void show(const std::vector<std::unique_ptr<Nebula::Component>>& components,
               const std::vector<std::unique_ptr<Nebula::SettingsFile>>& files, const QJsonObject& project);
     // Shows component where json, what a project holds of it, tells, in the color it tells, the dots of its interfaces
-    // on the edges and the rows it tells.
-    void showSaved(Nebula::Component& component, const QJsonObject& json);
+    // on the edges and the rows it tells; returns its item.
+    ComponentItem* showSaved(Nebula::Component& component, const QJsonObject& json);
     // Draws the links of what components, those shown, bind, through the anchors project holds, and the lines of the
     // stargates.
     void showLinks(const std::vector<std::unique_ptr<Nebula::Component>>& components, const QJsonObject& project);
@@ -275,6 +307,27 @@ class EditionScene : public QGraphicsScene
     void showZones(const QJsonArray& zones);
     // Shows item at position, a new item of the edition zone.
     void place(QGraphicsItem& item, const QPointF& position);
+
+    // The items of the instances selected that copy() copies: not those of stargates.
+    [[nodiscard]] QList<ComponentItem*> copiedItems() const;
+    // What copy() copies of the instances selected, see CopiedInstances; empty when none is, or while the application
+    // runs.
+    [[nodiscard]] QJsonObject copied() const;
+    // Whether instances, those of the clipboard, can be pasted: it is editable, and they are some. Tells why otherwise.
+    bool canPaste(const QJsonObject& instances);
+    // Places instances, as copied, moved by offset, as one step of the history named after the instances placed.
+    void pasteMoved(const QJsonObject& instances, QPointF offset);
+    // How far paste() moves instances from where they were copied: further at each paste of the same ones in a row.
+    [[nodiscard]] QPointF pasteOffset(const QJsonObject& instances);
+    // Places instances in what it shows, see paste(), and shows them, selected alone; tells why not when it cannot, and
+    // what could not be restored of them.
+    void insert(const QJsonObject& instances);
+    // Tells problems, what could not be restored of the instances pasted, unless there are none.
+    void tellUnrestored(const QStringList& problems);
+    // Shows inserted, the instances placed of the components instances holds, as it tells, selected alone, and the
+    // links between them, once they are all shown, through their anchors: those their links start with are their
+    // junctions again.
+    void showInserted(const QList<Nebula::Component*>& inserted, const QJsonObject& instances);
 
     // Instantiates what data, dropped, carries in what it shows: a galaxy or a component. nullptr when it cannot be.
     Nebula::Component* dropped(const QMimeData& data);
@@ -360,6 +413,12 @@ class EditionScene : public QGraphicsScene
     void addOpenEntry(ContextMenu& menu, Nebula::Galaxy* galaxy);
     // Adds to menu editing what stargate exposes in a dialog of parent; nothing when it is nullptr.
     void addEditEntry(ContextMenu& menu, StargateItem* stargate, QWidget* parent);
+    // Adds to menu cutting, copying and duplicating component, or the instances selected when it is one of them.
+    void addCopyEntries(ContextMenu& menu, ComponentItem& component);
+    // Adds to menu the entry text, which does act on component, see actOn().
+    void addCopyEntry(ContextMenu& menu, const QString& text, ComponentItem& component, void (EditionScene::*act)());
+    // Selects component alone, unless it is selected, then does act: to the instances selected.
+    void actOn(ComponentItem& component, void (EditionScene::*act)());
     // Adds to menu renaming, recoloring and removing component.
     void addComponentActions(ContextMenu& menu, ComponentItem& component, QWidget* parent);
     // Adds to menu what is done to settings; false when it is nullptr.
@@ -376,8 +435,11 @@ class EditionScene : public QGraphicsScene
     // Adds to menu anchoring link at position and removing the anchors of along, the links that share its line there.
     static void addAnchoringEntries(ContextMenu& menu, LinkItem& link, const QPointF& position,
                                     const QList<LinkItem*>& along);
-    // Adds to menu what is added at position: a zone, a settings file or a stargate.
+    // Adds to menu what is added at position: a zone, a settings file or a stargate, then the instances the clipboard
+    // holds.
     void addSceneEntries(ContextMenu& menu, const QPointF& position, QWidget* parent);
+    // Adds to menu pasting the instances the clipboard holds at position, see pasteAt(), disabled when it holds none.
+    void addPasteEntry(ContextMenu& menu, const QPointF& position);
     // Adds to menu what is done to the zone at position; nothing when there is none.
     void addZoneEntries(ContextMenu& menu, const QPointF& position, QWidget* parent);
     // Asks in a dialog of parent for the color of component, its opacity too, from the one it has: the one of the
@@ -502,4 +564,5 @@ class EditionScene : public QGraphicsScene
     Nebula::IHistory* m_history = nullptr;      // Of its steps; none are kept without it
     std::optional<Gesture> m_gesture;           // Going on, from the press of the left button to its release
     QList<QJsonObject*> m_pending;              // What the steps going on start from: see startAfter()
+    Pasted m_pasted;                            // What paste() or duplicate() placed last
 };

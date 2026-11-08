@@ -274,6 +274,9 @@ class TestSceneCommand : public QObject
     void renamedInPlace();
     void droppedComponent();
     void menuEntryIsOneStep();
+    void pasteIsOneStep();
+    void cutIsOneStep();
+    void duplicateIsOneStep();
     void zoneMovedResizedAndRenamed();
     void anchorAddedMovedAndRemoved();
     void propertyEditedThroughEdit();
@@ -448,6 +451,36 @@ void TestSceneCommand::menuEntryIsOneStep()
     chooseFromMenu(*m_view, SourceAt, u"Remove component"_s);
     QVERIFY(m_application->component(u"Source1"_s) == nullptr);
     checkStep(u"Remove component (Source1)"_s, before);
+}
+
+void TestSceneCommand::pasteIsOneStep()
+{
+    componentItem(*m_scene, u"Source1"_s)->setSelected(true);
+    componentItem(*m_scene, u"Sink1"_s)->setSelected(true);
+    m_scene->copy();
+    QVERIFY(m_history.done().isEmpty()); // Copying changes nothing
+    const QJsonObject before = m_scene->snapshot();
+    m_scene->paste();
+    QCOMPARE(m_application->components().size(), std::size_t(4));
+    checkStep(u"Paste 2 items"_s, before); // Those pasted, selected alone
+}
+
+void TestSceneCommand::cutIsOneStep()
+{
+    const QJsonObject before = m_scene->snapshot();
+    componentItem(*m_scene, u"Sink1"_s)->setSelected(true);
+    m_scene->cut();
+    QVERIFY(m_application->component(u"Sink1"_s) == nullptr);
+    checkStep(u"Cut Sink1"_s, before);
+}
+
+void TestSceneCommand::duplicateIsOneStep()
+{
+    const QJsonObject before = m_scene->snapshot();
+    componentItem(*m_scene, u"Source1"_s)->setSelected(true);
+    m_scene->duplicate();
+    QVERIFY(m_application->component(u"Source2"_s) != nullptr);
+    checkStep(u"Duplicate Source1"_s, before);
 }
 
 void TestSceneCommand::zoneMovedResizedAndRenamed()

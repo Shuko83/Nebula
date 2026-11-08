@@ -36,6 +36,7 @@
 #include "ComponentItem.h"
 #include "ComponentModel.h"
 #include "ContextMenu.h"
+#include "CopiedInstances.h"
 #include "Galaxy/GalaxyModel.h"
 #include "Galaxy/StargateDialog.h"
 #include "Galaxy/StargateItem.h"
@@ -65,6 +66,9 @@ constexpr QRectF HintRect(GridStep, GridStep, 600, 2 * GridStep);
 constexpr QSizeF ZoneSize(16 * GridStep, 10 * GridStep);
 // How far from a component the stargate that exposes one of its interfaces is added, on the side of that interface.
 constexpr qreal ExposedDistance = 14 * GridStep;
+// How much further right and down each paste of the same instances places them than the one before: two steps of the
+// grid, for them not to cover one another.
+constexpr qreal PasteStep = 2 * GridStep;
 // The colors the zones are added with, in turn, which tells them apart until theirs is chosen: those of a nebula,
 // violet, blue, pink, cyan, magenta and indigo, which their titles contrast with, in black or white, as WCAG AA asks.
 constexpr std::array<QRgb, 6> ZoneColors = {0x7C3AED, 0x3B82F6, 0xEC4899, 0x06B6D4, 0xC026D3, 0x6366F1};
@@ -474,6 +478,25 @@ QList<Binding> bindingsOf(const QList<LinkItem*>& links)
     return bindings;
 }
 
+// The components items show, in their order.
+QList<Nebula::Component*> componentsOf(const QList<ComponentItem*>& items)
+{
+    QList<Nebula::Component*> components;
+    for(const ComponentItem* item : items)
+    {
+        components.append(&item->component());
+    }
+    return components;
+}
+
+// What items, those of the instances copied, are named when they are told: the name of its instance when there is a
+// single one, how many otherwise.
+QString copiedName(const QList<ComponentItem*>& items)
+{
+    return items.size() == 1 ? items.constFirst()->component().objectName()
+                             : EditionScene::tr("%n instances", nullptr, int(items.size()));
+}
+
 // What a galaxy is about: its file, and its description.
 QString aboutGalaxy(const Nebula::Galaxy& galaxy)
 {
@@ -784,12 +807,13 @@ void EditionScene::showLinks(const std::vector<std::unique_ptr<Nebula::Component
     refreshStargateLinks();
 }
 
-void EditionScene::showSaved(Nebula::Component& component, const QJsonObject& json)
+ComponentItem* EditionScene::showSaved(Nebula::Component& component, const QJsonObject& json)
 {
     ComponentItem* item = showComponent(component, readPosition(json));
     item->setColor(QColor::fromString(json.value(u"color").toString())); // Not valid when it has none
     readSides(*item, json);
     readRows(*item, json);
+    return item;
 }
 
 void EditionScene::refreshStargateLinks()
@@ -847,6 +871,144 @@ void EditionScene::remove(const QList<Nebula::Component*>& components)
     QList<ComponentItem*> removed = objectsAmong<ComponentItem>(items());
     removed.removeIf([&components](const ComponentItem* item) { return !components.contains(&item->component()); });
     removeAll(removed);
+}
+
+bool EditionScene::canCopy() const
+{
+    return !copiedItems().isEmpty();
+}
+
+void EditionScene::copy()
+{
+    if(checkEditable() && canCopy())
+    {
+        CopiedInstances::toClipboard(copied());
+        emit told(tr("%1 copied").arg(copiedName(copiedItems())));
+    }
+}
+
+void EditionScene::cut()
+{
+    if(checkEditable() && canCopy())
+    {
+        CopiedInstances::toClipboard(copied());
+        edit(tr("Cut %1").arg(selectionName()), [this] { removeSelected(); });
+    }
+}
+
+void EditionScene::paste()
+{
+    const QJsonObject instances = CopiedInstances::fromClipboard();
+    if(canPaste(instances))
+    {
+        pasteMoved(instances, pasteOffset(instances));
+    }
+}
+
+void EditionScene::pasteAt(const QPointF& position)
+{
+    const QJsonObject instances = CopiedInstances::fromClipboard();
+    if(canPaste(instances))
+    {
+        pasteMoved(instances, position - CopiedInstances::topLeft(instances, ComponentItem::corner()));
+    }
+}
+
+void EditionScene::duplicate()
+{
+    if(checkEditable() && canCopy())
+    {
+        const QJsonObject instances = copied(); // The clipboard holds what it holds
+        const QPointF offset = pasteOffset(instances);
+        edit(tr("Duplicate %1").arg(selectionName()),
+             [this, &instances, offset] { insert(CopiedInstances::moved(instances, offset)); });
+    }
+}
+
+QList<ComponentItem*> EditionScene::copiedItems() const
+{
+    QList<ComponentItem*> items = objectsAmong<ComponentItem>(selectedItems());
+    // What a stargate exposes is unique in its galaxy: another one could not.
+    items.removeIf([](const ComponentItem* item) { return qobject_cast<const StargateItem*>(item) != nullptr; });
+    return items;
+}
+
+QJsonObject EditionScene::copied() const
+{
+    const QList<ComponentItem*> items = copiedItems();
+    QJsonObject instances = m_application.saveInstances(componentsOf(items));
+    if(!instances.isEmpty()) // Nothing while the application runs
+    {
+        placeComponents(instances, items);
+        instances.insert(u"bindings", m_anchors.written(instances.value(u"bindings").toArray()));
+    }
+    return instances;
+}
+
+bool EditionScene::canPaste(const QJsonObject& instances)
+{
+    if(!checkEditable())
+    {
+        return false;
+    }
+    if(instances.isEmpty())
+    {
+        emit refused(tr("Nothing is pasted: the clipboard holds no instance"));
+    }
+    return !instances.isEmpty();
+}
+
+void EditionScene::pasteMoved(const QJsonObject& instances, QPointF offset)
+{
+    step(
+        [this, moved = CopiedInstances::moved(instances, offset)]
+        {
+            insert(moved);
+            return tr("Paste %1").arg(selectionName()); // Those just pasted, selected alone
+        });
+}
+
+QPointF EditionScene::pasteOffset(const QJsonObject& instances)
+{
+    m_pasted.count = m_pasted.instances == instances ? m_pasted.count + 1 : 1;
+    m_pasted.instances = instances;
+    return QPointF(PasteStep, PasteStep) * m_pasted.count;
+}
+
+void EditionScene::insert(const QJsonObject& instances)
+{
+    QStringList problems;
+    const QList<Nebula::Component*> inserted = m_application.insertInstances(instances, m_galaxy, problems);
+    if(inserted.isEmpty())
+    {
+        emit refused(tr("Nothing is pasted: %1").arg(m_application.errorString().replace(u'\n', u' ')));
+        return;
+    }
+    showInserted(inserted, instances);
+    emit instancesPlaced();
+    tellUnrestored(problems);
+}
+
+void EditionScene::tellUnrestored(const QStringList& problems)
+{
+    if(!problems.isEmpty())
+    {
+        emit told(tr("Pasted without what could not be restored: %1").arg(problems.join(u' ')));
+    }
+}
+
+void EditionScene::showInserted(const QList<Nebula::Component*>& inserted, const QJsonObject& instances)
+{
+    const QList<QJsonObject> saved = CopiedInstances::placed(instances); // In the order of inserted
+    QHash<QString, QString> names;                                       // Those they were given, by those they had
+    clearSelection();
+    for(qsizetype index = 0; index < std::min(inserted.size(), saved.size()); ++index)
+    {
+        names.insert(saved.at(index).value(u"name").toString(), inserted.at(index)->objectName());
+        showSaved(*inserted.at(index), saved.at(index))->setSelected(true);
+    }
+    m_anchors.read(shownComponents(), CopiedInstances::renamed(instances.value(u"bindings").toArray(), names));
+    refreshLinks();
 }
 
 LinkStyle EditionScene::linkStyle() const
@@ -1396,8 +1558,34 @@ bool EditionScene::addComponentEntries(ContextMenu& menu, ComponentItem* compone
     }
     addBindEntries(menu, interfaceAt(position));
     addKindEntries(menu, *component, position, parent);
+    addCopyEntries(menu, *component);
     addComponentActions(menu, *component, parent);
     return true;
+}
+
+void EditionScene::addCopyEntries(ContextMenu& menu, ComponentItem& component)
+{
+    addCopyEntry(menu, tr("Cut"), component, &EditionScene::cut);
+    addCopyEntry(menu, tr("Copy"), component, &EditionScene::copy);
+    addCopyEntry(menu, tr("Duplicate"), component, &EditionScene::duplicate);
+    menu.addSeparator();
+}
+
+void EditionScene::addCopyEntry(ContextMenu& menu, const QString& text, ComponentItem& component,
+                                void (EditionScene::*act)())
+{
+    // A stargate alone has nothing copied: what it exposes is unique in its galaxy.
+    const bool enabled = component.isSelected() ? canCopy() : qobject_cast<StargateItem*>(&component) == nullptr;
+    menu.add(text, [this, item = &component, act] { actOn(*item, act); })->setEnabled(enabled);
+}
+
+void EditionScene::actOn(ComponentItem& component, void (EditionScene::*act)())
+{
+    if(!component.isSelected())
+    {
+        selectOnly(component);
+    }
+    (this->*act)();
 }
 
 void EditionScene::addBindEntries(ContextMenu& menu, InterfaceItem* consumed)
@@ -1567,6 +1755,16 @@ void EditionScene::addSceneEntries(ContextMenu& menu, const QPointF& position, Q
     menu.add(
         tr("Add stargate"), [this, position, parent] { addStargateAt(position, parent); },
         icon(GlossaryTerm::Stargate));
+    addPasteEntry(menu, position);
+}
+
+void EditionScene::addPasteEntry(ContextMenu& menu, const QPointF& position)
+{
+    menu.addSeparator();
+    menu.add(
+            tr("Paste"), [this, position] { pasteAt(position); }, {},
+            tr("Places the instances copied here, their top left corner where the menu was opened"))
+        ->setEnabled(CopiedInstances::isInClipboard());
 }
 
 void EditionScene::addZoneEntries(ContextMenu& menu, const QPointF& position, QWidget* parent)

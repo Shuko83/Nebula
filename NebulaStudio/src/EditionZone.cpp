@@ -7,6 +7,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include <QClipboard>
 #include <QDir>
 #include <QGraphicsView>
 #include <QHBoxLayout>
@@ -25,6 +26,7 @@
 
 #include "ComponentFinder.h"
 #include "ComponentItem.h"
+#include "CopiedInstances.h"
 #include "EditionScene.h"
 #include "EditionView.h"
 #include "Messages.h"
@@ -213,7 +215,27 @@ void EditionZone::createEditActions()
     m_undoAction->setToolTip(tr("Undo the last edit of the application, or of a galaxy opened"));
     m_redoAction = createEditAction(tr("&Redo"), redoShortcuts(), &EditionZone::redo);
     m_redoAction->setToolTip(tr("Do again the last edit undone"));
-    refreshEditActions(); // Disabled until it has a history
+    createClipboardActions();
+    refreshEditActions(); // Undo and Redo disabled until it has a history
+}
+
+void EditionZone::createClipboardActions()
+{
+    m_cutAction = createSceneAction(tr("Cu&t"), QKeySequence::Cut, &EditionScene::cut);
+    m_copyAction = createSceneAction(tr("&Copy"), QKeySequence::Copy, &EditionScene::copy);
+    m_pasteAction = createSceneAction(tr("&Paste"), QKeySequence::Paste, &EditionScene::paste);
+    m_duplicateAction = createSceneAction(tr("&Duplicate"), QKeySequence::UnknownKey, &EditionScene::duplicate);
+    m_duplicateAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D)); // None of the platform
+    describeClipboardActions();
+    connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &EditionZone::refreshClipboardActions);
+}
+
+void EditionZone::describeClipboardActions()
+{
+    m_cutAction->setToolTip(tr("Copy the instances selected, then remove what is selected"));
+    m_copyAction->setToolTip(tr("Copy the instances selected, with the links between them"));
+    m_pasteAction->setToolTip(tr("Place the instances copied, a little further than where they were copied"));
+    m_duplicateAction->setToolTip(tr("Place a copy of the instances selected, without changing what is copied"));
 }
 
 QAction* EditionZone::createEditAction(const QString& text, const QList<QKeySequence>& shortcuts,
@@ -226,10 +248,30 @@ QAction* EditionZone::createEditAction(const QString& text, const QList<QKeySequ
     return action;
 }
 
+QAction* EditionZone::createSceneAction(const QString& text, QKeySequence::StandardKey key, void (EditionScene::*act)())
+{
+    auto* action = new QAction(text, this);
+    action->setShortcuts(key);
+    connect(action, &QAction::triggered, this, [this, act] { editShownScene(act); });
+    addAction(action); // Its shortcuts work in the window of the zone, with or without a menu
+    return action;
+}
+
+void EditionZone::editShownScene(void (EditionScene::*act)())
+{
+    // Not while a field takes the keys: Ctrl+D is none of its own, as Ctrl+C and Ctrl+V are.
+    if(canEdit())
+    {
+        (shownScene().*act)();
+    }
+}
+
 void EditionZone::addEditActions(QMenu& menu)
 {
     menu.addAction(m_undoAction);
     menu.addAction(m_redoAction);
+    menu.addSeparator();
+    menu.addActions({m_cutAction, m_copyAction, m_pasteAction, m_duplicateAction});
     // Whether the history does them is not told: it is asked each time they are shown.
     connect(&menu, &QMenu::aboutToShow, this, &EditionZone::refreshEditActions);
 }
@@ -279,11 +321,27 @@ void EditionZone::refreshEditActions()
     const bool editable = m_history != nullptr && !m_studio.application().isRunning();
     m_undoAction->setEnabled(editable && m_history->isUndoActive());
     m_redoAction->setEnabled(editable && m_history->isRedoActive());
+    refreshClipboardActions();
+}
+
+void EditionZone::refreshClipboardActions()
+{
+    const bool editable = !m_studio.application().isRunning();
+    const bool copiable = editable && shownScene().canCopy();
+    m_cutAction->setEnabled(copiable);
+    m_copyAction->setEnabled(copiable);
+    m_duplicateAction->setEnabled(copiable);
+    m_pasteAction->setEnabled(editable && CopiedInstances::isInClipboard());
 }
 
 bool EditionZone::canStep() const
 {
-    return m_history != nullptr && !m_studio.application().isRunning() && !shownScene().isBusy() && !isTyping();
+    return m_history != nullptr && canEdit();
+}
+
+bool EditionZone::canEdit() const
+{
+    return !m_studio.application().isRunning() && !shownScene().isBusy() && !isTyping();
 }
 
 bool EditionZone::isTyping() const
@@ -408,6 +466,7 @@ void EditionZone::followScene(EditionScene& scene)
     connect(&scene, &EditionScene::galaxyOpened, this, &EditionZone::enterGalaxy);
     // The plugins it loaded, and their components.
     connect(&scene, &EditionScene::galaxyPlaced, this, [this] { m_studio.refreshPlugins(); });
+    connect(&scene, &EditionScene::instancesPlaced, this, [this] { m_studio.refreshPlugins(); });
 }
 
 void EditionZone::tell(const QString& message)
@@ -420,6 +479,7 @@ void EditionZone::showSelected(const EditionScene& scene)
     if(m_view->scene() == &scene)
     {
         emit selectionChanged(scene.selectedComponent(), scene.selectedSettingsFile());
+        refreshClipboardActions(); // What is copied
     }
 }
 
@@ -491,6 +551,7 @@ void EditionZone::showDepth(qsizetype depth)
     closeGalaxyScenes(depth);
     emit selectionChanged(shown->selectedComponent(), shown->selectedSettingsFile());
     m_saveGalaxyAction->setEnabled(depth > 0 && !m_studio.application().isRunning());
+    refreshClipboardActions();
     refreshPath();
 }
 

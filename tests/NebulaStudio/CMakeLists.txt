@@ -41,7 +41,7 @@ nebula_add_test(TestPreferences
 # The edition zone, with its items, the dialogs it opens and the steps of its history, which needs Nebula::Standard.
 set(_scene
     "${_studio}/src/EditionScene.cpp" "${_studio}/src/SceneCommand.cpp" "${_studio}/src/ContextMenu.cpp"
-    "${_studio}/src/ComponentItem.cpp"
+    "${_studio}/src/ComponentItem.cpp" "${_studio}/src/CopiedInstances.cpp"
     "${_studio}/src/InterfaceItem.cpp" "${_studio}/src/LinkItem.cpp" "${_studio}/src/AnchorItem.cpp"
     "${_studio}/src/LinkAnchors.cpp" "${_studio}/src/DashedLinkItem.cpp" "${_studio}/src/NameEditor.cpp"
     "${_studio}/src/ZoneItem.cpp" "${_studio}/src/Theme.cpp" "${_studio}/src/EditDialog.cpp"
