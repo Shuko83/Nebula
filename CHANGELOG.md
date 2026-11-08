@@ -40,6 +40,16 @@ to it.
 - `NEBULA_VERSION_SUFFIX` (#139), a suffix of the version, a dash then letters or digits: built with
   `-DNEBULA_VERSION_SUFFIX=-rc0`, Nebula 2.2.0 is a `2.2.0-rc0`, in the details of each binary, the version
   NebulaStudio tells and the name of the package. CMakeUtils gives it to every target, as `cmu_version_suffix`.
+- Cut, copy, paste and duplicate in NebulaStudio (#136): its **Edit** menu cuts (Ctrl+X), copies (Ctrl+C), pastes
+  (Ctrl+V) and duplicates (Ctrl+D) the instances selected in the edition zone, components and galaxies placed, with
+  their properties, the values a galaxy exposes, their colors, the edges and the rows of their dots, and the links
+  between them, with their anchors and their junctions. Pasted in the application, in a galaxy opened or in another
+  window of NebulaStudio, each keeps its name, unless another instance has it (`Counter2` becomes `Counter3`), a little
+  further than where it was copied, and the instances pasted are selected alone. The context menu of an instance cuts,
+  copies and duplicates it, and the one of the edition zone pastes there. Each is one step of the history.
+- `Universe::saveInstances()`, which writes some instances and the bindings between them as a piece of a project, and
+  `Universe::insertInstances()`, which places such a piece in the application or in one of its galaxies, under free
+  names, or nothing when one of them cannot be placed (#136).
 
 ### Changed
 
