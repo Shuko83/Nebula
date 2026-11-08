@@ -269,6 +269,16 @@ void LabelsComponent::removeLabel() // As its count decreases: the last one firs
 
 `removeProvidedInterface()` tells what is bound to the interface that it is unavailable, as `interfaceUnavailable(name)` does, then unbinds it and emits `interfaceRemoved(name)`: a list keeps its other bindings. `removeConsumedInterface(name)` unbinds an interface the component consumes, telling `onUnavailable`, and forgets it. Both are protected, and do nothing for a name the component does not have. A project gives a component its properties in the order it declares them, then the properties of its objects, then its bindings: the property that tells what it has is declared before those that depend on it, and the objects and interfaces it gives are there to be set and bound. Such a property is best left out of the settings files: what it takes away while the application runs loses its links, which stopping it does not bring back.
 
+A component that writes files of its own can write them as Nebula writes its settings files and NebulaStudio its projects, with `Nebula::WholeFile::write()` (`Nebula/Application/WholeFile.h`): the file is written whole or not at all, by `QSaveFile`, its directory created when needed. On Windows, a file is not replaced while another handle is open on it, which merely looking at it opens for a moment: `QFileInfo`, a `QFileSystemWatcher` following the file, an antivirus. A replacement refused is therefore attempted again, ten times at most (`Attempts`), 10 ms apart (`Pause`), before the writing is told to have failed:
+
+```cpp
+QString error;
+if(!Nebula::WholeFile::write(filePath, QJsonDocument(json).toJson(), error))
+{
+    qCWarning(lcClock) << filePath << "cannot be written:" << error;
+}
+```
+
 ---
 
 ## 🧰 Standard Plugins
