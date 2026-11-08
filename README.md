@@ -2,6 +2,9 @@
 
 <img src="NebulaStudio/resources/nebula.svg" width="96" alt="The logo of Nebula">
 
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=Shuko83_Nebula&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=Shuko83_Nebula)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=Shuko83_Nebula&metric=coverage)](https://sonarcloud.io/component_measures?id=Shuko83_Nebula&metric=coverage)
+
 **Nebula** is a C++ framework for building modular applications by assembling dynamic components.
 
 It enables developers to construct software systems by combining reusable building blocks (*components*) provided by extensible plugins. Each component exposes configurable properties and communicates with others through explicit connections.
@@ -669,7 +672,7 @@ Each class of Core, and those of NebulaStudio that need no window, has its Qt Te
 ctest -C Debug --output-on-failure
 ```
 
-The CI runs them on each pull request. How to run, debug and write them is described in [docs/testing.md](docs/testing.md) (in French).
+The CI runs them on each pull request, and measures what they cover of the code. [SonarQube Cloud](https://sonarcloud.io/project/overview?id=Shuko83_Nebula) then analyzes the code, and the CI fails when what a pull request adds or changes does not pass the quality gate of the project, Sonar way: the rating A in security, reliability and maintainability, 80 % of its lines covered by the tests, 3 % of them duplicated at most, and each of its security hotspots reviewed. How to run, debug and write them, and measure what they cover, is described in [docs/testing.md](docs/testing.md) (in French).
 
 ---
 
