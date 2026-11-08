@@ -23,6 +23,7 @@
 #include "Probe.h"
 #include "Settings/SettingsValueEditor.h"
 #include "TestComponents.h"
+#include "ValueEditors.h"
 #include "WarningLabel.h"
 
 namespace
@@ -101,6 +102,7 @@ class TestSettingsValueEditor : public QObject
     void valuesOfTheFile();
     void unreadable();
     void edit();
+    void editByName();
     void editRefused();
     void followsTheFile();
     void followsTheEntries();
@@ -286,6 +288,30 @@ void TestSettingsValueEditor::edit()
     QCOMPARE(values(*m_table), QStringList({"count=9", "text=project*", "page.level=5", "level=0*"}));
     QCOMPARE(m_probe->property("count").toInt(), 3);
     QCOMPARE(refused.count(), 0);
+}
+
+// An enumeration and flags are edited by the names of their values, which the file holds.
+void TestSettingsValueEditor::editByName()
+{
+    QVERIFY(m_file->add({.component = m_probe, .object = m_probe, .property = QStringLiteral("mode")}));
+    QVERIFY(m_file->add({.component = m_probe, .object = m_probe, .property = QStringLiteral("styles")}));
+    QCOMPARE(m_table->item(rowOf("Probe1", "mode"), ValueColumn)->text(), QStringLiteral("Normal"));
+
+    m_table->setCurrentCell(rowOf("Probe1", "mode"), ValueColumn);
+    m_table->edit(m_table->currentIndex()); // As a click on it does, in a table shown
+    auto* mode = qobject_cast<EnumEditor*>(m_table->indexWidget(m_table->currentIndex()));
+    QVERIFY(mode != nullptr);
+    mode->setCurrentIndex(0);
+    emit mode->activated(0);
+    m_table->setCurrentCell(rowOf("Probe1", "styles"), ValueColumn); // Closes the editor of the other one
+    m_table->edit(m_table->currentIndex());
+    auto* styles = qobject_cast<FlagsEditor*>(m_table->indexWidget(m_table->currentIndex()));
+    QVERIFY(styles != nullptr);
+    styles->item(0)->setCheckState(Qt::Unchecked); // Bold, the only one checked
+
+    QCOMPARE(readJson(m_file->filePath()), json(R"({"Probe1": {"properties": {"mode": "Slow", "styles": ""}}})"));
+    QCOMPARE(m_table->item(rowOf("Probe1", "mode"), ValueColumn)->text(), QStringLiteral("Slow"));
+    QCOMPARE(m_probe->property("mode").value<Probe::Mode>(), Probe::Mode::Normal); // The project keeps its own
 }
 
 // A value the property cannot have is not written, which it tells.

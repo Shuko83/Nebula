@@ -19,9 +19,11 @@ enum PropertyTableColumn : std::uint8_t
     PropertyColumnCount,
 };
 
-// A table of properties: their names, as wide as they are, then their values, in the room left.
+// A table of properties: their names, as wide as they are, then their values, in the room left, shown and edited by a
+// PropertyDelegate.
 [[nodiscard]] QTableWidget* newPropertyTable();
-// Whether a cell edits a value of type: one the default editors of Qt take.
+// Whether a cell edits a value of type: one the default editors of Qt take, an enumeration, flags, a color or a URL,
+// see PropertyDelegate.
 [[nodiscard]] bool hasEditor(QMetaType type);
 // Shows title in row of table, over the whole of it, in the font of the titles, on the alternate color of the fields
 // of the palette of table: again when it changes, see colorTitles().
