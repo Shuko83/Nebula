@@ -3,11 +3,14 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QClipboard>
 #include <QDir>
 #include <QDragLeaveEvent>
 #include <QDragMoveEvent>
 #include <QFile>
 #include <QFontDatabase>
+#include <QGraphicsItem>
+#include <QGraphicsScene>
 #include <QGraphicsView>
 #include <QGroupBox>
 #include <QJsonArray>
@@ -29,6 +32,7 @@
 #include <QTest>
 #include <QTreeView>
 #include <QWindow>
+#include <algorithm>
 #include <memory>
 
 #include "Nebula/Application/Universe.h"
@@ -191,6 +195,25 @@ void ignoreSizeHints()
     QTest::ignoreMessage(QtWarningMsg, "This plugin does not support propagateSizeHints()");
 }
 
+// The instances scene shows: its graphics objects that are in no other item.
+qsizetype instancesIn(const QGraphicsScene& scene)
+{
+    const QList<QGraphicsItem*> items = scene.items();
+    return std::ranges::count_if(items, [](const QGraphicsItem* item)
+                                 { return item->parentItem() == nullptr && item->toGraphicsObject() != nullptr; });
+}
+
+// Puts in the clipboard a group of StudioPlugin, as NebulaStudio copies an instance: one of its components, which the
+// application that runs the galaxy registered.
+void copyGroup()
+{
+    auto* data = new QMimeData;
+    data->setData(u"application/x-nebula-instances"_s,
+                  R"({"components": [{"name": "Group1", "type": "FabienDG.Nebula.StudioPlugin.GroupComponent",
+                                       "x": 1000, "y": 800}]})");
+    QGuiApplication::clipboard()->setMimeData(data);
+}
+
 } // namespace
 
 // The components of StudioPlugin, loaded from the plugin as an application loads them, and the galaxy of NebulaStudio,
@@ -207,6 +230,7 @@ class TestStudioPlugin : public QObject
     void galaxyOpens();
     void windowShowsWhileItRuns();
     void editMenuFollowsTheHistory();
+    void editMenuCopiesAndPastes();
     void partsInTheWindow();
     void listsAsideWhileDragging();
     void partsGoWithTheStudio();
@@ -357,6 +381,55 @@ void TestStudioPlugin::editMenuFollowsTheHistory()
     history->setProperty("redoActive", false);
     emit edit->aboutToShow();
     QVERIFY(!redo->isEnabled());
+    m_universe->stop();
+}
+
+void TestStudioPlugin::editMenuCopiesAndPastes()
+{
+    QGuiApplication::clipboard()->clear();
+    openGalaxy();
+    ignoreSizeHints();
+    QVERIFY(m_universe->start());
+    QMainWindow* window = shownWindow();
+    QVERIFY(window != nullptr);
+    const QMenu* edit = menuOf(*window, u"&Edit"_s);
+    QVERIFY(edit != nullptr);
+    QAction* cut = actionOf(*edit, u"Cu&t"_s);
+    QAction* copy = actionOf(*edit, u"&Copy"_s);
+    QAction* paste = actionOf(*edit, u"&Paste"_s);
+    QAction* duplicate = actionOf(*edit, u"&Duplicate"_s);
+    QVERIFY(cut != nullptr && copy != nullptr && paste != nullptr && duplicate != nullptr);
+    QCOMPARE(cut->shortcut(), QKeySequence(QKeySequence::Cut));
+    QCOMPARE(copy->shortcut(), QKeySequence(QKeySequence::Copy));
+    QCOMPARE(paste->shortcut(), QKeySequence(QKeySequence::Paste));
+    QCOMPARE(duplicate->shortcut(), QKeySequence(Qt::CTRL | Qt::Key_D));
+    // Nothing selected, nothing copied.
+    for(const QAction* action : {cut, copy, paste, duplicate})
+    {
+        QVERIFY2(!action->isEnabled(), qPrintable(action->text()));
+    }
+
+    // Instances copied, by another window of NebulaStudio say: pasted in the edition zone, selected.
+    copyGroup();
+    QVERIFY(paste->isEnabled());
+    const QGraphicsScene& scene = *widgetOf(*m_universe->component(u"Edition"_s))->findChild<QGraphicsView*>()->scene();
+    paste->trigger();
+    QCOMPARE(instancesIn(scene), 1);
+    QVERIFY(cut->isEnabled() && copy->isEnabled() && duplicate->isEnabled());
+
+    // Not while a field takes the keys: its own Ctrl+V pastes text, and Ctrl+D is none of its own.
+    window->activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(window));
+    auto* field = widgetOf(*m_universe->component(u"Edition"_s))->findChild<QLineEdit*>();
+    QVERIFY(field != nullptr);
+    field->setFocus();
+    QCOMPARE(QApplication::focusWidget(), field);
+    paste->trigger();
+    duplicate->trigger();
+    QCOMPARE(instancesIn(scene), 1);
+    field->clearFocus();
+    duplicate->trigger();
+    QCOMPARE(instancesIn(scene), 2);
     m_universe->stop();
 }
 

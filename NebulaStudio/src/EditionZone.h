@@ -47,7 +47,9 @@ class SettingsFile;
 // What is edited in its scenes, and through edit(), is kept in the history it is given, step by step: its Edit menu
 // undoes the last step (Ctrl+Z) and does again the last one undone (Ctrl+Shift+Z), in whichever scene it was done,
 // unless what is typed, in a field or a name edited in place, takes the keys. Nothing is undone while the application
-// runs, nor while a link is drawn or an item dragged.
+// runs, nor while a link is drawn or an item dragged. The same menu cuts (Ctrl+X), copies (Ctrl+C), pastes (Ctrl+V)
+// and duplicates (Ctrl+D) the instances of the scene shown, see EditionScene::copy(), under the same conditions: the
+// clipboard holds them, which another window of NebulaStudio pastes too.
 class EditionZone : public QWidget
 {
     Q_OBJECT
@@ -73,8 +75,11 @@ class EditionZone : public QWidget
     void addViewActions(QMenu& menu);
     // Adds to menu Start and Stop, which start the application and stop it, each enabled when it can be done.
     void addRunActions(QMenu& menu);
-    // Adds to menu Undo and Redo, see undo() and redo(): the zone's, which work by their shortcuts wherever they are
-    // shown, enabled while it has a history that does them and the application does not run.
+    // Adds to menu Undo and Redo, see undo() and redo(), enabled while it has a history that does them and the
+    // application does not run, then Cut, Copy, Paste and Duplicate, which do what EditionScene::cut(), copy(), paste()
+    // and duplicate() do in the scene shown: the first, the second and the last enabled while instances are selected
+    // there, Paste while the clipboard holds some, none of them while the application runs. They are the zone's, which
+    // work by their shortcuts wherever they are shown.
     void addEditActions(QMenu& menu);
 
     // Keeps the steps of what is edited in its scenes in history from now on, see EditionScene::edit(); none while it
@@ -121,15 +126,30 @@ class EditionZone : public QWidget
     QWidget* createBar();
     // Save Galaxy, which works by its shortcut wherever it is shown.
     void createSaveGalaxyAction();
-    // Undo and Redo, which work by their shortcuts wherever they are shown.
+    // Undo and Redo, then Cut, Copy, Paste and Duplicate, which work by their shortcuts wherever they are shown.
     void createEditActions();
+    // Cut, Copy, Paste and Duplicate.
+    void createClipboardActions();
+    // Gives Cut, Copy, Paste and Duplicate their tooltips.
+    void describeClipboardActions();
     // A new action of the zone telling text, with shortcuts, the first one shown, which calls step.
     QAction* createEditAction(const QString& text, const QList<QKeySequence>& shortcuts, void (EditionZone::*step)());
-    // Enables Undo and Redo as the history does them, while the application does not run.
+    // A new action of the zone telling text, with the shortcuts of key on the platform, which has the scene shown do
+    // act, see editShownScene().
+    QAction* createSceneAction(const QString& text, QKeySequence::StandardKey key, void (EditionScene::*act)());
+    // Has the scene shown do act, when it can be edited now, see canEdit().
+    void editShownScene(void (EditionScene::*act)());
+    // Enables Undo and Redo as the history does them, and the actions of the clipboard as they can be done, while the
+    // application does not run.
     void refreshEditActions();
-    // Whether a step of the history can be undone or done again now: there is one, the application does not run, the
-    // scene shown is not busy and the keys are not for what is typed.
+    // Enables Cut, Copy and Duplicate while instances are selected in the scene shown, Paste while the clipboard holds
+    // some, none of them while the application runs.
+    void refreshClipboardActions();
+    // Whether a step of the history can be undone or done again now: there is one, and it can edit, see canEdit().
     [[nodiscard]] bool canStep() const;
+    // Whether the scene shown can be edited now: the application does not run, it is not busy and the keys are not for
+    // what is typed.
+    [[nodiscard]] bool canEdit() const;
     // Whether the keys are for what is typed: in a field, or in a name edited in place in the scene shown.
     [[nodiscard]] bool isTyping() const;
     // Links: the styles of LinkStyles, one of them checked, the one the links are drawn in.
@@ -213,6 +233,10 @@ class EditionZone : public QWidget
     QAction* m_saveGalaxyAction = nullptr; // Enabled while a galaxy is shown and the application does not run
     QAction* m_undoAction = nullptr;       // Enabled while m_history undoes and the application does not run
     QAction* m_redoAction = nullptr;       // Enabled while m_history redoes and the application does not run
+    QAction* m_cutAction = nullptr;        // Enabled while instances are selected and the application does not run
+    QAction* m_copyAction = nullptr;       // The same
+    QAction* m_pasteAction = nullptr;      // Enabled while the clipboard holds instances, not while it runs
+    QAction* m_duplicateAction = nullptr;  // As m_cutAction
     Nebula::IHistory* m_history = nullptr; // Of the steps of its scenes
     EditionView* m_view = nullptr;         // Shows m_scene, or the last of m_galaxyScenes
     ComponentFinder* m_finder = nullptr;   // Above the view, on the right, of what it shows

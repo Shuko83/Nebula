@@ -147,6 +147,11 @@ ComponentItem::ComponentItem(Nebula::Component& component, QString componentName
     refreshInterfaces();
 }
 
+QPointF ComponentItem::corner()
+{
+    return Header.topLeft();
+}
+
 Nebula::Component& ComponentItem::component() const
 {
     return m_component;

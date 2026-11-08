@@ -45,6 +45,10 @@ class ComponentItem : public QGraphicsObject
     // component, owned by the application, outlives the item.
     ComponentItem(Nebula::Component& component, QString componentName);
 
+    // Where the top left corner of an item is from its position, whatever its interfaces: they are under its names,
+    // which are around it.
+    [[nodiscard]] static QPointF corner();
+
     [[nodiscard]] Nebula::Component& component() const;
     // The name of what it is an instance of, under its own name: its component, its galaxy, or a stargate.
     [[nodiscard]] const QString& componentName() const;

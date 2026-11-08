@@ -4,6 +4,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include <QClipboard>
 #include <QContextMenuEvent>
 #include <QFontDatabase>
 #include <QGraphicsPathItem>
@@ -25,6 +26,7 @@
 
 #include "AnchorItem.h"
 #include "ComponentItem.h"
+#include "CopiedInstances.h"
 #include "DialogHeader.h"
 #include "EditionScene.h"
 #include "InterfaceItem.h"
@@ -569,6 +571,64 @@ QJsonObject componentJson(const QJsonObject& project, const QString& name)
     return {};
 }
 
+// Selects the components scene shows named one of names, and those only.
+void selectNamed(const QGraphicsScene& scene, const QStringList& names)
+{
+    const QList<ComponentItem*> shown = objectsAmong<ComponentItem>(scene.items());
+    for(ComponentItem* item : shown)
+    {
+        item->setSelected(names.contains(item->component().objectName()));
+    }
+}
+
+// The names of what is selected in scene, sorted: the components, and "link" for each link.
+QStringList selectedNames(const QGraphicsScene& scene)
+{
+    QStringList names;
+    const QList<QGraphicsItem*> selected = scene.selectedItems();
+    for(const QGraphicsItem* item : selected)
+    {
+        const auto* component = qobject_cast<const ComponentItem*>(item->toGraphicsObject());
+        names.append(component != nullptr ? component->component().objectName() : Link);
+    }
+    names.sort();
+    return names;
+}
+
+// The names of the components of the instances the clipboard holds, in their order.
+QStringList namesInClipboard()
+{
+    QStringList names;
+    const QList<QJsonObject> components = CopiedInstances::placed(CopiedInstances::fromClipboard());
+    for(const QJsonObject& component : components)
+    {
+        names.append(component.value(u"name").toString());
+    }
+    return names;
+}
+
+// Where the item of the component scene shows named name is; the origin when it shows none.
+QPointF positionOf(const QGraphicsScene& scene, const QString& name)
+{
+    const ComponentItem* item = componentItem(scene, name);
+    return item != nullptr ? item->pos() : QPointF();
+}
+
+// The component of application named name bound to name, an interface of the component named consumer; empty when it
+// is bound to none.
+QString providerOf(const Nebula::Universe& application, const QString& consumer, const QString& name)
+{
+    const Nebula::Component* provider = application.component(consumer)->binding(name).provider;
+    return provider != nullptr ? provider->objectName() : QString();
+}
+
+// How far the instances pasted the times-th time in a row are from those copied: two steps of the grid right and down
+// each time.
+QPointF pasted(int times)
+{
+    return QPointF(40, 40) * times;
+}
+
 } // namespace
 
 // The edition zone, EditionScene: the link between two of its components, how it is drawn, selected and removed.
@@ -644,6 +704,19 @@ class TestEditionScene : public QObject
     void rowOfAnInterfaceRenamed();
     void settingsFileSelected();
     void settingsFileMenu();
+    void copyAndPaste();
+    void pasteAgain();
+    void pastedAsCopied();
+    void pastedJunction();
+    void copyLeavesOutOtherLinks();
+    void stargateNotCopied();
+    void cut();
+    void duplicate();
+    void pasteAtMenu();
+    void copyMenu_data();
+    void copyMenu();
+    void pasteInGalaxy();
+    void clipboardWhileRunning();
 
   private:
     // Shows in the scene a settings file of the application, written to directory, at SettingsAt; returns its item.
@@ -675,7 +748,8 @@ void TestEditionScene::initTestCase()
 
 void TestEditionScene::init()
 {
-    QTest::failOnWarning(); // What is expected is told with QTest::ignoreMessage()
+    QTest::failOnWarning();                // What is expected is told with QTest::ignoreMessage()
+    QGuiApplication::clipboard()->clear(); // Of what a test before copied
     m_application = std::make_unique<Nebula::Universe>();
     Nebula::Component* source = m_application->instantiate(testComponentId(QStringLiteral("Source")));
     Nebula::Component* sink = m_application->instantiate(testComponentId(QStringLiteral("Sink")));
@@ -2215,6 +2289,269 @@ void TestEditionScene::settingsFileMenu()
     QVERIFY(dialog != nullptr);
     QVERIFY(dialog->isVisible());
     QCOMPARE(dialog->findChild<DialogHeader*>()->title(), QStringLiteral("settings.json"));
+}
+
+// The instances copied are placed again under free names, a little further, bound to one another, selected alone.
+void TestEditionScene::copyAndPaste()
+{
+    QVERIFY(!m_scene->canCopy()); // Nothing selected
+    selectNamed(*m_scene, {QStringLiteral("Source1"), QStringLiteral("Sink1")});
+    QVERIFY(m_scene->canCopy());
+    const QSignalSpy told(m_scene.get(), &EditionScene::told);
+    m_scene->copy();
+    QCOMPARE(told.size(), 1);
+    QCOMPARE(told.constLast().constFirst().toString(), QStringLiteral("2 instances copied"));
+    QCOMPARE(namesInClipboard(), (QStringList{"Source1", "Sink1"}));
+    QCOMPARE(names(*m_application), (QStringList{"Source1", "Sink1"})); // Nothing placed yet
+
+    const QSignalSpy placed(m_scene.get(), &EditionScene::instancesPlaced);
+    m_scene->paste();
+    QCOMPARE(placed.size(), 1);
+    QCOMPARE(names(*m_application), (QStringList{"Source1", "Sink1", "Source2", "Sink2"}));
+    QCOMPARE(positionOf(*m_scene, QStringLiteral("Source2")), SourceAt + pasted(1));
+    QCOMPARE(positionOf(*m_scene, QStringLiteral("Sink2")), SinkAt + pasted(1));
+    QCOMPARE(providerOf(*m_application, QStringLiteral("Sink2"), QStringLiteral("object")), QStringLiteral("Source2"));
+    const LinkItem* link = linkTo(*m_scene, QStringLiteral("Sink2"), QStringLiteral("object"));
+    QVERIFY(link != nullptr);
+    QCOMPARE(link->provided().component().objectName(), QStringLiteral("Source2"));
+    QCOMPARE(selectedNames(*m_scene), (QStringList{"Sink2", "Source2"}));
+    // The originals as they were.
+    QCOMPARE(providerOf(*m_application, QStringLiteral("Sink1"), QStringLiteral("object")), QStringLiteral("Source1"));
+    QCOMPARE(positionOf(*m_scene, QStringLiteral("Source1")), SourceAt);
+    QCOMPARE(links(*m_scene).size(), 2);
+}
+
+// The same instances pasted again go further each time, until others are.
+void TestEditionScene::pasteAgain()
+{
+    selectNamed(*m_scene, {QStringLiteral("Source1")});
+    m_scene->copy();
+    for(int times = 1; times <= 3; ++times)
+    {
+        m_scene->paste();
+        QCOMPARE(positionOf(*m_scene, QStringLiteral("Source%1").arg(times + 1)), SourceAt + pasted(times));
+    }
+    selectNamed(*m_scene, {QStringLiteral("Sink1")});
+    m_scene->copy();
+    m_scene->paste();
+    QCOMPARE(positionOf(*m_scene, QStringLiteral("Sink2")), SinkAt + pasted(1));
+}
+
+// The color, the edges and the rows of the dots, and the anchors of the links are pasted as they were copied.
+void TestEditionScene::pastedAsCopied()
+{
+    const QColor color(0x80, 0x10, 0x20, 0xC0);
+    componentItem(*m_scene, QStringLiteral("Source1"))->setColor(color);
+    ComponentItem* sink = componentItem(*m_scene, QStringLiteral("Sink1"));
+    sink->setInterfaceSide(InterfaceItem::Kind::Consumed, QStringLiteral("timer"), InterfaceItem::Side::Right);
+    sink->swapInterfaces({InterfaceItem::Kind::Consumed, QStringLiteral("object")},
+                         {InterfaceItem::Kind::Consumed, QStringLiteral("objects")});
+    m_link->addAnchor(belowLink(60));
+    const QList<QPointF> anchors = m_link->anchors();
+    QCOMPARE(anchors.size(), 1);
+
+    selectNamed(*m_scene, {QStringLiteral("Source1"), QStringLiteral("Sink1")});
+    m_scene->copy();
+    m_scene->paste();
+    QCOMPARE(componentItem(*m_scene, QStringLiteral("Source2"))->color(), color);
+    const ComponentItem* copy = componentItem(*m_scene, QStringLiteral("Sink2"));
+    QCOMPARE(copy->interfaceItem(InterfaceItem::Kind::Consumed, QStringLiteral("timer"))->side(),
+             InterfaceItem::Side::Right);
+    QCOMPARE(shownRows(*copy), shownRows(*sink));
+    const LinkItem* link = linkTo(*m_scene, QStringLiteral("Sink2"), QStringLiteral("object"));
+    QVERIFY(link != nullptr);
+    QCOMPARE(link->anchors(), QList<QPointF>{anchors.constFirst() + pasted(1)});
+}
+
+// The links through a junction are pasted through a junction of their own.
+void TestEditionScene::pastedJunction()
+{
+    const QPointF junction = branchToOtherSink();
+    selectNamed(*m_scene, {QStringLiteral("Source1"), QStringLiteral("Sink1"), QStringLiteral("Sink2")});
+    m_scene->copy();
+    m_scene->paste();
+    QCOMPARE(names(*m_application), (QStringList{"Source1", "Sink1", "Sink2", "Source2", "Sink3", "Sink4"}));
+
+    const LinkItem* first = linkTo(*m_scene, QStringLiteral("Sink3"), QStringLiteral("object"));
+    const LinkItem* second = linkTo(*m_scene, QStringLiteral("Sink4"), QStringLiteral("object"));
+    QVERIFY(first != nullptr && second != nullptr);
+    QCOMPARE(first->provided().component().objectName(), QStringLiteral("Source2"));
+    QCOMPARE(second->provided().component().objectName(), QStringLiteral("Source2"));
+    QVERIFY(!first->anchorItems().isEmpty() && !second->anchorItems().isEmpty());
+    const AnchorItem* shared = first->anchorItems().constFirst();
+    QCOMPARE(second->anchorItems().constFirst(), shared);
+    QVERIFY(shared->isJunction());
+    QCOMPARE(shared->pos(), junction + pasted(1));
+    QCOMPARE(anchorItems(*m_scene).size(), 2); // The one of the originals stays theirs
+}
+
+// A link to an instance that is not copied is not pasted.
+void TestEditionScene::copyLeavesOutOtherLinks()
+{
+    selectNamed(*m_scene, {QStringLiteral("Sink1")});
+    m_link->setSelected(true); // With the link, but not with what it comes from
+    m_scene->copy();
+    QCOMPARE(namesInClipboard(), QStringList{"Sink1"});
+    m_scene->paste();
+    QCOMPARE(names(*m_application), (QStringList{"Source1", "Sink1", "Sink2"}));
+    QCOMPARE(providerOf(*m_application, QStringLiteral("Sink2"), QStringLiteral("object")), QString());
+    QCOMPARE(links(*m_scene).size(), 1);
+    QCOMPARE(selectedNames(*m_scene), QStringList{"Sink2"});
+}
+
+// A stargate is neither copied nor pasted: what it exposes is unique in its galaxy.
+void TestEditionScene::stargateNotCopied()
+{
+    QVERIFY(m_application->addStargate() != nullptr);
+    QJsonObject project = m_scene->save();
+    place(project, QStringLiteral("Stargate1"), OtherSourceAt);
+    QCOMPARE(m_scene->load(project), QStringList());
+
+    selectNamed(*m_scene, {QStringLiteral("Stargate1")});
+    QVERIFY(!m_scene->canCopy());
+    selectNamed(*m_scene, {QStringLiteral("Stargate1"), QStringLiteral("Source1")});
+    QVERIFY(m_scene->canCopy());
+    m_scene->copy();
+    QCOMPARE(namesInClipboard(), QStringList{"Source1"});
+}
+
+// Cut copies the instances selected, then removes what is selected, as Delete does: pasted, they come back.
+void TestEditionScene::cut()
+{
+    selectNamed(*m_scene, {QStringLiteral("Sink1")});
+    m_link->setSelected(true);
+    m_scene->cut();
+    QCOMPARE(names(*m_application), QStringList{"Source1"});
+    QVERIFY(links(*m_scene).isEmpty());
+    QCOMPARE(namesInClipboard(), QStringList{"Sink1"});
+
+    m_scene->paste();
+    QCOMPARE(names(*m_application), (QStringList{"Source1", "Sink1"})); // Its name is free again
+    QCOMPARE(positionOf(*m_scene, QStringLiteral("Sink1")), SinkAt + pasted(1));
+    QCOMPARE(providerOf(*m_application, QStringLiteral("Sink1"), QStringLiteral("object")), QString());
+}
+
+// Duplicate pastes the instances selected at once, without changing what the clipboard holds.
+void TestEditionScene::duplicate()
+{
+    QGuiApplication::clipboard()->setText(QStringLiteral("typed"));
+    selectNamed(*m_scene, {QStringLiteral("Source1"), QStringLiteral("Sink1")});
+    m_scene->duplicate();
+    QCOMPARE(names(*m_application), (QStringList{"Source1", "Sink1", "Source2", "Sink2"}));
+    QCOMPARE(positionOf(*m_scene, QStringLiteral("Source2")), SourceAt + pasted(1));
+    QCOMPARE(providerOf(*m_application, QStringLiteral("Sink2"), QStringLiteral("object")), QStringLiteral("Source2"));
+    QCOMPARE(selectedNames(*m_scene), (QStringList{"Sink2", "Source2"}));
+    QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("typed"));
+    QVERIFY(!CopiedInstances::isInClipboard());
+
+    // The copies, further on.
+    m_scene->duplicate();
+    QCOMPARE(positionOf(*m_scene, QStringLiteral("Source3")), SourceAt + pasted(2));
+    QCOMPARE(providerOf(*m_application, QStringLiteral("Sink3"), QStringLiteral("object")), QStringLiteral("Source3"));
+}
+
+// Paste, in the menu of the edition zone, places the instances copied where it was opened, their top left corner
+// there; it is disabled while the clipboard holds none.
+void TestEditionScene::pasteAtMenu()
+{
+    const QPointF at(200, 420); // Where nothing is
+    QVERIFY(chooseFromMenu(*m_view, at, QStringLiteral("Paste")).contains(QStringLiteral("Paste")));
+    QCOMPARE(names(*m_application), (QStringList{"Source1", "Sink1"})); // Nothing to paste
+
+    selectNamed(*m_scene, {QStringLiteral("Source1"), QStringLiteral("Sink1")});
+    m_scene->copy();
+    chooseFromMenu(*m_view, at, QStringLiteral("Paste"));
+    QCOMPARE(names(*m_application), (QStringList{"Source1", "Sink1", "Source2", "Sink2"}));
+    // Source2 is the leftmost and the topmost of them.
+    const QPointF source = positionOf(*m_scene, QStringLiteral("Source2"));
+    QCOMPARE(source + ComponentItem::corner(), onPixel(*m_view, at));
+    QCOMPARE(positionOf(*m_scene, QStringLiteral("Sink2")) - source, SinkAt - SourceAt);
+    QCOMPARE(selectedNames(*m_scene), (QStringList{"Sink2", "Source2"}));
+}
+
+void TestEditionScene::copyMenu_data()
+{
+    QTest::addColumn<QStringList>("selected"); // Before the menu is opened on Sink1
+    QTest::addColumn<QStringList>("copied");
+
+    QTest::newRow("on an instance not selected") << QStringList{"Source1"} << QStringList{"Sink1"};
+    QTest::newRow("on an instance selected") << QStringList{"Source1", "Sink1"} << QStringList{"Source1", "Sink1"};
+}
+
+// The menu of an instance cuts, copies and duplicates it, or the instances selected when it is one of them.
+void TestEditionScene::copyMenu()
+{
+    QFETCH(QStringList, selected);
+    QFETCH(QStringList, copied);
+
+    selectNamed(*m_scene, selected);
+    const QStringList offered = chooseFromMenu(*m_view, SinkAt, QStringLiteral("Copy"));
+    for(const QString& entry : {QStringLiteral("Cut"), QStringLiteral("Copy"), QStringLiteral("Duplicate")})
+    {
+        QVERIFY2(offered.contains(entry), qPrintable(entry));
+    }
+    QCOMPARE(namesInClipboard(), copied);
+    copied.sort(); // As selectedNames() tells them
+    QCOMPARE(selectedNames(*m_scene), copied);
+    QCOMPARE(names(*m_application), (QStringList{"Source1", "Sink1"}));
+}
+
+// The instances of the application are pasted in a galaxy opened, but not a galaxy in itself.
+void TestEditionScene::pasteInGalaxy()
+{
+    const QTemporaryDir directory;
+    const QString filePath = directory.filePath(QStringLiteral("Pair.nbp"));
+    QFile file(filePath);
+    QVERIFY(file.open(QIODevice::WriteOnly) && file.write(R"({"version": 1, "components": [
+        {"name": "Source1", "type": "Test.Source", "x": 40, "y": 40}]})") > 0);
+    file.close();
+    QVERIFY(m_application->instantiateGalaxy(filePath, QStringLiteral("Pair1")) != nullptr);
+    QJsonObject project = m_scene->save();
+    place(project, QStringLiteral("Pair1"), OtherSourceAt);
+    QCOMPARE(m_scene->load(project), QStringList());
+    auto* galaxy = qobject_cast<Nebula::Galaxy*>(m_application->component(QStringLiteral("Pair1")));
+    QVERIFY(galaxy != nullptr);
+    EditionScene inside(*m_application, Nebula::ComponentFactory::instance(), *galaxy);
+
+    // Named among its own components, bound there.
+    selectNamed(*m_scene, {QStringLiteral("Source1"), QStringLiteral("Sink1")});
+    m_scene->copy();
+    inside.paste();
+    QCOMPARE(galaxy->components().size(), 3);
+    QCOMPARE(galaxy->component(QStringLiteral("Sink1"))->binding(QStringLiteral("object")).provider,
+             galaxy->component(QStringLiteral("Source2")));
+    QCOMPARE(positionOf(inside, QStringLiteral("Source2")), SourceAt + pasted(1));
+    QCOMPARE(names(*m_application), (QStringList{"Source1", "Sink1", "Pair1"}));
+
+    // The galaxy in itself: nothing is pasted, which is told.
+    selectNamed(*m_scene, {QStringLiteral("Pair1")});
+    m_scene->copy();
+    QCOMPARE(namesInClipboard(), QStringList{"Pair1"});
+    const QSignalSpy refused(&inside, &EditionScene::refused);
+    inside.paste();
+    QCOMPARE(refused.size(), 1);
+    const QString why = refused.constFirst().constFirst().toString();
+    QVERIFY2(why.startsWith(u"Nothing is pasted: ") && why.contains(u"would hold itself"), qPrintable(why));
+    QCOMPARE(galaxy->components().size(), 3);
+}
+
+// While the application runs, nothing is copied, cut, pasted or duplicated, which is told.
+void TestEditionScene::clipboardWhileRunning()
+{
+    selectNamed(*m_scene, {QStringLiteral("Source1")});
+    m_scene->copy();
+    QVERIFY(m_application->start());
+    selectNamed(*m_scene, {QStringLiteral("Sink1")});
+    QSignalSpy refused(m_scene.get(), &EditionScene::refused);
+    m_scene->copy();
+    m_scene->cut();
+    m_scene->duplicate();
+    m_scene->paste();
+    m_scene->pasteAt(QPointF(200, 420));
+    QCOMPARE(refused.size(), 5);
+    QCOMPARE(namesInClipboard(), QStringList{"Source1"});
+    QCOMPARE(names(*m_application), (QStringList{"Source1", "Sink1"}));
+    m_application->stop();
 }
 
 QTEST_MAIN(TestEditionScene)
