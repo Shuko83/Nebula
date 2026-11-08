@@ -12,6 +12,10 @@ env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
   QT_VERSION: "6.12.*"
+  # What the analysis of SonarQube Cloud reads from the build (#147): the compiler commands, recorded by its build
+  # wrapper, and the coverage of the tests, measured by OpenCppCoverage in the Cobertura format.
+  BUILD_WRAPPER_OUT_DIR: build-wrapper
+  COVERAGE_REPORT: coverage.xml
 jobs:
   build:
     # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
@@ -24,7 +28,9 @@ jobs:
       uses: actions/checkout@v4
       with:
           submodules: recursive
-          
+          # The whole history, which SonarQube tells the new code from the rest by.
+          fetch-depth: 0
+
     - name: Setup MSVC developer environment
       uses: ilammy/msvc-dev-cmd@v1
 
@@ -37,6 +43,18 @@ jobs:
       run: |
         if (-not $env:QT_EMAIL -or -not $env:QT_PASSWORD) {
           Write-Error "Qt is installed with the Qt account of the repository secrets QT_EMAIL and QT_PASSWORD: one is missing"
+          exit 1
+        }
+
+    # Checked before the build: without it, the analysis of SonarQube Cloud, whose quality gate a pull request has to
+    # pass, fails once everything is built.
+    - name: Check the token of SonarQube Cloud
+      shell: pwsh
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      run: |
+        if (-not $env:SONAR_TOKEN) {
+          Write-Error "SonarQube Cloud analyzes the code with the token of the repository secret SONAR_TOKEN: it is missing"
           exit 1
         }
 
@@ -60,13 +78,71 @@ jobs:
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       # install-qt-action has put the Qt it installed in CMAKE_PREFIX_PATH.
-      run: cmake -S . -B ${{github.workspace}}/build
+      # Release, with the debug information OpenCppCoverage reads the lines of the code from: /Zi, and /DEBUG with the
+      # optimizations of the linker it would turn off otherwise.
+      run: >
+        cmake -S . -B ${{github.workspace}}/build
+        -DCMAKE_CXX_FLAGS_RELEASE="/O2 /Ob2 /DNDEBUG /Zi"
+        -DCMAKE_EXE_LINKER_FLAGS_RELEASE="/DEBUG /INCREMENTAL:NO /OPT:REF /OPT:ICF"
+        -DCMAKE_SHARED_LINKER_FLAGS_RELEASE="/DEBUG /INCREMENTAL:NO /OPT:REF /OPT:ICF"
+        -DCMAKE_MODULE_LINKER_FLAGS_RELEASE="/DEBUG /INCREMENTAL:NO /OPT:REF /OPT:ICF"
+
+    - name: Install the build wrapper of SonarQube
+      uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v7
 
     - name: Build
-      # Build your program with the given configuration
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+      # Under the build wrapper, which records the compiler commands for the analysis.
+      run: >
+        build-wrapper-win-x86-64.exe --out-dir ${{env.BUILD_WRAPPER_OUT_DIR}}
+        cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+
+    - name: Install OpenCppCoverage
+      shell: pwsh
+      run: |
+        choco install opencppcoverage --no-progress -y
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        "C:\Program Files\OpenCppCoverage" >> $env:GITHUB_PATH
 
     - name: Test
       # The QTest executables of tests/, see docs/testing.md: a failing test fails the pull request.
-      working-directory: ${{github.workspace}}/build
-      run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure
+      # Run by OpenCppCoverage, which returns their exit code, and measures what they cover of the code of the
+      # repository built in build/, the code of the tests, of CMakeUtils and what CMake generates left out. It writes
+      # the report here, ctest runs in build/. Its arguments in an array, which PowerShell passes as they are, --
+      # included.
+      shell: pwsh
+      run: |
+        $repository = "${{github.workspace}}"
+        $arguments = @(
+          '--quiet', '--cover_children',
+          '--modules', "$repository\build",
+          '--sources', $repository,
+          '--excluded_sources', "$repository\build",
+          '--excluded_sources', "$repository\tests",
+          '--excluded_sources', "$repository\CMakeUtils",
+          '--export_type', "cobertura:$env:COVERAGE_REPORT",
+          '--working_dir', "$repository\build",
+          '--', (Get-Command ctest).Source, '-C', $env:BUILD_TYPE, '--output-on-failure'
+        )
+        OpenCppCoverage.exe @arguments
+
+    # What SonarQube counts the new code of the main branch from: the version of project().
+    - name: Read the version of the project
+      shell: pwsh
+      run: |
+        $match = Select-String -Path build/CMakeCache.txt -Pattern '^CMAKE_PROJECT_VERSION:[A-Z]+=(.+)$'
+        "PROJECT_VERSION=$($match.Matches[0].Groups[1].Value)" >> $env:GITHUB_ENV
+
+    - name: Analyze on SonarQube Cloud
+      # What is analyzed is in sonar-project.properties. The step waits for the quality gate of the project, and fails
+      # the pull request when the code it adds does not pass it: Sonar way, which asks of the new code the rating A in
+      # security, reliability and maintainability, 80 % of it covered by the tests, 3 % of it duplicated at most, and
+      # each of its security hotspots reviewed.
+      uses: SonarSource/sonarqube-scan-action@v7
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      with:
+        args: >
+          --define sonar.cfamily.compile-commands=${{env.BUILD_WRAPPER_OUT_DIR}}/compile_commands.json
+          --define sonar.cfamily.cobertura.reportPaths=${{env.COVERAGE_REPORT}}
+          --define sonar.projectVersion=${{env.PROJECT_VERSION}}
+          --define sonar.qualitygate.wait=true
