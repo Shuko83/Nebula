@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <QColor>
 #include <QDate>
 #include <QDateTime>
 #include <QPoint>
@@ -10,6 +11,8 @@
 #include <QStringList>
 #include <QTime>
 #include <QTimeZone>
+#include <QUrl>
+#include <cstdint>
 #include <map>
 
 #include "Nebula/Component/Component.h"
@@ -32,13 +35,39 @@ class Probe : public Nebula::Component
     Q_PROPERTY(QDate date MEMBER m_date NOTIFY dateChanged)
     Q_PROPERTY(QTime time MEMBER m_time NOTIFY timeChanged)
     Q_PROPERTY(QDateTime moment MEMBER m_moment NOTIFY momentChanged)
+    Q_PROPERTY(Mode mode MEMBER m_mode NOTIFY modeChanged)
+    // READ and WRITE: moc writes no code that compiles for flags it reads and writes as a MEMBER.
+    Q_PROPERTY(Styles styles READ styles WRITE setStyles NOTIFY stylesChanged)
+    Q_PROPERTY(QColor color MEMBER m_color NOTIFY colorChanged)
+    Q_PROPERTY(QUrl url MEMBER m_url NOTIFY urlChanged)
     // JSON holds no point: neither a project nor a settings file holds it.
     Q_PROPERTY(QPoint point MEMBER m_point NOTIFY pointChanged)
     // How many times it started: read only, a project does not hold it.
     Q_PROPERTY(int starts READ starts NOTIFY startsChanged)
 
   public:
+    // A choice among values, held by their names.
+    enum class Mode : std::uint8_t
+    {
+        Slow,
+        Normal,
+        Fast,
+    };
+    Q_ENUM(Mode)
+    // Flags, none of which is 0: JSON holds none as an empty string.
+    enum Style
+    {
+        Bold = 0x1,
+        Italic = 0x2,
+        Underline = 0x4,
+    };
+    Q_DECLARE_FLAGS(Styles, Style)
+    Q_FLAG(Styles)
+
     Probe();
+
+    [[nodiscard]] Styles styles() const;
+    void setStyles(Styles styles);
 
     // provideInterface() of a QObject, or of a QTimer.
     bool provideObject(const QString& name, QObject* object = nullptr);
@@ -78,6 +107,10 @@ class Probe : public Nebula::Component
     void dateChanged();
     void timeChanged();
     void momentChanged();
+    void modeChanged();
+    void stylesChanged();
+    void colorChanged();
+    void urlChanged();
     void pointChanged();
     void startsChanged();
 
@@ -97,6 +130,11 @@ class Probe : public Nebula::Component
     QDate m_date{2026, 1, 1};
     QTime m_time{12, 0};
     QDateTime m_moment{QDate(2026, 1, 1), QTime(0, 0), QTimeZone::UTC};
+    Mode m_mode = Mode::Normal;
+    Styles m_styles = Bold;
+    // Of 8 bits a channel, as a name holds them: JSON holds no other color, nor an invalid one.
+    QColor m_color{0x33, 0x66, 0x99};
+    QUrl m_url;
     QPoint m_point;
     int m_starts = 0;
     QStringList m_events;
@@ -105,3 +143,5 @@ class Probe : public Nebula::Component
     std::map<QString, QTimer*> m_timers;
     std::map<QString, QList<QObject*>> m_lists;
 };
+
+Q_DECLARE_OPERATORS_FOR_FLAGS(Probe::Styles)

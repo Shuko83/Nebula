@@ -287,54 +287,58 @@ void TestStargateDialog::check_data()
                             "Probe1/text=text",
                             "Probe1/date=date",
                             "Probe1/time=time",
-                            "Probe1/moment=moment"};
+                            "Probe1/moment=moment",
+                            "Probe1/mode=mode",
+                            "Probe1/styles=styles",
+                            "Probe1/color=color",
+                            "Probe1/url=url"};
     const QStringList sink{"Sink1/object=object", "Sink1/timer=timer", "Sink1/objects=objects"};
     QTest::newRow("as it is") << QStringList() << QStringList{"Probe1/count=count", kept}
                               << QStringList{"Source1 unchecked", "Sink1 unchecked", "Probe1 partially",
                                              Kept + " checked"}
-                              << "2 of 12 exposed";
+                              << "2 of 16 exposed";
     QTest::newRow("a property") << QStringList{"Source1/label"}
                                 << QStringList{"Source1/label=label", "Probe1/count=count", kept}
                                 << QStringList{"Source1 partially", "Sink1 unchecked", "Probe1 partially",
                                                Kept + " checked"}
-                                << "3 of 12 exposed";
+                                << "3 of 16 exposed";
     // Another stargate exposes an object the galaxy provides as object.
     QTest::newRow("an interface, its name taken")
         << QStringList{"Source1/object"} << QStringList{"Source1/object=object2", "Probe1/count=count", kept}
         << QStringList{"Source1 partially", "Sink1 unchecked", "Probe1 partially", Kept + " checked"}
-        << "3 of 12 exposed";
+        << "3 of 16 exposed";
     QTest::newRow("its last row unchecked")
         << QStringList{"Probe1/count"} << QStringList{kept}
         << QStringList{"Source1 unchecked", "Sink1 unchecked", "Probe1 unchecked", Kept + " checked"}
-        << "1 of 12 exposed";
+        << "1 of 16 exposed";
     // Each is named after what it exposes, the galaxy consuming what Sink1 consumes, the other way.
     QTest::newRow("a component") << QStringList{"Sink1"} << sink + QStringList{"Probe1/count=count", kept}
                                  << QStringList{"Source1 unchecked", "Sink1 checked", "Probe1 partially",
                                                 Kept + " checked"}
-                                 << "5 of 12 exposed";
+                                 << "5 of 16 exposed";
     // Partially checked, it is checked, with all it has but what another stargate exposes; its name kept.
     QTest::newRow("a component partially checked")
         << QStringList{"Probe1"} << probe + QStringList{kept}
         << QStringList{"Source1 unchecked", "Sink1 unchecked", "Probe1 checked", Kept + " checked"}
-        << "7 of 12 exposed";
+        << "11 of 16 exposed";
     QTest::newRow("a component, twice") << QStringList{"Probe1", "Probe1"} << QStringList{kept}
                                         << QStringList{"Source1 unchecked", "Sink1 unchecked", "Probe1 unchecked",
                                                        Kept + " checked"}
-                                        << "1 of 12 exposed";
+                                        << "1 of 16 exposed";
     QTest::newRow("each row of a component")
         << QStringList{"Source1/object", "Source1/label"}
         << QStringList{"Source1/object=object2", "Source1/label=label", "Probe1/count=count", kept}
         << QStringList{"Source1 checked", "Sink1 unchecked", "Probe1 partially", Kept + " checked"}
-        << "4 of 12 exposed";
+        << "4 of 16 exposed";
     QTest::newRow("what is bound to none of them")
         << QStringList{Kept} << QStringList{"Probe1/count=count"}
         << QStringList{"Source1 unchecked", "Sink1 unchecked", "Probe1 partially", Kept + " unchecked"}
-        << "1 of 12 exposed";
+        << "1 of 16 exposed";
     QTest::newRow("all") << QStringList{"Source1", "Sink1", "Probe1"}
                          << QStringList{"Source1/object=object2", "Source1/label=label"} + sink + probe +
                                 QStringList{kept}
                          << QStringList{"Source1 checked", "Sink1 checked", "Probe1 checked", Kept + " checked"}
-                         << "12 of 12 exposed";
+                         << "16 of 16 exposed";
 }
 
 // Checking a component, or what is bound to none of them, checks what it groups, each named after what it exposes
@@ -374,8 +378,9 @@ void TestStargateDialog::filter_data()
     QTest::addColumn<QStringList>("shown");
     QTest::addColumn<QString>("placeholder");
 
-    const QStringList probe{"Probe1/refusesToStart", "Probe1/count", "Probe1/ratio", "Probe1/text",
-                            "Probe1/date",           "Probe1/time",  "Probe1/moment"};
+    const QStringList probe{"Probe1/refusesToStart", "Probe1/count", "Probe1/ratio",  "Probe1/text",
+                            "Probe1/date",           "Probe1/time",  "Probe1/moment", "Probe1/mode",
+                            "Probe1/styles",         "Probe1/color", "Probe1/url"};
     const QStringList sink{"Sink1/object", "Sink1/timer", "Sink1/objects"};
     QTest::newRow("all") << QString() << false
                          << QStringList{"Source1/object", "Source1/label"} + sink + probe + QStringList{Kept + "/clock"}
@@ -415,7 +420,7 @@ void TestStargateDialog::filter()
 
     field(*m_dialog, QStringLiteral("Filter interfaces and properties"))->clear();
     m_dialog->findChild<QCheckBox*>()->setChecked(false);
-    QCOMPARE(choices(tree(), isShown).size(), 13); // All of them again
+    QCOMPARE(choices(tree(), isShown).size(), 17); // All of them again
 }
 
 void TestStargateDialog::name_data()
@@ -500,7 +505,7 @@ void TestStargateDialog::noneExposed()
     QVERIFY(choices(tree(), isShown).isEmpty());
     QVERIFY(shownPlaceholder() != nullptr);
     QCOMPARE(shownPlaceholder()->text(), QStringLiteral("The stargate exposes nothing yet"));
-    QCOMPARE(count(), QStringLiteral("0 of 12 exposed"));
+    QCOMPARE(count(), QStringLiteral("0 of 16 exposed"));
 }
 
 // Without an instance that has something to expose, it tells so in place of the tree.

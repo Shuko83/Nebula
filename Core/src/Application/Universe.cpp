@@ -620,7 +620,7 @@ bool writeExposed(const Galaxy& galaxy, const QString& name, const QJsonValue& v
 {
     const std::optional<ExposedProperty> found = galaxy.exposedProperty(name);
     return found && found->object != nullptr &&
-           metaProperty(*found->object, found->property).write(found->object, value.toVariant());
+           ProjectJson::writeJson(*found->object, metaProperty(*found->object, found->property), value);
 }
 
 // The names galaxy exposes its properties as, in the order it exposes them.

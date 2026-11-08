@@ -50,8 +50,9 @@ QJsonValue currentValue(const SettingsEntry& entry)
 // undefined.
 QVariant propertyValue(const SettingsEntry& entry, const QJsonValue& value)
 {
-    QVariant converted = value.toVariant();
-    return converted.convert(propertyOf(entry).metaType()) ? converted : QVariant();
+    const QMetaType type = propertyOf(entry).metaType();
+    QVariant converted = ProjectJson::fromJson(value, type);
+    return converted.convert(type) ? converted : QVariant();
 }
 
 // value, given to the property of entry, as a file holds it; nullopt when the property cannot have it, or JSON cannot
@@ -460,7 +461,7 @@ bool SettingsFile::startEntry(const SettingsEntry& entry)
 bool SettingsFile::giveValue(const SettingsEntry& entry)
 {
     const QJsonValue value = valueOf(m_content, entry);
-    if(value.isUndefined() || !propertyOf(entry).write(entry.object, value.toVariant()))
+    if(value.isUndefined() || !ProjectJson::writeJson(*entry.object, propertyOf(entry), value))
     {
         tellWrongValue(entry, value);
         setValue(m_content, entry, currentValue(entry));

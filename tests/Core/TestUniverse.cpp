@@ -27,6 +27,7 @@
 #include "TestComponents.h"
 
 using Nebula::Universe;
+using namespace Qt::StringLiterals;
 
 namespace
 {
@@ -538,21 +539,39 @@ void TestUniverse::saveAndLoad_data()
 {
     QTest::addColumn<QString>("property");
     QTest::addColumn<QVariant>("value");
+    QTest::addColumn<QJsonValue>("held"); // What the project holds; not checked when undefined
 
-    QTest::newRow("bool") << "refusesToStart" << QVariant(true);
-    QTest::newRow("int") << "count" << QVariant(-42);
-    QTest::newRow("double") << "ratio" << QVariant(0.125);
-    QTest::newRow("QString") << "text" << QVariant(QStringLiteral("Hello, «Nebula»"));
-    QTest::newRow("QDate") << "date" << QVariant(QDate(2026, 10, 17));
-    QTest::newRow("QTime") << "time" << QVariant(QTime(23, 59, 30));
+    const QJsonValue unchecked(QJsonValue::Undefined);
+    QTest::newRow("bool") << "refusesToStart" << QVariant(true) << QJsonValue(true);
+    QTest::newRow("int") << "count" << QVariant(-42) << QJsonValue(-42);
+    QTest::newRow("double") << "ratio" << QVariant(0.125) << QJsonValue(0.125);
+    QTest::newRow("QString") << "text" << QVariant(QStringLiteral("Hello, «Nebula»"))
+                             << QJsonValue(QStringLiteral("Hello, «Nebula»"));
+    QTest::newRow("QDate") << "date" << QVariant(QDate(2026, 10, 17)) << unchecked;
+    QTest::newRow("QTime") << "time" << QVariant(QTime(23, 59, 30)) << unchecked;
     QTest::newRow("QDateTime") << "moment"
-                               << QVariant(QDateTime(QDate(2026, 10, 17), QTime(8, 15, 0, 250), QTimeZone::UTC));
+                               << QVariant(QDateTime(QDate(2026, 10, 17), QTime(8, 15, 0, 250), QTimeZone::UTC))
+                               << unchecked;
+    // By the names of their values, not by integers.
+    QTest::newRow("enumeration") << "mode" << QVariant::fromValue(Probe::Mode::Fast) << QJsonValue(u"Fast"_s);
+    QTest::newRow("flags") << "styles" << QVariant::fromValue(Probe::Styles(Probe::Bold | Probe::Underline))
+                           << QJsonValue(u"Bold|Underline"_s);
+    QTest::newRow("no flag") << "styles" << QVariant::fromValue(Probe::Styles()) << QJsonValue(u""_s);
+    QTest::newRow("color") << "color" << QVariant(QColor(0x12, 0x34, 0x56)) << QJsonValue(u"#123456"_s);
+    QTest::newRow("translucent color") << "color" << QVariant(QColor(0x12, 0x34, 0x56, 0x80))
+                                       << QJsonValue(u"#80123456"_s);
+    QTest::newRow("URL") << "url" << QVariant(QUrl(u"https://example.com/a b?c=d#e"_s))
+                         << QJsonValue(u"https://example.com/a%20b?c=d#e"_s);
+    QTest::newRow("local file") << "url" << QVariant(QUrl::fromLocalFile(u"/some dir/file.txt"_s))
+                                << QJsonValue(u"file:///some%20dir/file.txt"_s);
+    QTest::newRow("no URL") << "url" << QVariant(QUrl()) << QJsonValue(u""_s);
 }
 
 void TestUniverse::saveAndLoad()
 {
     QFETCH(QString, property);
     QFETCH(QVariant, value);
+    QFETCH(QJsonValue, held);
 
     QJsonObject saved;
     {
@@ -565,6 +584,10 @@ void TestUniverse::saveAndLoad()
     QCOMPARE(component.value(u"name").toString(), QStringLiteral("Probe"));
     QCOMPARE(component.value(u"type").toString(), testComponentId(QStringLiteral("Probe")));
     QVERIFY(component.value(u"properties").toObject().contains(property));
+    if(!held.isUndefined())
+    {
+        QCOMPARE(component.value(u"properties").toObject().value(property), held);
+    }
 
     Universe universe;
     QCOMPARE(universe.load(saved), QStringList());
@@ -578,7 +601,8 @@ void TestUniverse::saveLeavesWhatJsonCannotHold()
     Universe universe;
     Probe* probe = ::instantiate<Probe>(universe);
     probe->setProperty("point", QPoint(1, 2));
-    QVERIFY(probe->start()); // starts is 1 now
+    probe->setProperty("color", QColor()); // Not valid: it has no name
+    QVERIFY(probe->start());               // starts is 1 now
 
     const QJsonObject saved = universe.save();
     QCOMPARE(saved.value(u"version").toInt(), 1);
@@ -586,6 +610,7 @@ void TestUniverse::saveLeavesWhatJsonCannotHold()
     const QJsonObject properties =
         saved.value(u"components").toArray().first().toObject().value(u"properties").toObject();
     QVERIFY(!properties.contains(u"point"));  // JSON has nothing for it
+    QVERIFY(!properties.contains(u"color"));  // It would be read back as another one
     QVERIFY(!properties.contains(u"starts")); // Read only
     QVERIFY(!properties.contains(u"componentId"));
     QVERIFY(!properties.contains(u"objectName")); // The name of the instance

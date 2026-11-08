@@ -70,8 +70,8 @@ void TestComponentFactory::component_data()
     QTest::addColumn<QStringList>("properties");
 
     QTest::newRow("Probe") << "Probe" << "Provides and consumes what the test tells it to" << "Test"
-                           << QStringList{"refusesToStart", "count",  "ratio", "text",  "date",
-                                          "time",           "moment", "point", "starts"};
+                           << QStringList{"refusesToStart", "count",  "ratio", "text", "date",  "time",  "moment",
+                                          "mode",           "styles", "color", "url",  "point", "starts"};
     QTest::newRow("no category") << "Source" << "Provides an object while it runs" << "" << QStringList{"label"};
     QTest::newRow("no property") << "Sink" << "Consumes an object, a timer and a list of objects" << "Test"
                                  << QStringList{};

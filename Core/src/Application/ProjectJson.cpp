@@ -27,17 +27,45 @@ QList<QMetaProperty> objectProperties(const Component& component, const QObject*
     return added != objects.end() ? added->properties() : QList<QMetaProperty>();
 }
 
+// Whether type is an enumeration or flags, Q_ENUM or Q_FLAG, which JSON holds by the names of their values.
+bool isEnumeration(QMetaType type)
+{
+    return type.flags().testFlag(QMetaType::IsEnumeration);
+}
+
+// value as JSON holds it: what QJsonValue::fromVariant() makes of it, but the empty string for an enumeration whose
+// value has no name, flags without any, which it would hold as null.
+QJsonValue jsonOf(const QVariant& value)
+{
+    const QJsonValue json = QJsonValue::fromVariant(value);
+    return json.isNull() && isEnumeration(value.metaType()) ? QJsonValue(QJsonValue::String) : json;
+}
+
 } // namespace
 
 std::optional<QJsonValue> toJson(const QVariant& value)
 {
-    const QJsonValue json = QJsonValue::fromVariant(value);
-    QVariant read = json.toVariant();
+    const QJsonValue json = jsonOf(value);
+    QVariant read = fromJson(json, value.metaType());
     if(!read.convert(value.metaType()) || read != value)
     {
         return std::nullopt;
     }
     return json;
+}
+
+QVariant fromJson(const QJsonValue& json, QMetaType type)
+{
+    if(isEnumeration(type) && json.isString() && json.toString().isEmpty())
+    {
+        return QVariant(type); // 0, which has no name: no flag
+    }
+    return json.toVariant();
+}
+
+bool writeJson(QObject& object, const QMetaProperty& property, const QJsonValue& value)
+{
+    return property.write(&object, fromJson(value, property.metaType()));
 }
 
 QJsonObject writableProperties(const QObject& object, const QList<QMetaProperty>& properties)
@@ -59,7 +87,7 @@ bool writeProperty(QObject& object, const QList<QMetaProperty>& properties, cons
 {
     const auto property = std::ranges::find(properties, name, [](const QMetaProperty& known)
                                             { return QString::fromLatin1(known.name()); });
-    return property != properties.end() && property->write(&object, value.toVariant());
+    return property != properties.end() && writeJson(object, *property, value);
 }
 
 QStringList writeProperties(QObject& object, const QList<QMetaProperty>& properties, const QJsonObject& values)
@@ -68,7 +96,7 @@ QStringList writeProperties(QObject& object, const QList<QMetaProperty>& propert
     for(const QMetaProperty& property : properties)
     {
         const QString name = QString::fromLatin1(property.name());
-        if(unset.contains(name) && property.write(&object, values.value(name).toVariant()))
+        if(unset.contains(name) && writeJson(object, property, values.value(name)))
         {
             unset.removeOne(name);
         }

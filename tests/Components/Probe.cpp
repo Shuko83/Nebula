@@ -7,6 +7,20 @@
 
 Probe::Probe() = default;
 
+Probe::Styles Probe::styles() const
+{
+    return m_styles;
+}
+
+void Probe::setStyles(Styles styles)
+{
+    if(styles != m_styles)
+    {
+        m_styles = styles;
+        emit stylesChanged();
+    }
+}
+
 bool Probe::provideObject(const QString& name, QObject* object)
 {
     return provideInterface<QObject>(name, object);
