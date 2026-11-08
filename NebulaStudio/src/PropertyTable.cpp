@@ -10,14 +10,17 @@
 #include <algorithm>
 #include <array>
 
+#include "PropertyDelegate.h"
+#include "PropertyValues.h"
 #include "Theme.h"
 
 namespace
 {
 
-// The types the default editors of Qt take.
+// The types the default editors of Qt take, then those PropertyDelegate edits, but the enumerations and flags.
 constexpr std::array EditableTypes{QMetaType::Bool,    QMetaType::Int,   QMetaType::UInt,  QMetaType::Double,
-                                   QMetaType::QString, QMetaType::QDate, QMetaType::QTime, QMetaType::QDateTime};
+                                   QMetaType::QString, QMetaType::QDate, QMetaType::QTime, QMetaType::QDateTime,
+                                   QMetaType::QColor,  QMetaType::QUrl};
 
 // Whether row of table is a title, see showTitle().
 bool isTitle(const QTableWidget& table, int row)
@@ -36,12 +39,14 @@ QTableWidget* newPropertyTable()
     table->horizontalHeader()->setSectionResizeMode(PropertyNameColumn, QHeaderView::ResizeToContents);
     table->horizontalHeader()->setStretchLastSection(true);
     table->setSelectionMode(QAbstractItemView::SingleSelection);
+    table->setItemDelegateForColumn(PropertyValueColumn, new PropertyDelegate(table));
     return table;
 }
 
 bool hasEditor(QMetaType type)
 {
-    return std::ranges::find(EditableTypes, static_cast<QMetaType::Type>(type.id())) != EditableTypes.end();
+    return std::ranges::find(EditableTypes, static_cast<QMetaType::Type>(type.id())) != EditableTypes.end() ||
+           metaEnumOf(type).isValid();
 }
 
 void showTitle(QTableWidget& table, int row, const QString& title)

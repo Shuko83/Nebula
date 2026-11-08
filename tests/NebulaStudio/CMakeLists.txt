@@ -69,6 +69,7 @@ nebula_add_test(TestComponentFinder
 set(_settings_values
     "${_studio}/src/Settings/SettingsValueEditor.cpp" "${_studio}/src/FileFollower.cpp"
     "${_studio}/src/PlaceholderStack.cpp" "${_studio}/src/PropertyTree.cpp" "${_studio}/src/PropertyTable.cpp"
+    "${_studio}/src/PropertyDelegate.cpp" "${_studio}/src/PropertyValues.cpp" "${_studio}/src/ValueEditors.cpp"
     "${_studio}/src/WarningLabel.cpp" "${_studio}/src/Theme.cpp" ${_resources})
 nebula_add_test(TestPropertyEditor
     SOURCES "${_studio}/src/PropertyEditor.cpp" ${_settings_values}
