@@ -25,7 +25,15 @@ namespace Nebula::ProjectJson
 {
 
 // value as JSON holds it; nullopt when it would not be read back as it is, its type being one JSON has nothing for.
+// Through the conversions of QVariant: an enumeration by the name of its value, flags by the names of theirs joined by
+// |, the empty string for none, a QColor by its name, #aarrggbb when it is not opaque, a QUrl by its text.
 [[nodiscard]] std::optional<QJsonValue> toJson(const QVariant& value);
+// json, read as a value of type: what QJsonValue::toVariant() makes of it, which writing a property or converting it
+// to type turns into one; but the empty string is 0 for an enumeration, or flags, of type: what toJson() writes when
+// their value has no name, no flag.
+[[nodiscard]] QVariant fromJson(const QJsonValue& json, QMetaType type);
+// Sets property of object to value, as JSON holds it, see fromJson(); false when it cannot be set.
+bool writeJson(QObject& object, const QMetaProperty& property, const QJsonValue& value);
 
 // The properties of object JSON holds, by name: those of properties that can be written, and whose value toJson()
 // holds.

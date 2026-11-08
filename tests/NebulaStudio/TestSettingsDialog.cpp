@@ -30,6 +30,7 @@ namespace
 
 // The column of the properties, where they are checked.
 constexpr int PropertyColumn = 0;
+constexpr int DefaultColumn = 1;
 constexpr int FileColumn = 2;
 
 // The path of row: the texts of the rows above it, then its own, joined by slashes.
@@ -130,6 +131,8 @@ class TestSettingsDialog : public QObject
     void cleanup();
 
     void heldByAnotherFile();
+    void defaultValue_data();
+    void defaultValue();
     void check_data();
     void check();
     void filter_data();
@@ -233,6 +236,28 @@ void TestSettingsDialog::heldByAnotherFile()
     QVERIFY(!ratio->data(PropertyColumn, Qt::CheckStateRole).isValid());
 }
 
+void TestSettingsDialog::defaultValue_data()
+{
+    QTest::addColumn<QString>("property");
+    QTest::addColumn<QString>("shown");
+
+    QTest::newRow("int") << "count" << "0";
+    QTest::newRow("enumeration") << "mode" << "Normal";
+    QTest::newRow("flags") << "styles" << "Bold";
+    QTest::newRow("QColor") << "color" << "#336699";
+}
+
+// The value of the project of a property it can hold, an enumeration, flags and a color by their names.
+void TestSettingsDialog::defaultValue()
+{
+    QFETCH(QString, property);
+    QFETCH(QString, shown);
+
+    const QTreeWidgetItem* row = rowAt(tree(), QStringLiteral("Probe1/") + property);
+    QVERIFY(row != nullptr);
+    QCOMPARE(row->text(DefaultColumn), shown);
+}
+
 void TestSettingsDialog::check_data()
 {
     QTest::addColumn<QStringList>("clicked");
@@ -240,43 +265,43 @@ void TestSettingsDialog::check_data()
     QTest::addColumn<QStringList>("groups");
     QTest::addColumn<QString>("count");
 
-    const QStringList probe{"Probe1/refusesToStart", "Probe1/count", "Probe1/text",
-                            "Probe1/date",           "Probe1/time",  "Probe1/moment"};
+    const QStringList probe{"Probe1/refusesToStart", "Probe1/count", "Probe1/text",   "Probe1/date",  "Probe1/time",
+                            "Probe1/moment",         "Probe1/mode",  "Probe1/styles", "Probe1/color", "Probe1/url"};
     const QStringList pages{"Panel1/page/level", "Panel1/page/enabled", "Panel1/page/level", "Panel1/page/enabled"};
     QTest::newRow("as it is") << QStringList() << QStringList{"Probe1/count"}
                               << QStringList{"Probe1 partially", "Panel1 unchecked", "Panel1/page unchecked"}
-                              << "1 of 13 held";
+                              << "1 of 17 held";
     QTest::newRow("a property") << QStringList{"Panel1/title"} << QStringList{"Probe1/count", "Panel1/title"}
                                 << QStringList{"Probe1 partially", "Panel1 partially", "Panel1/page unchecked"}
-                                << "2 of 13 held";
+                                << "2 of 17 held";
     QTest::newRow("its last property unchecked")
         << QStringList{"Probe1/count"} << QStringList()
-        << QStringList{"Probe1 unchecked", "Panel1 unchecked", "Panel1/page unchecked"} << "0 of 13 held";
+        << QStringList{"Probe1 unchecked", "Panel1 unchecked", "Panel1/page unchecked"} << "0 of 17 held";
     // Partially checked, it is checked, with all its properties but the one another file holds.
     QTest::newRow("a component") << QStringList{"Probe1"} << probe
                                  << QStringList{"Probe1 checked", "Panel1 unchecked", "Panel1/page unchecked"}
-                                 << "6 of 13 held";
+                                 << "10 of 17 held";
     QTest::newRow("a component, twice") << QStringList{"Probe1", "Probe1"} << QStringList()
                                         << QStringList{"Probe1 unchecked", "Panel1 unchecked", "Panel1/page unchecked"}
-                                        << "0 of 13 held";
+                                        << "0 of 17 held";
     QTest::newRow("a group of objects") << QStringList{"Panel1/page"} << QStringList{"Probe1/count"} + pages
                                         << QStringList{"Probe1 partially", "Panel1 partially", "Panel1/page checked"}
-                                        << "5 of 13 held";
+                                        << "5 of 17 held";
     QTest::newRow("each property of a component")
         << QStringList{"Panel1/title", "Panel1/level", "Panel1/enabled", "Panel1/page"}
         << QStringList{"Probe1/count", "Panel1/title", "Panel1/level", "Panel1/enabled"} + pages
-        << QStringList{"Probe1 partially", "Panel1 checked", "Panel1/page checked"} << "8 of 13 held";
+        << QStringList{"Probe1 partially", "Panel1 checked", "Panel1/page checked"} << "8 of 17 held";
     QTest::newRow("a component checked") << QStringList{"Panel1"}
                                          << QStringList{"Probe1/count", "Panel1/title", "Panel1/level",
                                                         "Panel1/enabled"} +
                                                 pages
                                          << QStringList{"Probe1 partially", "Panel1 checked", "Panel1/page checked"}
-                                         << "8 of 13 held";
+                                         << "8 of 17 held";
     QTest::newRow("a property of a group of a component checked")
         << QStringList{"Panel1", "Panel1/page/level"}
         << QStringList{"Probe1/count",        "Panel1/title",      "Panel1/level",       "Panel1/enabled",
                        "Panel1/page/enabled", "Panel1/page/level", "Panel1/page/enabled"}
-        << QStringList{"Probe1 partially", "Panel1 partially", "Panel1/page partially"} << "7 of 13 held";
+        << QStringList{"Probe1 partially", "Panel1 partially", "Panel1/page partially"} << "7 of 17 held";
 }
 
 // Checking a component, or a group of objects, checks what it groups, and each tells whether all, some or none of what
@@ -316,8 +341,9 @@ void TestSettingsDialog::filter_data()
     const QStringList panel{"Panel1/title",        "Panel1/level",      "Panel1/enabled",     "Panel1/page/level",
                             "Panel1/page/enabled", "Panel1/page/level", "Panel1/page/enabled"};
     QTest::newRow("all") << QString() << false
-                         << QStringList{"Probe1/refusesToStart", "Probe1/count", "Probe1/ratio", "Probe1/text",
-                                        "Probe1/date",           "Probe1/time",  "Probe1/moment"} +
+                         << QStringList{"Probe1/refusesToStart", "Probe1/count", "Probe1/ratio",  "Probe1/text",
+                                        "Probe1/date",           "Probe1/time",  "Probe1/moment", "Probe1/mode",
+                                        "Probe1/styles",         "Probe1/color", "Probe1/url"} +
                                 panel
                          << QString();
     QTest::newRow("a property") << "ti" << false << QStringList{"Probe1/ratio", "Probe1/time", "Panel1/title"}
@@ -358,7 +384,7 @@ void TestSettingsDialog::filter()
 
     field(*m_dialog, QStringLiteral("Filter properties"))->clear();
     m_dialog->findChild<QCheckBox*>()->setChecked(false);
-    QCOMPARE(properties(tree(), isShown).size(), 14); // All of them again
+    QCOMPARE(properties(tree(), isShown).size(), 18); // All of them again
 }
 
 void TestSettingsDialog::name_data()

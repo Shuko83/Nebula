@@ -90,6 +90,8 @@ class TestSettingsFile : public QObject
     void readValuesOfAnUnreadableFile_data();
     void readValuesOfAnUnreadableFile();
     void writeValue();
+    void writeValueByName_data();
+    void writeValueByName();
     void writeValueIsRefused_data();
     void writeValueIsRefused();
 
@@ -216,6 +218,10 @@ void TestSettingsFile::canHold_data()
 
     QTest::newRow("int") << "probe" << "count" << true;
     QTest::newRow("QDateTime") << "probe" << "moment" << true;
+    QTest::newRow("enumeration") << "probe" << "mode" << true;
+    QTest::newRow("flags") << "probe" << "styles" << true;
+    QTest::newRow("QColor") << "probe" << "color" << true;
+    QTest::newRow("QUrl") << "probe" << "url" << true;
     QTest::newRow("JSON has nothing for it") << "probe" << "point" << false;
     QTest::newRow("read only") << "probe" << "starts" << false;
     QTest::newRow("of Component") << "probe" << "componentId" << false;
@@ -346,6 +352,13 @@ void TestSettingsFile::startReadsTheValues_data()
     QTest::newRow("QString") << "text" << QByteArray(R"("from the file")") << QVariant(QStringLiteral("from the file"));
     QTest::newRow("QDate") << "date" << QByteArray(R"("2026-10-17")") << QVariant(QDate(2026, 10, 17));
     QTest::newRow("QTime") << "time" << QByteArray(R"("12:34:56")") << QVariant(QTime(12, 34, 56));
+    QTest::newRow("enumeration") << "mode" << QByteArray(R"("Fast")") << QVariant::fromValue(Probe::Mode::Fast);
+    QTest::newRow("flags") << "styles" << QByteArray(R"("Italic|Underline")")
+                           << QVariant::fromValue(Probe::Styles(Probe::Italic | Probe::Underline));
+    QTest::newRow("no flag") << "styles" << QByteArray(R"("")") << QVariant::fromValue(Probe::Styles());
+    QTest::newRow("QColor") << "color" << QByteArray(R"("#80123456")") << QVariant(QColor(0x12, 0x34, 0x56, 0x80));
+    QTest::newRow("QUrl") << "url" << QByteArray(R"("https://example.com/a%20b")")
+                          << QVariant(QUrl(QStringLiteral("https://example.com/a b")));
 }
 
 void TestSettingsFile::startReadsTheValues()
@@ -570,6 +583,44 @@ void TestSettingsFile::writeValue()
     QCOMPARE(m_probe->property("count").toInt(), 8);
     QCOMPARE(m_panel->pages().at(1)->property("level").toInt(), 4);
     m_universe->stop();
+}
+
+void TestSettingsFile::writeValueByName_data()
+{
+    QTest::addColumn<QString>("property");
+    QTest::addColumn<QVariant>("value");
+    QTest::addColumn<QByteArray>("held"); // As the file holds it
+
+    QTest::newRow("enumeration") << "mode" << QVariant::fromValue(Probe::Mode::Slow) << QByteArray(R"("Slow")");
+    QTest::newRow("flags") << "styles" << QVariant::fromValue(Probe::Styles(Probe::Bold | Probe::Italic))
+                           << QByteArray(R"("Bold|Italic")");
+    QTest::newRow("no flag") << "styles" << QVariant::fromValue(Probe::Styles()) << QByteArray(R"("")");
+    QTest::newRow("color") << "color" << QVariant(QColor(0xab, 0xcd, 0xef)) << QByteArray(R"("#abcdef")");
+    QTest::newRow("translucent color") << "color" << QVariant(QColor(0xab, 0xcd, 0xef, 0x40))
+                                       << QByteArray(R"("#40abcdef")");
+    QTest::newRow("URL") << "url" << QVariant(QUrl(QStringLiteral("https://example.com/")))
+                         << QByteArray(R"("https://example.com/")");
+}
+
+// An enumeration, flags, a color and a URL are held by their names, and given back when the application starts.
+void TestSettingsFile::writeValueByName()
+{
+    QFETCH(QString, property);
+    QFETCH(QVariant, value);
+    QFETCH(QByteArray, held);
+
+    const QVariant edited = m_probe->property(qPrintable(property));
+    QVERIFY(m_file->add({.component = m_probe, .object = m_probe, .property = property}));
+    QVERIFY(m_file->writeValue(m_file->entries().first(), value));
+    QCOMPARE(readJson(m_file->filePath()),
+             json(R"({"Probe1": {"properties": {")" + property.toUtf8() + R"(": )" + held + "}}}"));
+    QString why;
+    QCOMPARE(m_file->readValues(why), std::optional(QVariantList{value}));
+
+    QVERIFY(m_universe->start());
+    QCOMPARE(m_probe->property(qPrintable(property)), value);
+    m_universe->stop();
+    QCOMPARE(m_probe->property(qPrintable(property)), edited);
 }
 
 void TestSettingsFile::writeValueIsRefused_data()
