@@ -58,6 +58,10 @@ to it.
   names, or nothing when one of them cannot be placed (#136).
 - `Nebula::WholeFile::write()` (#152), which writes a file whole or not at all, its directory created when needed,
   attempting again a replacement Windows refuses, as Nebula writes its settings files and NebulaStudio its projects.
+- Finding the instances of the galaxies in NebulaStudio (#144): the field above the edition zone finds the instances
+  of the galaxies placed in the application too, at any depth, each named after the galaxies it is in
+  (`Clock1.Greeter1`), after those of the application; choosing one, or pressing Enter, opens the galaxy it is in and
+  shows it in the middle of the edition zone.
 
 ### Changed
 
