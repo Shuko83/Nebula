@@ -303,7 +303,12 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   une valeur qui ne convient pas, et un fichier illisible ou qui ne s'écrit pas. Problèmes : `SettingsFile::failed` →
   `Universe::settingsFileFailed`, journal `nebula.settings`. `src/Application/ProjectJson.*` (privé,
   inclus depuis `src/Settings/` par `"Application/ProjectJson.h"`) : l'écriture JSON des propriétés et la clé d'un
-  objet (nom, puis rang parmi ceux de ce nom), partagées avec `Universe`. Le destructeur d'un `SettingsFile` l'arrête
+  objet (nom, puis rang parmi ceux de ce nom), partagées avec `Universe`. `toJson()` passe par les conversions de
+  `QVariant` (issue #135 : une énumération par le nom de sa valeur, des drapeaux par les leurs joints par `|`, une
+  `QColor` par son nom, que QtGui sait convertir, une `QUrl` par son texte), sauf des drapeaux sans valeur ni nom pour
+  0, qu'il écrit `""` (`jsonOf()`) ; `fromJson(json, type)` relit `""` comme 0 pour une énumération ou des drapeaux,
+  et `writeJson()` écrit une propriété par lui : toute valeur relue d'un projet, d'une galaxy ou d'un fichier de
+  réglages passe par l'un ou l'autre, jamais par `QJsonValue::toVariant()` seul. Le destructeur d'un `SettingsFile` l'arrête
   s'il tourne encore (retiré pendant l'exécution).
 - Messages d'erreur de Core en anglais, non traduits (`QStringLiteral`), comme ceux de `PluginManager`.
 - Pièces privées partagées (`src/`, non installées, incluses par `"Component/Components.h"`…) :
@@ -417,10 +422,25 @@ de propriétés de ces deux fenêtres et du `PropertyEditor` ; `makeGroupsChecka
 cochés, partiellement ou non, d'après ce qui est coché sous eux, et qui cochent tout ce qu'ils regroupent ;
 `filterRows()` : les lignes dont le texte, ou celui d'une ligne au-dessus, contient un texte, sans casse ;
 `propertyPath(entrée)` : `objet.propriété`, ou la propriété seule, pour `SettingsItem` et `SettingsValueEditor`),
-`PropertyTable.h` (les tables de valeurs du `PropertyEditor` et du `SettingsValueEditor` : `newPropertyTable()`,
-colonnes `PropertyNameColumn` / `PropertyValueColumn`, `hasEditor()` (les types des éditeurs par défaut de Qt),
+`PropertyTable.h` (les tables de valeurs du `PropertyEditor` et du `SettingsValueEditor` : `newPropertyTable()`, avec
+un `PropertyDelegate` sur la colonne des valeurs, colonnes `PropertyNameColumn` / `PropertyValueColumn`, `hasEditor()`
+(les types des éditeurs par défaut de Qt, `QColor`, `QUrl`, et les énumérations et drapeaux, `metaEnumOf()`),
 `showTitle()` et `colorTitles()`, une ligne de titre sur toute la largeur, sur `AlternateBase`, remise sur
-`PaletteChange`), `FileFollower` (issue #133 : `follow(chemin)` suit un fichier et son dossier, ceux qui existent,
+`PaletteChange`), `PropertyDelegate` (issue #135, le délégué de ces valeurs : `displayText()` donne le nom d'une
+couleur, `colorName()`, rien pour une invalide, celui de `QStyledItemDelegate` sinon, qui écrit déjà le nom d'une
+valeur d'énumération ou de drapeaux et le texte d'une URL ; `initStyleOption()` ajoute la pastille d'une couleur,
+`swatch()`, bordée en `Mid`, la même pour l'état sélectionné, que le style teinterait ; `createEditor()` : un éditeur
+de `ValueEditors.h` (`newEditor()`, dont `edited` écrit aussitôt, `writingAtOnce()` puis `commit()` par `sender()`),
+aucun pour une couleur, celui de Qt sinon ; une couleur s'édite dans un `QColorDialog` (`ShowAlphaChannel`, parent la
+table, `open()`) qu'ouvre `editorEvent()` sur un double-clic, F2 ou Espace, si la table a des déclencheurs, et qui
+écrit dans le modèle par un `QPersistentModelIndex` ; `updateEditorGeometry()` déroule la liste des drapeaux sous la
+cellule, remontée pour rester dans la table ; `eventFilter()` garde l'éditeur d'une URL tant que sa fenêtre est
+ouverte), `ValueEditors.h` (issue #135 : `EnumEditor`, un `QComboBox` des noms, `FlagsEditor`, un `QListWidget` à
+cocher, sans la valeur 0, et `UrlEditor`, un `QLineEdit` dont un bouton intégré, `addAction()`, ouvre un `QFileDialog`
+d'un fichier existant ; chacun a sa valeur en propriété `USER` `value`, que `QStyledItemDelegate` lui donne et relit,
+et un signal `edited`), `PropertyValues.h` (issue #135 : `metaEnumOf(QMetaType)`, l'énumération ou les drapeaux d'un
+type, cherchés dans le `QMetaObject` qui les déclare d'après le nom du type, `QFlags<…>` compris ; `enumValue()`,
+`colorName()`, `urlOf()` : un chemin absolu est un fichier local), `FileFollower` (issue #133 : `follow(chemin)` suit un fichier et son dossier, ceux qui existent,
 `changed` quand il est réécrit, remplacé par `QSaveFile`, créé ou retiré, ou qu'un autre fichier du dossier change ;
 les deux remis sous le `QFileSystemWatcher` à chaque changement, voir Pièges), `ItemShapes.h` (contour, crayon et
 remplissage communs aux items), `DashedLinks`
@@ -480,7 +500,7 @@ s'il a quitté sa place ; rien tant qu'il n'est pas `setActive()`), `Messages.h`
 | `ZoneItem` | Zone colorée titrée, `Type = UserType + 2`, Z = -aire ; déplacement par le titre avec son contenu (composants et fichiers de réglages par leur centre, zones entières), redimensionnement par les bords, édition du titre sur place ; sa `shape()` ne couvre que titre et bords ; `setEditable(false)` lui retire boutons et survol |
 | `SettingsItem` / `DashedLinkItem` | `QGraphicsObject` d'un `SettingsFile` : feuille au coin plié, nom du fichier, infobulle (chemin, propriétés tenues) ; refait ses `DashedLinkItem` (`src/`, traits pointillés de centre à centre, Z = -1, dans la scène et non enfants, détruits avec lui, qui préviennent leur item par un callback quand un autre les détruit, comme `QGraphicsScene::clear()`) sur `SettingsFile::changed` et à son ajout à la scène, et les suit par `xChanged` / `yChanged` des deux items ; `StargateItem` fait de même |
 | `SettingsDialog` | Issue #105. Un `DialogHeader` (icône Comet, le nom tapé ou « Settings file », à quoi sert le fichier et, pour un fichier de galaxy, le nom de fichier de cette instance, `about()`), puis, marges comprises, `newContent()` : nom (`SettingsFile::name()`, celui que lui donne le fichier de sa galaxy pour un fichier de galaxy ; appliqué par `setName()`), dossier (bouton qui le vide, **Browse...**), chemin résultant en `PlaceholderText`, pourquoi le nom est refusé (vide, ou celui d'un autre fichier, OK alors grisé) dans un `WarningLabel` (`refreshFields()`) ; un `ChoicePanel` (`m_properties`) : titre **Properties** et `N of M held` (les propriétés cochées parmi celles qu'il peut tenir), filtre (`filterRows()` sur la colonne des noms) et **Held only**, et pourquoi rien n'est montré (`whyNoProperty()`) ; arbre composant (icône Astre, `titleFont()`) → groupe d'objet → propriétés que `SettingsFile::canHold()` accepte, à cocher, colonnes Property, Default value (la valeur du projet), Held by ; composants et groupes cochables (`makeGroupsCheckable()`, `followCheck()` sur `itemChanged`, puis `ChoicePanel::refreshCount()`) ; celles d'un autre fichier sont désactivées avec son nom et l'icône Comet ; les groupes d'objets ne sont ouverts que s'ils ont une propriété tenue, ou qu'un texte filtré trouve sous eux ; appliqué au `accepted`, seulement par les lignes de propriétés (`m_entries`) |
-| `PropertyEditor` | `QTableWidget` des propriétés inscriptibles de type bool, int, uint, double, QString, QDate, QTime, QDateTime : celles du composant, puis celles de ses `propertyObjects()` (sans `objectName`), sans nom à la suite, avec nom sous une ligne de titre par nom ; pour une galaxy, ses `exposedProperties()` sous leur nom exposé (`Row::name`, `Row::component` = le composant intérieur, pour l'italique et l'infobulle) ; nom en italique pour une propriété tenue par un fichier de réglages, icône Stargate et infobulle pour une propriété qu'une stargate d'à côté expose (`stargates()` : celles de l'application, ou de la galaxy où est le composant, `Universe::galaxyOf()` ; `exposedBy()`) ; suit les signaux NOTIFY, `propertyObjectsChanged` (reconstruit en différé, `scheduleRebuild()` : la valeur écrite depuis la table, un `count`, ajoute ou détruit des objets pendant que la cellule éditée le signale), `settingsFilesChanged`, `componentsChanged`, `changed` de ces stargates, `reloaded` d'une galaxy montrée et `runningChanged` : en lecture seule pendant l'exécution (`NoEditTriggers`) ; une galaxy sans propriété exposée, ou une stargate, a un texte qui dit de double-cliquer dessus. Deux pages dans un `QStackedWidget` (`m_pages`, issue #133) : celle d'un composant (`m_stack`, la table dans son `PlaceholderStack`) et celle d'un fichier de réglages (`m_settings`, un `SettingsValueEditor`) ; `setComponent()` montre la première, `setSettingsFile()` la seconde (`nullptr` = rien, la première), `showSelection(composant, fichier)` le fichier s'il y en a un ; signal `refused` (celui du `SettingsValueEditor`). Une valeur écrite passe par `setEdit()` (`Edit`, une fonction `(quoi, change)`, celle de `EditionZone::edit()` dans la galaxy ; écrite directement sans), nommée par `stepName()` (`Change count of Outlets1`) |
+| `PropertyEditor` | `QTableWidget` des propriétés inscriptibles de type bool, int, uint, double, QString, QDate, QTime, QDateTime, et, issue #135, des énumérations, des drapeaux, QColor et QUrl (`hasEditor()`, éditées par le `PropertyDelegate` de `newPropertyTable()`) : celles du composant, puis celles de ses `propertyObjects()` (sans `objectName`), sans nom à la suite, avec nom sous une ligne de titre par nom ; pour une galaxy, ses `exposedProperties()` sous leur nom exposé (`Row::name`, `Row::component` = le composant intérieur, pour l'italique et l'infobulle) ; nom en italique pour une propriété tenue par un fichier de réglages, icône Stargate et infobulle pour une propriété qu'une stargate d'à côté expose (`stargates()` : celles de l'application, ou de la galaxy où est le composant, `Universe::galaxyOf()` ; `exposedBy()`) ; suit les signaux NOTIFY, `propertyObjectsChanged` (reconstruit en différé, `scheduleRebuild()` : la valeur écrite depuis la table, un `count`, ajoute ou détruit des objets pendant que la cellule éditée le signale), `settingsFilesChanged`, `componentsChanged`, `changed` de ces stargates, `reloaded` d'une galaxy montrée et `runningChanged` : en lecture seule pendant l'exécution (`NoEditTriggers`) ; une galaxy sans propriété exposée, ou une stargate, a un texte qui dit de double-cliquer dessus. Deux pages dans un `QStackedWidget` (`m_pages`, issue #133) : celle d'un composant (`m_stack`, la table dans son `PlaceholderStack`) et celle d'un fichier de réglages (`m_settings`, un `SettingsValueEditor`) ; `setComponent()` montre la première, `setSettingsFile()` la seconde (`nullptr` = rien, la première), `showSelection(composant, fichier)` le fichier s'il y en a un ; signal `refused` (celui du `SettingsValueEditor`). Une valeur écrite passe par `setEdit()` (`Edit`, une fonction `(quoi, change)`, celle de `EditionZone::edit()` dans la galaxy ; écrite directement sans), nommée par `stepName()` (`Change count of Outlets1`) |
 | `SettingsValueEditor` (`Settings/`) | Issue #133. Les valeurs que tient le fichier d'un `SettingsFile` (`setFile()`), éditées dans son fichier : au-dessus, un en-tête (`newHeader()`) avec le chemin (`PlaceholderText`, sélectionnable), une note (le fichier n'existe pas encore, ou l'application tourne, `noteFor()`) et un `WarningLabel` (illisible), puis une `newPropertyTable()` : une ligne de titre par instance (`showTitle()`, dans l'ordre où elles viennent dans les entrées, `instancesOf()`), puis une ligne par entrée (`Row {index, entry, property, name}`, `name` = `propertyPath()`), sa valeur lue par `SettingsFile::readValues()` (`refresh()`) : invalide = la valeur par défaut (`property.read()`), en italique avec une infobulle (`showValue()`) ; un type sans éditeur (`hasEditor()`) n'est que montré. Une valeur éditée (`itemChanged`) va à `SettingsFile::writeValue()`, un refus à `refused`, puis `refresh()`. Éditable (`setEditable()`) tant que le fichier se lit et que l'application ne tourne pas. Refait sur `SettingsFile::changed`, `objectNameChanged` de ses instances (`m_instances`, des `QPointer` : le fichier les tient sous leur nom) ; relu sur `runningChanged` et sur `changed` de son `FileFollower`, qui suit à chaque `refresh()` le chemin du fichier (son dossier peut exister depuis) ; `setFile(nullptr)` à la destruction du fichier. Sans entrée, un texte dit de double-cliquer sur le fichier |
 | `SettingsTextDialog` (`Settings/`) | Issue #133, une `EditDialog` : le texte d'un fichier de réglages, tel quel. `DialogHeader` (icône Comet, nom du fichier, à quoi il sert et son chemin, `tellAbout()`), un `QPlainTextEdit` en police fixe sans retour à la ligne (`newTextEdit()`, texte d'attente quand le fichier n'existe pas), un `WarningLabel` et les boutons. `check()` sur `textChanged` : OK grisé tant que le texte n'est pas un objet JSON (`jsonRefusal()`, avec la ligne de l'erreur, `notJson()` ; rien de tapé = pas un objet) ; sinon l'avertissement dit, s'il l'est (`m_outdated`), que le fichier a changé depuis. `apply()` écrit le texte tel quel, en UTF-8, par `QSaveFile`, dossier créé (`writeText()`), et renvoie `false` en disant pourquoi s'il ne s'écrit pas. Suit le fichier par un `FileFollower` : `readAgain()` remontre ce qu'il tient (`showText()`, `m_shown`, document non modifié) si rien n'a été tapé, sinon le garde et lève `m_outdated` |
 
@@ -607,7 +627,7 @@ ini, celui des formats qui n'ont pas le leur).
   (`SettingsDialog` hors de son nom, de ses cases, de son filtre et de ce qu'elle applique, `TestSettingsDialog`,
   `StargateDialog` hors de ses cases, des noms qu'elles donnent, de son filtre, des noms refusés et de ce qu'elle
   applique, `TestStargateDialog` : ni son en-tête dans une galaxy, ni le double-clic, ni une liste qu'une autre
-  stargate expose, et `PropertyEditor` hors de ses groupes, `TestPropertyEditor`), ni `NebulaPlugin.cmake`. Le paquet n'est vérifié par rien : ni projet tiers d'exemple dans le dépôt, ni étape de CI qui
+  stargate expose, et `PropertyEditor` hors de ses groupes et de ses éditeurs, `TestPropertyEditor`), ni `NebulaPlugin.cmake`. Le paquet n'est vérifié par rien : ni projet tiers d'exemple dans le dépôt, ni étape de CI qui
   en compile un.
 - Composants non opérationnels : **Start** ne les signale pas et ne refuse rien ; seuls le « ! », l'ambre et
   `ProblemList` les montrent.
@@ -676,7 +696,8 @@ ini, celui des formats qui n'ont pas le leur).
 - Plugins standard (#130) : un seul composant, `LogComponent`. Pas de fichier de log à lui, pas de vue des messages, pas
   de composant qui choisit le niveau (une liste qui consommerait `logControl`), et ni NebulaStudio ni un projet
   d'exemple ne s'en servent. Un seul niveau pour tout le processus, ni par catégorie ni par plugin, et `level` est une
-  chaîne : l'éditeur de propriétés n'a pas d'énumération. `ILogControl` ne prévient de rien. On n'écrit que depuis le
+  chaîne : l'éditeur de propriétés n'en propose pas les niveaux, et en faire une énumération changerait ce qu'écrivent
+  projets et fichiers de réglages (`debug` deviendrait `Debug`). `ILogControl` ne prévient de rien. On n'écrit que depuis le
   thread du composant : changer `category` pendant qu'un autre thread écrit n'est pas protégé. Deux instances en cours
   n'ont qu'un niveau : la dernière démarrée ou pilotée impose le sien, qui passe aussi dans les fichiers de réglages
   des autres. Lancé par **Start** dans NebulaStudio, il filtre aussi les messages de NebulaStudio, le même processus.
@@ -706,6 +727,13 @@ ini, celui des formats qui n'ont pas le leur).
   **Exposed only** : son filtre ne cherche pas dans les noms exposés (colonne Exposed as) ; cocher un composant expose
   tout ce qu'il a, interfaces comprises, chacune sous le nom de son interface (numéroté s'il est pris), même cachée
   par le filtre ou dans un groupe fermé.
+- Propriétés typées (#135) : ni listes, tableaux et maps (#27), ni `QPoint`, `QSize`, `QRect`, `QFont`… Une couleur ne
+  se tape pas : seule sa fenêtre la choisit, ouverte par un double-clic, F2 ou Espace, pas par un clic comme les autres
+  valeurs. Le bouton d'une URL ne choisit qu'un fichier existant, ni un dossier ni une adresse distante, et une
+  propriété `QString` qui serait un chemin n'a pas de bouton. Une case de la liste des drapeaux se coche par sa case ou
+  Espace, pas en cliquant sur son nom. La fiche d'un composant (`ComponentViewer`) ne liste pas les valeurs d'une
+  énumération. La fenêtre native de choix d'un fichier (Windows) n'est vérifiée qu'à la main : les tests passent par
+  celle de Qt (`offscreen`).
 - Valeurs d'un fichier de réglages (#133) : pendant l'exécution, elles ne sont que montrées, et ce qu'un autre
   programme écrit alors dans le fichier n'est pas donné à l'application qui tourne, qui l'écrase à sa prochaine
   écriture. L'inspecteur ne montre que les entrées du fichier ; le reste de son contenu (d'autres instances, une autre
@@ -744,7 +772,14 @@ ini, celui des formats qui n'ont pas le leur).
   loin, à la création, sans message), ne peut pas être `final`, a besoin d'un constructeur par défaut et de `Q_OBJECT`.
 - Une propriété `QDate`, `QTime` ou `QDateTime` nulle ne fait pas l'aller-retour JSON (`ProjectJson::toJson()`) : tant
   qu'elle l'est, un projet ne l'écrit pas et `SettingsFile::canHold()` la refuse. Les composants de test ont donc des
-  dates valides par défaut.
+  dates valides par défaut. De même pour une `QColor` invalide, ou qui n'est pas en RGB sur 8 bits par canal (HSV,
+  flottants : son nom l'arrondit) ; celles de `QColorDialog` le sont toujours, et la couleur de `Probe` aussi. Ses
+  conversions sont celles de QtGui, chargé par le plugin qui a la propriété : Core ne le lie pas.
+- moc ne produit pas de code qui compile pour une propriété de drapeaux (`Q_FLAG`) déclarée `MEMBER` (Qt 6.11) : elle
+  a `READ` et `WRITE`, comme `styles` de `Probe`. Des drapeaux dont l'énumération est aussi déclarée par `Q_ENUM` font
+  trouver à Qt l'énumération plutôt que les drapeaux pour les convertir en texte : des valeurs combinées n'y ont pas de
+  nom, et un projet ne les écrit pas (vérifié avec Qt 6.11). Seul `Q_FLAG` les déclare ; `metaEnumOf()` de NebulaStudio
+  trouve les drapeaux dans les deux cas.
 - Sous Windows, sans console, Qt n'envoie ses messages (le journal de QTest compris) qu'au débogueur :
   `QT_FORCE_STDERR_LOGGING=1` les fait écrire sur la sortie d'erreur, ce que `nebula_add_test()` donne à CTest.
 - `Ticker` et `Window` ont besoin d'un `QApplication` (widgets) : pas utilisables dans `ExampleApp`, pas plus que les

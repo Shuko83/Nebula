@@ -28,6 +28,12 @@ to it.
   follows the file as well.
 - `SettingsFile::readValues()`, what its file holds for each of its entries, and `SettingsFile::writeValue()`, which
   writes a value to its file for one of them (#133).
+- Enumerations, flags, colors and URLs in the property editor of NebulaStudio (#135): an enumeration (`Q_ENUM`) is
+  chosen in the list of its values, flags (`Q_FLAG`) checked in the list of theirs, a color chosen in a color dialog,
+  opacity included, and shown with a swatch of it, and a URL typed, or a local file chosen in a dialog. A project and
+  a settings file hold an enumeration by the name of its value, flags by the names of theirs joined by `|`, an empty
+  text for none, a color by its name, `#aarrggbb` when it is not opaque, and a URL by its text: the dialogs of a
+  settings file and of a stargate offer them too.
 - `HistoryComponent` (#132), in `StandardPlugin`: the history of what an application does that can be undone. It
   provides `history`, a `Nebula::IHistory`, which executes the `Nebula::Command` pushed to it, then undoes it and does
   it again one step at a time; a `Nebula::CompositeCommand` makes one step of several. It keeps `maxSize` commands, and
