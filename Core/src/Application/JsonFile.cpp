@@ -3,11 +3,10 @@
 
 #include "JsonFile.h"
 
-#include <QDir>
 #include <QFile>
-#include <QFileInfo>
 #include <QJsonParseError>
-#include <QSaveFile>
+
+#include "Nebula/Application/WholeFile.h"
 
 namespace Nebula::JsonFile
 {
@@ -43,14 +42,7 @@ std::optional<QJsonDocument> read(const QString& filePath, QString& error)
 
 bool write(const QString& filePath, const QJsonObject& object, QString& error)
 {
-    QSaveFile file(filePath);
-    if(QDir().mkpath(QFileInfo(filePath).absolutePath()) && file.open(QIODevice::WriteOnly) &&
-       file.write(QJsonDocument(object).toJson()) >= 0 && file.commit())
-    {
-        return true;
-    }
-    error = file.errorString();
-    return false;
+    return WholeFile::write(filePath, QJsonDocument(object).toJson(), error);
 }
 
 } // namespace Nebula::JsonFile

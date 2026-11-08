@@ -14,7 +14,7 @@ namespace Nebula::JsonFile
 
 // The document the file filePath holds; nullopt, with error set, when it cannot be read or is not JSON.
 [[nodiscard]] std::optional<QJsonDocument> read(const QString& filePath, QString& error);
-// Writes object to the file filePath, creating its directory when needed; false, with error set, when it cannot.
+// Writes object to the file filePath, as WholeFile::write() writes a file; false, with error set, when it cannot.
 bool write(const QString& filePath, const QJsonObject& object, QString& error);
 
 } // namespace Nebula::JsonFile

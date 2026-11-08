@@ -9,3 +9,5 @@ nebula_add_test(TestUniverse LINK_LIBRARIES TestComponents)
 nebula_add_test(TestGalaxy LINK_LIBRARIES TestComponents)
 nebula_add_test(TestSettingsFile LINK_LIBRARIES TestComponents)
 nebula_add_test(TestStargate LINK_LIBRARIES TestComponents)
+# The free functions of Nebula::WholeFile.
+nebula_add_test(TestWholeFile LINK_LIBRARIES Nebula::Core)
