@@ -192,6 +192,9 @@ class TestGalaxy : public QObject
     void editedInPlace();
     void stargateChangedOncePlaced();
     void placedInGalaxy();
+    void instancesOfGalaxies();
+    void instancesPlacedInGalaxy();
+    void instancesThatWouldHoldThemselves();
     void settingsFilesInGalaxy();
     void saveGalaxy();
     void galaxiesOfFile();
@@ -1107,6 +1110,94 @@ void TestGalaxy::placedInGalaxy()
     Universe other;
     QVERIFY(other.instantiateGalaxy(clockPath, {}, home) == nullptr);
     QCOMPARE(other.errorString(), u"A galaxy is only placed in the application, or in one of its galaxies"_s);
+}
+
+void TestGalaxy::instancesOfGalaxies()
+{
+    const QTemporaryDir directory;
+    const QString filePath = write(directory, u"Gated.nbp"_s, Gated);
+    Universe universe;
+    universe.setFilePath(directory.filePath(u"App.nbp"_s)); // Which save() writes its galaxies relative to
+    Galaxy* galaxy = universe.instantiateGalaxy(filePath);
+    QVERIFY(galaxy != nullptr);
+    QVERIFY(setExposedValue(*galaxy, u"rate"_s, 9));
+
+    // Its file whole, wherever it is placed again, with the values it exposes.
+    const QJsonObject saved = universe.saveInstances({galaxy});
+    const QJsonObject json = saved.value(u"components").toArray().first().toObject();
+    QCOMPARE(json.value(u"type").toString(), QString(Galaxy::Id));
+    QCOMPARE(json.value(u"galaxy").toString(), galaxy->filePath());
+    QCOMPARE(json.value(u"properties").toObject().value(u"rate").toInt(), 9);
+
+    // Placed in another application: its own components, the same values.
+    Universe other;
+    QStringList problems;
+    const QList<Nebula::Component*> inserted = other.insertInstances(saved, nullptr, problems);
+    QCOMPARE(problems, QStringList());
+    QCOMPARE(inserted.size(), 1);
+    const auto* copy = qobject_cast<const Galaxy*>(inserted.first());
+    QVERIFY(copy != nullptr);
+    QCOMPARE(copy->objectName(), u"Gated1"_s);
+    QCOMPARE(copy->filePath(), galaxy->filePath());
+    QCOMPARE(exposedValue(*copy, u"rate"_s).toInt(), 9);
+    QCOMPARE(namesOf(copy->components()), namesOf(galaxy->components()));
+    QVERIFY(copy->component(u"Probe"_s) != galaxy->component(u"Probe"_s));
+    // In the same one, under another name.
+    const QList<Nebula::Component*> again = universe.insertInstances(saved, nullptr, problems);
+    QCOMPARE(again.size(), 1);
+    QCOMPARE(again.first()->objectName(), u"Gated2"_s);
+    QCOMPARE(exposedValue(*qobject_cast<const Galaxy*>(again.first()), u"rate"_s).toInt(), 9);
+}
+
+void TestGalaxy::instancesPlacedInGalaxy()
+{
+    const QTemporaryDir directory;
+    QVERIFY(!write(directory, u"parts/Clock.nbp"_s, Clock).isEmpty());
+    Universe universe;
+    Galaxy* home = universe.instantiateGalaxy(write(directory, u"Home.nbp"_s, placing(u"parts/Clock.nbp"_s)));
+    QVERIFY(home != nullptr);
+    const auto* clock = qobject_cast<const Galaxy*>(home->component(u"Clock1"_s));
+    QVERIFY(clock != nullptr);
+
+    // From a galaxy to another one, bound as they were there, named among the components of the one they are in.
+    const QJsonObject saved = universe.saveInstances({clock->component(u"Source"_s), clock->component(u"Sink"_s)});
+    QStringList problems;
+    for(const QStringList& named : {QStringList{"Source", "Sink"}, QStringList{"Source2", "Sink2"}})
+    {
+        const QList<Nebula::Component*> inserted = universe.insertInstances(saved, home, problems);
+        QCOMPARE(inserted.size(), 2);
+        QCOMPARE((QStringList{inserted.at(0)->objectName(), inserted.at(1)->objectName()}), named);
+        QCOMPARE(universe.galaxyOf(*inserted.at(0)), home);
+        QCOMPARE(inserted.at(1)->binding(u"object"_s).provider, inserted.at(0));
+    }
+    QCOMPARE(problems, QStringList());
+    QCOMPARE(namesOf(home->components()), (QStringList{"Clock1", "Source", "Sink", "Source2", "Sink2"}));
+    QCOMPARE(namesOf(universe.components()), QStringList{"Home1"});
+}
+
+void TestGalaxy::instancesThatWouldHoldThemselves()
+{
+    const QTemporaryDir directory;
+    const QString clockPath = write(directory, u"parts/Clock.nbp"_s, Clock);
+    Universe universe;
+    QVERIFY(universe.instantiate(testComponentId(u"Probe"_s)) != nullptr);
+    Galaxy* home = universe.instantiateGalaxy(write(directory, u"Home.nbp"_s, placing(u"parts/Clock.nbp"_s)));
+    Galaxy* clock = universe.instantiateGalaxy(clockPath);
+    QVERIFY(home != nullptr && clock != nullptr);
+    auto* inner = qobject_cast<Galaxy*>(home->component(u"Clock1"_s));
+    const QJsonObject saved = universe.saveInstances({universe.component(u"Probe1"_s), home});
+
+    // Neither in itself, nor in the galaxy it holds, nor in another instance of that galaxy: not even the Probe.
+    for(Galaxy* galaxy : {home, inner, clock})
+    {
+        const QStringList before = namesOf(galaxy->components());
+        QStringList problems;
+        QVERIFY(universe.insertInstances(saved, galaxy, problems).isEmpty());
+        QVERIFY2(universe.errorString().contains(u"would hold itself"_s), qPrintable(universe.errorString()));
+        QCOMPARE(problems, QStringList());
+        QCOMPARE(namesOf(galaxy->components()), before);
+    }
+    QCOMPARE(namesOf(universe.components()), (QStringList{"Probe1", "Home1", "Clock1"}));
 }
 
 void TestGalaxy::settingsFilesInGalaxy()

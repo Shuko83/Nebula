@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QDir>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QList>
@@ -159,6 +160,26 @@ class CORE_EXPORT Universe : public QObject
     // was bound to its interfaces is unbound from them. Returns false, doing nothing, when it is none of them, and
     // while it runs.
     bool remove(Component& instance);
+    // instances, some of its components or of those of its galaxies, as a piece of a project holds them, for
+    // insertInstances() to place them again, here or in another application: the "plugins" they are from, those of the
+    // galaxies among them included, the "components", in the order they were instantiated, a galaxy with its file
+    // whole and the values of what it exposes, and the "bindings" between them. Left out: the stargates among them,
+    // what a stargate exposes being unique in its galaxy, the bindings to other components, and the instances that are
+    // not where the first one of them is, the application or one galaxy. Empty while it runs, and when none of
+    // instances is one of its components.
+    [[nodiscard]] QJsonObject saveInstances(const QList<Component*>& instances) const;
+    // Places in galaxy, one of its galaxies or of those they hold, or in the application itself when galaxy is nullptr,
+    // the instances that instances holds, as saveInstances() writes them, as load() places those of a project: with
+    // their properties and those of their objects, the values of what a galaxy exposes, then the bindings between
+    // them. Each keeps its name, unless another instance has it there: it is given then its name without the number it
+    // ends with, and the first number after that one no other instance has, Counter3 for Counter2, from 2 when it ends
+    // with none. Their plugins are found by their id among plugins(), not by their file, and loaded when they are not
+    // yet, as those of a galaxy. Returns them, in the order instances holds them; problems tells what could not be
+    // restored of them, a property say, a sentence each. Returns none, placing nothing, with errorString() set, while
+    // it runs, when galaxy is not one of its galaxies, when instances holds none, when one of their plugins is unknown
+    // or cannot be loaded, and when one of them cannot be placed: a galaxy that would hold itself, or the file of the
+    // application, directly or not, say.
+    QList<Component*> insertInstances(const QJsonObject& instances, Galaxy* galaxy, QStringList& problems);
     // In the order they were instantiated, its galaxies among them: not the components they hold.
     [[nodiscard]] const std::vector<std::unique_ptr<Component>>& components() const;
     // Those of galaxy, one of its galaxies or of those they hold, see Galaxy::components(); components() when galaxy is
@@ -388,8 +409,9 @@ class CORE_EXPORT Universe : public QObject
     static void refuseCycle(Galaxy& galaxy, const QString& cycle, const Scope& parent);
     // Follows the settings files of galaxy, once it is filled, and attaches its stargates, once they are bound.
     void settleGalaxy(Galaxy& galaxy);
-    // The scope a galaxy is placed in, the one of galaxy; nullopt, with errorString() set, when none can be.
-    std::optional<Scope> placingScope(Galaxy* galaxy);
+    // The scope something is placed in, the one of galaxy; nullopt when none can be, with errorString() set to
+    // whileRunning while it runs, to elsewhere when galaxy is not one of its galaxies.
+    std::optional<Scope> placingScope(Galaxy* galaxy, const QString& whileRunning, const QString& elsewhere);
     // Why galaxy is not read again; empty when it can be.
     [[nodiscard]] QString reloadRefusal(const Galaxy& galaxy) const;
     // The project of the file of galaxy, read again for it to be filled again in parent; nullopt, with error set, when
@@ -408,6 +430,31 @@ class CORE_EXPORT Universe : public QObject
     // The values of what galaxy exposes, by the names they are exposed as, as a project holds them.
     [[nodiscard]] QJsonObject exposedValues(const Galaxy& galaxy) const;
 
+    // Those of instances saveInstances() writes: those where the first one of them that is one of its components is,
+    // in the order they were instantiated, but stargates.
+    [[nodiscard]] QList<Component*> savedInstances(const QList<Component*>& instances) const;
+    // Loads the plugins of instances, what insertInstances() is given as what a galaxy is, found by their id among
+    // plugins(); false, with errorString() set, when one of them is unknown or cannot be loaded.
+    bool loadInstancePlugins(const GalaxyInfo& instances);
+    // The first of pluginIds that cannot be loaded, PluginManager::errorString() telling why; nullopt when each is.
+    std::optional<QString> firstUnloadable(const QStringList& pluginIds);
+    // instances, as insertInstances() is given them, each of its components named as it is to be in scope, see
+    // freeNames(), and the bindings between them named so: without its stargates, nor its bindings to others.
+    [[nodiscard]] QJsonObject freelyNamed(const Scope& scope, const QJsonObject& instances) const;
+    // The names the components of a project, but its stargates, are given once placed in scope, by the names they
+    // have there: their own, unless another instance of scope, or one of them before, has it.
+    [[nodiscard]] QHash<QString, QString> freeNames(const Scope& scope, const QJsonArray& components) const;
+    // Places in scope the components of instances and binds them, as loadScope() does, their names free there. Returns
+    // them, in their order; none, with errorString() set, when there is none, or when one of them could not be placed:
+    // those placed are removed then. problems tells what could not be restored of them otherwise.
+    QList<Component*> insert(const Scope& scope, const QJsonObject& instances, QStringList& problems);
+    // Removes inserted, the last one first, then sets errorString() to problems; returns none.
+    QList<Component*> withdraw(const QList<Component*>& inserted, const QStringList& problems);
+    // Once inserted are placed in scope: clears errorString(), and tells, when scope is a galaxy, that the settings
+    // files of the application changed when inserted holds a galaxy that has some, as adopt() tells it in the
+    // application.
+    void settleInserted(const Scope& scope, const QList<Component*>& inserted);
+
     // What save() writes of components and files, the files of their galaxies relative to directory, whole when it is
     // empty, with description.
     [[nodiscard]] QJsonObject saveProject(const std::vector<std::unique_ptr<Component>>& components,
@@ -415,17 +462,15 @@ class CORE_EXPORT Universe : public QObject
                                           const QString& directory, const QString& description) const;
     // The plugins of components, and of those of their galaxies, as a project holds them: those to load before it is
     // read again.
-    [[nodiscard]] QJsonArray pluginsJson(const std::vector<std::unique_ptr<Component>>& components) const;
+    [[nodiscard]] QJsonArray pluginsJson(const QList<Component*>& components) const;
     // The files of the plugins of components, and of those of their galaxies, by plugin id.
-    [[nodiscard]] std::map<QString, QString>
-    pluginFiles(const std::vector<std::unique_ptr<Component>>& components) const;
+    [[nodiscard]] std::map<QString, QString> pluginFiles(const QList<Component*>& components) const;
     // Adds the plugin of component, or those of the components of a galaxy, to files, by id.
     void addPluginFiles(const Component& component, std::map<QString, QString>& files) const;
     // The plugin of component; nullopt when it is no longer known.
     [[nodiscard]] std::optional<PluginInfo> pluginOf(const Component& component) const;
-    // components as a project holds them, the files of their galaxies relative to directory.
-    [[nodiscard]] QJsonArray componentsJson(const std::vector<std::unique_ptr<Component>>& components,
-                                            const QString& directory) const;
+    // components as a project holds them, the files of their galaxies relative to directory, whole when it is empty.
+    [[nodiscard]] QJsonArray componentsJson(const QList<Component*>& components, const QString& directory) const;
     // component as a project holds it: its name, its type, and what contentJson() writes.
     [[nodiscard]] QJsonObject componentJson(const Component& component, const QString& directory) const;
     // What a project holds of component beyond its name and its type: what galaxyJson(), stargateJson() or
