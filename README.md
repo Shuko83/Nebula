@@ -71,7 +71,7 @@ It accepts every keyword of `cmu_add_target` ([CMakeUtils](CMakeUtils/README.md)
 | `id`          | `<cmu_organization>.<PROJECT_NAME>.<NAME>`, e.g. `FabienDG.Nebula.Network` |
 | `name`        | `NAME`                                                                       |
 | `description` | `DESCRIPTION`, empty when not given                                          |
-| `version`     | `VERSION`, else `PROJECT_VERSION`, else `0.0.0`                              |
+| `version`     | `VERSION`, else `PROJECT_VERSION` followed by `cmu_version_suffix`, else `0.0.0` |
 | `coreVersion` | Version of `Core` the plugin is built against                                |
 
 Its build date (`__DATE__` and `__TIME__`) is read when it is loaded. `NEBULA_PLUGIN_ID` holds the id while the plugin compiles.
@@ -112,6 +112,8 @@ Point `CMAKE_PREFIX_PATH` at the package: `<build>/package`, staged after each b
 The plugin is written to `<build>/bin/plugins` (`<build>/bin/<config>/plugins` with Visual Studio): copy it to `plugins/` next to an application, or open it from NebulaStudio with **Open plugin...**. Its `coreVersion` is the version of the installed `Core`, whatever the version of its project. Build it in a configuration Nebula was installed in: Qt does not load a `Debug` plugin into a `Release` application, nor the other way round.
 
 Installed with `-Dcmu_install_mode=PACKAGE`, Nebula is a single prefix whose package has no components: `find_package(Nebula 2.1 REQUIRED)`.
+
+The zip of a release, and the folder in it, are named after what its binaries are built for and with, `Nebula_<version>_<platform>_<compiler>_Qt<major>.<minor>`: `Nebula_2.2.0_win-x64_msvc2022_Qt6.12.zip` is built for 64-bit Windows with Visual Studio 2022 and Qt 6.12, as a plugin built against it should be. The binaries keep their own names (`NebulaStudio.exe`, `Core.dll`, `<NAME>.nbdl`); on Windows, the **Details** tab of their properties tells the rest: their description is their name followed by their platform, their compiler and their Qt, `NebulaStudio (win-x64, MSVC 19.44.35211.0, Qt 6.12.0)`, which Windows shows as the name of NebulaStudio in the Task Manager as well, and their version is the one of the project. `-DNEBULA_VERSION_SUFFIX=-rc0`, a dash then letters or digits, builds a `2.2.0-rc0`: the suffix follows the numbers of `project()` in the details of each binary, in the version NebulaStudio tells and in the name of the package.
 
 ---
 

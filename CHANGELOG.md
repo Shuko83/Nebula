@@ -37,11 +37,21 @@ to it.
   to its release included, and undoing it gives back exactly what was there, the links of an instance removed included.
   NebulaStudio keeps them in the `HistoryComponent` of its galaxy.
 - `Universe::restoreGalaxy()`, which gives a galaxy placed what was saved of it, without reading its file (#132).
+- `NEBULA_VERSION_SUFFIX` (#139), a suffix of the version, a dash then letters or digits: built with
+  `-DNEBULA_VERSION_SUFFIX=-rc0`, Nebula 2.2.0 is a `2.2.0-rc0`, in the details of each binary, the version
+  NebulaStudio tells and the name of the package. CMakeUtils gives it to every target, as `cmu_version_suffix`.
 
 ### Changed
 
 - The package is built with Qt 6.12, formerly Qt 6.8 (#141), as the continuous integration builds and tests Nebula:
-  its zip is named `Nebula-<version>-win64-msvc2022-qt6.12.zip`, and a plugin built against it is built with Qt 6.12.
+  a plugin built against it is built with Qt 6.12.
+- The zip of a release, and the folder in it, are named after what its binaries are built for and with (#139),
+  `Nebula_<version>_<platform>_<compiler>_Qt<major>.<minor>`: `Nebula_2.2.0_win-x64_msvc2022_Qt6.12.zip`, formerly
+  `Nebula-2.1.0-win64-msvc2022-qt6.8.zip`.
+- On Windows, the details of each binary tell what it is built for and with (#139): its description is its name
+  followed by its platform, its compiler and its Qt, `NebulaStudio (win-x64, MSVC 19.44.35211.0, Qt 6.12.0)`, which
+  Windows shows as the name of an executable in the Task Manager as well; its numeric version has the four numbers of
+  the version. The binaries keep their names.
 
 ## [2.1.0] - 2026-11-03
 
