@@ -20,8 +20,6 @@ on:
 env:
   BUILD_TYPE: Release
   QT_VERSION: "6.12.*"
-  # What the binaries of the zip are built with: part of its name.
-  PLATFORM: win64-msvc2022-qt6.12
   # Empty on a pull request.
   TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
 
@@ -70,17 +68,21 @@ jobs:
     - name: Configure CMake
       run: cmake -S . -B ${{ github.workspace }}/build
 
-    - name: Read the version of the project
+    - name: Read the version and the package of the project
       shell: pwsh
       run: |
-        $match = Select-String -Path build/CMakeCache.txt -Pattern '^CMAKE_PROJECT_VERSION:STATIC=(.+)$'
-        $version = $match.Matches[0].Groups[1].Value
+        function Read-Cache($entry) {
+          $match = Select-String -Path build/CMakeCache.txt -Pattern "^${entry}:[A-Z]+=(.+)$"
+          return $match.Matches[0].Groups[1].Value
+        }
+        $version = Read-Cache 'CMAKE_PROJECT_VERSION'
         # A tag that is not the version would publish binaries and a package that tell another one.
         if ($env:TAG -and $version -ne $env:TAG) {
           Write-Error "The tag $env:TAG is not the version of the project: project(Nebula VERSION $version)"
           exit 1
         }
-        "PACKAGE=Nebula-$version-$env:PLATFORM" >> $env:GITHUB_ENV
+        # Named by CMake from what the binaries are built for and with (#139): Nebula_2.2.0_win-x64_msvc2022_Qt6.12.
+        "PACKAGE=$(Read-Cache 'NEBULA_PACKAGE_NAME')" >> $env:GITHUB_ENV
 
     - name: Build
       run: cmake --build ${{ github.workspace }}/build --config ${{ env.BUILD_TYPE }}

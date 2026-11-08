@@ -9,11 +9,11 @@ set_property(GLOBAL PROPERTY NEBULA_PLUGIN_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}"
 # sets the version of the package: PROJECT_VERSION is then the one of the project that builds the plugins.
 if(CMAKE_FIND_PACKAGE_NAME STREQUAL "Nebula" AND Nebula_VERSION)
     set_property(GLOBAL PROPERTY NEBULA_CORE_VERSION "${Nebula_VERSION}")
-# In the source tree: same rule as cmu_add_target for CoreInfo::version.
+# In the source tree: same rule as cmu_add_target for CoreInfo::version, suffix (-rc0) included.
 elseif(PROJECT_VERSION)
-    set_property(GLOBAL PROPERTY NEBULA_CORE_VERSION "${PROJECT_VERSION}")
+    set_property(GLOBAL PROPERTY NEBULA_CORE_VERSION "${PROJECT_VERSION}${cmu_version_suffix}")
 else()
-    set_property(GLOBAL PROPERTY NEBULA_CORE_VERSION "0.0.0")
+    set_property(GLOBAL PROPERTY NEBULA_CORE_VERSION "0.0.0${cmu_version_suffix}")
 endif()
 
 # Creates a plugin loaded by Nebula::PluginManager: a MODULE library carrying its metadata (see README.md).
@@ -68,12 +68,13 @@ function(nebula_add_plugin)
     string(REPLACE "\"" "\\\"" NEBULA_PLUGIN_DESCRIPTION "${NEBULA_PLUGIN_DESCRIPTION}")
     string(REPLACE "\n" "\\n" NEBULA_PLUGIN_DESCRIPTION "${NEBULA_PLUGIN_DESCRIPTION}")
     string(REPLACE "\t" "\\t" NEBULA_PLUGIN_DESCRIPTION "${NEBULA_PLUGIN_DESCRIPTION}")
+    # Same rule as cmu_add_target for <NAME>Info::version and the details of the file.
     if(DEFINED ARG_VERSION)
         set(NEBULA_PLUGIN_VERSION "${ARG_VERSION}")
     elseif(PROJECT_VERSION)
-        set(NEBULA_PLUGIN_VERSION "${PROJECT_VERSION}")
+        set(NEBULA_PLUGIN_VERSION "${PROJECT_VERSION}${cmu_version_suffix}")
     else()
-        set(NEBULA_PLUGIN_VERSION "0.0.0")
+        set(NEBULA_PLUGIN_VERSION "0.0.0${cmu_version_suffix}")
     endif()
     get_property(NEBULA_PLUGIN_CORE_VERSION GLOBAL PROPERTY NEBULA_CORE_VERSION)
 

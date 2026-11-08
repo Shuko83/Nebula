@@ -10,9 +10,26 @@ project(Nebula VERSION 2.1.0)
 set(cmu_organization "FabienDG")
 set(cmu_copyright "Copyright (C) 2026 Fabien Di Grande")
 
+# What follows the version of a build that is not a release (-rc0): in the details of each binary, the version
+# NebulaStudio tells, and the name of the package. The numbers stay the ones of project().
+set(NEBULA_VERSION_SUFFIX "" CACHE STRING "Suffix of the version of Nebula: a dash then letters or digits (-rc0)")
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/PackageName.cmake)
+nebula_is_version_suffix(_valid "${NEBULA_VERSION_SUFFIX}")
+if(NOT _valid)
+    message(FATAL_ERROR "NEBULA_VERSION_SUFFIX '${NEBULA_VERSION_SUFFIX}' is not a dash then letters or digits (-rc0)")
+endif()
+set(cmu_version_suffix "${NEBULA_VERSION_SUFFIX}")
+
 include(${CMAKE_CURRENT_LIST_DIR}/CMakeUtils/CMakeUtils.cmake)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
+
+# What release.yml names the zip of the package and the folder in it, which tests/Package checks.
+nebula_compiler_name(_compiler "${CMAKE_CXX_COMPILER_ID}" "${CMAKE_CXX_COMPILER_VERSION}" "${MSVC_VERSION}")
+nebula_package_name(_package "${PROJECT_VERSION}${NEBULA_VERSION_SUFFIX}" "${cmu_platform}" "${_compiler}"
+    "${Qt6_VERSION}")
+set(NEBULA_PACKAGE_NAME "${_package}" CACHE INTERNAL "Name of the package of Nebula: its zip and the folder in it")
+message(STATUS "Nebula: the package is ${NEBULA_PACKAGE_NAME}")
 
 # Executables and DLLs side by side, so that Core.dll is found when an application starts;
 # nebula_add_plugin puts the plugins in plugins/ next to them.

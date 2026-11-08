@@ -86,3 +86,5 @@ add_subdirectory(NebulaStudio)
 add_subdirectory(StudioPlugin)
 add_subdirectory(StandardPlugin)
 add_subdirectory(exemple)
+# Not QTest executables: the name of the package and the details of the binaries, which the build gives.
+add_subdirectory(Package)
