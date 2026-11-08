@@ -24,7 +24,8 @@ class QPalette;
 namespace Nebula
 {
 class Component;
-}
+class ComponentFactory;
+} // namespace Nebula
 
 // A component instantiated in the edition zone: its name above the name of its component, then its interfaces, one
 // InterfaceItem per row: those it consumes, their dots on its left edge, then those it provides, their dots on its
@@ -218,3 +219,8 @@ class ComponentItem : public QGraphicsObject
 
 // The items of components among those of scene, the topmost first.
 [[nodiscard]] QList<ComponentItem*> componentItems(const QGraphicsScene& scene);
+// The name of what instance is an instance of, as its item tells it under its name: Stargate for a stargate, the name
+// of its file for a galaxy, the name of its component in factory otherwise; empty when factory does not know it.
+[[nodiscard]] QString componentNameOf(const Nebula::Component& instance, const Nebula::ComponentFactory& factory);
+// The icon its item shows before that name: the one of a stargate, or of a galaxy; none, a null icon, otherwise.
+[[nodiscard]] QIcon componentIconOf(const Nebula::Component& instance);
