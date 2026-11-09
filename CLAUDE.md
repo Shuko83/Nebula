@@ -13,8 +13,8 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `Core/cmake/` | — | `nebula_add_plugin()` et les gabarits `plugin.h.in` / `plugin.json.in`, livrés avec `Core` dans le paquet |
 | `Plugins/Standard/` | `Nebula::Standard` (INTERFACE, en-têtes seuls) | Issue #130 : les interfaces des composants standard, dans `include/Nebula/Standard/` (`LogLevel.h`, `ILog.h`, `ILogControl.h`, et issue #132 `Command.h`, `IHistory.h`), qu'un plugin lie pour les consommer ; composant du paquet, `find_package(Nebula COMPONENTS Core Standard)`. Voir Plugins standard |
 | `Plugins/StandardPlugin/` | `.nbdl` dans `bin/plugins` | Issue #130 : le premier plugin standard, livré avec Nebula pour toute application, à la version de Nebula : `LogComponent` (fournit `log` : `ILog`, et `logControl` : `ILogControl`), qui pilote pendant l'exécution le log de tout le processus, et `HistoryComponent` (issue #132, fournit `history` : `IHistory`), l'historique de ce qui se défait |
-| `NebulaStudio/` | `NebulaStudio` (exe Widgets) | L'éditeur graphique : son `main.cpp` est une `NebulaApplication` qui fait tourner la galaxy de `StudioPlugin/` (issue #73) ; le code de ses parties est dans `NebulaStudio/src/`, sans namespace, celui des fichiers de réglages dans `NebulaStudio/src/Settings/`, celui des galaxies (`GalaxyModel`, `GalaxyViewer`, `GalaxyPanel`) dans `NebulaStudio/src/Galaxy/`, le logo de Nebula, les icônes du glossaire et la police des titres dans `NebulaStudio/resources/` |
-| `StudioPlugin/` | `.nbdl` dans `bin/plugins` | Issue #103 : les parties de NebulaStudio, chacune un composant (`src/`, voir NebulaStudio), faites de ses classes, dont les sources sont recompilées dans le plugin (toutes celles de `NebulaStudio/src/` sauf `main.cpp` et `SplashScreen.cpp`, avec `nebulastudio.qrc`), et `NebulaStudio.nbp`, la galaxy qui les assemble en la fenêtre de NebulaStudio, copiée dans `<build>/bin[/<config>]/scene/` à chaque build (cible `StudioGalaxy`) |
+| `NebulaStudio/` | `NebulaStudio` (exe Widgets), `NebulaStudioClasses` (statique), `NebulaStudioResources` (objets) | L'éditeur graphique : son `main.cpp`, dans `NebulaStudio/app/` avec son `SplashScreen`, est une `NebulaApplication` qui fait tourner la galaxy de `StudioPlugin/` (issue #73) ; le code de ses parties est dans `NebulaStudio/src/`, sans namespace, la bibliothèque statique `NebulaStudioClasses` (issue #146, voir Build), celui des fichiers de réglages dans `NebulaStudio/src/Settings/`, celui des galaxies (`GalaxyModel`, `GalaxyViewer`, `GalaxyPanel`) dans `NebulaStudio/src/Galaxy/`, le logo de Nebula, les icônes du glossaire et la police des titres dans `NebulaStudio/resources/` |
+| `StudioPlugin/` | `.nbdl` dans `bin/plugins` | Issue #103 : les parties de NebulaStudio, chacune un composant (`src/`, voir NebulaStudio), faites de ses classes, que le plugin lie (`NebulaStudioClasses`, et `NebulaStudioResources` pour `nebulastudio.qrc`), et `NebulaStudio.nbp`, la galaxy qui les assemble en la fenêtre de NebulaStudio, copiée dans `<build>/bin[/<config>]/scene/` à chaque build (cible `StudioGalaxy`) |
 | `exemple/ExamplePlugin` | `.nbdl` dans `bin/plugins` | Composant `Greeter` (fournit `greeter` : `IGreeter`) |
 | `exemple/WidgetsPlugin` | `.nbdl` dans `bin/plugins` | L'exemple de la bonne pratique (issue #79) : des composants nommés `<Nom>Component`, chacun créant ses objets (membres) dans son constructeur. `MainWindowComponent` (fournit `mainWindow` : la `QMainWindow`, montrée pendant l'exécution ; consomme `centralWidget` : `QWidget`), `TopBarComponent` (une `QToolBar` ; consomme `mainWindow`, `Mandatory`, les listes `actions` : `QAction` et `widgets` : `QWidget`, montrés dans l'ordre de leurs liaisons, issue #67), `ActionComponent` (fournit `action` : `QAction`), `CounterComponent` (consomme `action`, `Mandatory`, compte pendant l'exécution ; fournit `display` : son `QLabel`) et `LabelsComponent` (issue #86 : fournit `label1`… autant de `QWidget` que son `count`, 1 au départ, de 0 à `MaxCount` = 10, chacun le `QLabel` d'un `Label`, objet dont le `text` est édité dans le groupe de son nom ; régler `count` ajoute les suivants ou retire les derniers par `removeProvidedInterface()`) |
 | `exemple/ExternalPlugin` | `.nbdl` dans `<build>/external-plugins` | `Ticker` (fournit `display` : `QWidget`, dont il expose les propriétés dans le groupe `Display`), `ProfileSelector` (fournit `display` : la `QComboBox` de ses `profiles`, où l'utilisateur choisit `profile`) et `Window` (consomme `content` : `QWidget`, `Mandatory`) |
@@ -25,7 +25,7 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `docs/release-notes/` | — | Notes de chaque version, `<x.y.z>.md` : le texte de sa release GitHub |
 | `CHANGELOG.md` | — | Ce qui change d'une version à l'autre, la dernière en premier, au format Keep a Changelog, en anglais : une section `## [x.y.z] - <date>` par version (Added, Changed, Removed, Fixed) et son lien vers la release en bas |
 | `docs/glossary.md` | — | Glossaire Nebula (Nebula, Univers, Galaxy, Astre, Comet, Stargate), en anglais puis en français, référencé par le README : le vocabulaire à employer pour nommer code, documentation et interface ; Nebula et Univers (la classe `Universe`) sont déjà employés, Galaxy pour un fichier de projet (`GalaxyInfo`, onglet **Galaxies**), et Stargate pour ce qu'une galaxy expose (`Stargate`) |
-| `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Application/` (`TestNebulaApplication`, `QTEST_APPLESS_MAIN` : chaque test construit sa `NebulaApplication`, l'une après l'autre, avec sa ligne de commande), `Core/` (une par classe, `TestUniverse` avec les morceaux de projet copiés et collés, `TestGalaxy` pour les galaxies posées, leurs interfaces, leurs propriétés exposées, leur édition, leur relecture et leur copier-coller, `TestStargate` pour la Stargate dans l'application qui l'édite, `TestWholeFile` pour `Nebula::WholeFile::write()`) et `NebulaStudio/` (Colors, Theme avec les bords de son style et le schéma choisi, PluginModel, ComponentModel, EditionView, SceneOverview, DragAside, EditionScene pour ses liens et son copier-coller, SceneCommand pour les étapes de son historique, ComponentFinder, PropertyEditor pour ses groupes et son édition et la page d'un fichier de réglages, SettingsDialog, SettingsValueEditor et SettingsTextDialog pour les valeurs et le texte d'un fichier de réglages, suivi sur le disque, GalaxyModel, Preferences, sources recompilées), `StudioPlugin/` (`TestStudioPlugin` : ses composants chargés depuis le plugin, la galaxy de NebulaStudio ouverte, lancée et relue), `StandardPlugin/` (`TestLogComponent` : le `LogComponent` chargé depuis le plugin, consommé par les interfaces de `Nebula::Standard`, et le niveau du processus vu d'une catégorie du test ; `TestHistoryComponent` : ses commandes faites, défaites et refaites, sa taille, ses options et les commandes composées), `exemple/` (`TestWidgetsPlugin` : ses composants chargés depuis le plugin et assemblés), `Package/` (issue #139, pas des exécutables Qt Test : `TestPackageName`, `cmake -P` de `cmake/PackageName.cmake` et du nom de ce build, et sous Windows `TestVersionDetails<Cible>`, un script PowerShell qui lit la ressource de version de `NebulaStudio`, `Core` et `StandardPlugin`), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`, `Outlets` : autant d'interfaces et d'objets que son `count`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`, et `Plugins/`, les plugins de test construits par `nebula_add_test_plugin()` (`nebula_add_plugin()`, puis retirés du paquet) : `FirstPlugin` (`Alpha`) et `ThirdPlugin` (`Gamma`, `Delta`) dans `test-plugins/`, `SecondPlugin` (`Beta`) dans `other-test-plugins/`, à côté des tests mais pas dans leur `plugins/` (`NEBULA_TEST_PLUGINS_DIR`, `NEBULA_OTHER_TEST_PLUGINS_DIR`). `PluginManager`, les plugins d'un projet ou d'une galaxy et `PluginModel` se testent sur eux : seul `TestWidgetsPlugin` dépend d'un exemple, celui qu'il teste (issue #83). Rien n'est installé |
+| `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Application/` (`TestNebulaApplication`, `QTEST_APPLESS_MAIN` : chaque test construit sa `NebulaApplication`, l'une après l'autre, avec sa ligne de commande), `Core/` (une par classe, `TestUniverse` avec les morceaux de projet copiés et collés, `TestGalaxy` pour les galaxies posées, leurs interfaces, leurs propriétés exposées, leur édition, leur relecture et leur copier-coller, `TestStargate` pour la Stargate dans l'application qui l'édite, `TestWholeFile` pour `Nebula::WholeFile::write()`) et `NebulaStudio/` (Colors, Theme avec les bords de son style et le schéma choisi, PluginModel, ComponentModel, EditionView, SceneOverview, DragAside, EditionScene pour ses liens et son copier-coller, SceneCommand pour les étapes de son historique, ComponentFinder, PropertyEditor pour ses groupes et son édition et la page d'un fichier de réglages, SettingsDialog, SettingsValueEditor et SettingsTextDialog pour les valeurs et le texte d'un fichier de réglages, suivi sur le disque, GalaxyModel, Preferences, chacun liant `NebulaStudioClasses`), `StudioPlugin/` (`TestStudioPlugin` : ses composants chargés depuis le plugin, la galaxy de NebulaStudio ouverte, lancée et relue), `StandardPlugin/` (`TestLogComponent` : le `LogComponent` chargé depuis le plugin, consommé par les interfaces de `Nebula::Standard`, et le niveau du processus vu d'une catégorie du test ; `TestHistoryComponent` : ses commandes faites, défaites et refaites, sa taille, ses options et les commandes composées), `exemple/` (`TestWidgetsPlugin` : ses composants chargés depuis le plugin et assemblés), `Package/` (issue #139, pas des exécutables Qt Test : `TestPackageName`, `cmake -P` de `cmake/PackageName.cmake` et du nom de ce build, et sous Windows `TestVersionDetails<Cible>`, un script PowerShell qui lit la ressource de version de `NebulaStudio`, `Core` et `StandardPlugin`), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`, `Outlets` : autant d'interfaces et d'objets que son `count`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`, et `Plugins/`, les plugins de test construits par `nebula_add_test_plugin()` (`nebula_add_plugin()`, puis retirés du paquet) : `FirstPlugin` (`Alpha`) et `ThirdPlugin` (`Gamma`, `Delta`) dans `test-plugins/`, `SecondPlugin` (`Beta`) dans `other-test-plugins/`, à côté des tests mais pas dans leur `plugins/` (`NEBULA_TEST_PLUGINS_DIR`, `NEBULA_OTHER_TEST_PLUGINS_DIR`). `PluginManager`, les plugins d'un projet ou d'une galaxy et `PluginModel` se testent sur eux : seul `TestWidgetsPlugin` dépend d'un exemple, celui qu'il teste (issue #83). Rien n'est installé |
 | `docs/testing.md` | — | Lancer, déboguer et écrire les tests, et mesurer ce qu'ils couvrent, en français |
 | `sonar-project.properties` | — | Issue #147 : ce qu'analyse SonarQube Cloud, que la CI complète de ce que donne le build (voir Build) |
 | `CFmake/` | non suivi, dépôt à part | Ne fait pas partie du build : ne pas y toucher |
@@ -53,12 +53,22 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   `msvc` et l'année de Visual Studio tirée de `MSVC_VERSION`, sinon l'id et la majeure : `gcc14`), que `release.yml`
   lit dans `CMakeCache.txt` pour nommer le zip et son dossier.
 - Sorties : `<build>/bin[/<config>]`, plugins dans `plugins/` à côté. Extension `.nbdl`, seule scannée.
+- Temps de build (issue #146) : avec un générateur Visual Studio, le `CMakeLists.txt` racine donne `/MP` à MSVC
+  (`add_compile_options()`), qui compile en parallèle les fichiers d'un projet, dans l'IDE comme par `cmake --build` ;
+  `--parallel` (MSBuild `/m`) construit en plus plusieurs projets à la fois, ce que fait la CI, et ce que donne en local
+  la variable d'environnement `CMAKE_BUILD_PARALLEL_LEVEL` (voir [docs/testing.md](docs/testing.md)). Les classes de
+  NebulaStudio (`NebulaStudio/src/`, un `GLOB_RECURSE`) sont compilées une fois, en `NebulaStudioClasses`, bibliothèque
+  statique (`add_library`, hors du paquet, `POSITION_INDEPENDENT_CODE` pour `StudioPlugin`) que lient l'exécutable,
+  `StudioPlugin` et les tests, et `nebulastudio.qrc` en `NebulaStudioResources`, bibliothèque d'objets, que lient ceux
+  qui montrent ses icônes ou sa police (voir Pièges). L'exécutable n'a que ses sources de `NebulaStudio/app/`
+  (`cmu_sources_dir`), celles qui incluent `NebulaStudio_info.h` : `main.cpp` et `SplashScreen`.
 - `add_dependencies(NebulaStudio ExamplePlugin WidgetsPlugin ExternalPlugin StudioPlugin StudioGalaxy StandardPlugin)`,
   de même pour `ExampleUniverseApp` (et `ExampleApp` pour ceux de `plugins/`), dans `exemple/CMakeLists.txt` :
   construire l'un reconstruit les plugins du dépôt, et recopie la galaxy de NebulaStudio dans `scene/`.
 - Tests : `tests/`, un exécutable Qt Test par classe, lancés par `ctest -C <config>` depuis le build (option
   `NEBULA_BUILD_TESTS`, `ON` par défaut), voir [docs/testing.md](docs/testing.md). CI : Windows, MSVC 2022, Qt 6.12
-  (la dernière 6.12.x, issue #141 : la CI ne vérifie plus aucune version antérieure), Release, puis `ctest`. Qt y est
+  (la dernière 6.12.x, issue #141 : la CI ne vérifie plus aucune version antérieure), Release (`--parallel`), puis
+  `ctest`. Qt y est
   installé par son installateur en ligne officiel (`use-official` d'install-qt-action), avec le compte Qt des secrets
   `QT_EMAIL` et `QT_PASSWORD` du dépôt, sans lesquels la CI s'arrête (une PR depuis un fork n'y a pas accès) :
   aqtinstall 3.3.0, sa dernière version publiée, ne trouve pas Qt 6.11 et plus, rangées par architecture dans le dépôt
@@ -419,8 +429,8 @@ dans un splitter horizontal (issue #104), à gauche la zone d'édition au-dessus
 qui prend ce que gagne la fenêtre, à droite un splitter vertical, masqué tant que ce qu'on glisse de ses listes en est
 sorti (`DragAside`) : un `QTabWidget` en mode document (onglets **Components**, montré au départ, **Galaxies** et
 **Plugins**) au-dessus du `PropertyEditor`, puis la vue d'ensemble de la zone d'édition (`SceneOverview`, issue #64).
-L'exécutable compile toujours toutes les sources de `src/` (`cmu_add_executable`), dont il n'emploie que `SplashScreen`
-et `Theme`. `SettingsItem`,
+L'exécutable ne compile que `app/` (`main.cpp`, `SplashScreen`) et lie `NebulaStudioClasses`, dont il n'emploie que
+`Theme`. `SettingsItem`,
 `SettingsDialog`, `SettingsTextDialog` et `SettingsValueEditor` sont dans `src/Settings/`, inclus par
 `"Settings/SettingsItem.h"` ; `GalaxyModel`, `GalaxyViewer`,
 `GalaxyPanel`, `StargateItem` et `StargateDialog` dans `src/Galaxy/`, inclus par `"Galaxy/GalaxyModel.h"`.
@@ -555,7 +565,7 @@ Les chaînes affichées passent par `tr()`, en anglais.
 
 **Logo et icônes** (`NebulaStudio/resources/`) : `nebula.svg`, le logo de Nebula (une nébuleuse traversée de trois
 astres liés), et `icons/{universe,galaxy,astre,comet,stargate}.svg`, une icône par terme du glossaire, sont des SVG aux couleurs
-du thème, compilés par `nebulastudio.qrc` (AUTORCC, nommé dans `SOURCES`). Les icônes n'emploient que les couleurs de
+du thème, compilés par `nebulastudio.qrc` (`NebulaStudioResources`, #146). Les icônes n'emploient que les couleurs de
 zones qui gardent 3 contre 1 sur les champs des deux schémas (`#6366F1`, `#C026D3`, `#3B82F6`, `#EC4899`). Qt Svg est
 lié à NebulaStudio (`find_package` dans son `CMakeLists.txt`) : `QSvgRenderer` dessine le logo sur le splash, et son
 moteur d'icônes, déployé par windeployqt (`iconengines/qsvgicon`), lit les `QIcon` des SVG : `logoPath()` pour
@@ -777,6 +787,12 @@ ini, celui des formats qui n'ont pas le leur).
   tests. OpenCppCoverage n'a plus de version depuis 0.9.9.0 (2020). Rien ne lance l'analyse en local ni avant la PR.
   Une PR depuis un fork n'a pas le secret : la CI s'arrête, comme pour Qt. Aucune règle de `main` n'exige la CI verte :
   une PR rouge reste fusionnable sur GitHub.
+- Temps de build (#146) : la CI compile tout à chaque PR, sans cache de compilation (sccache demanderait Ninja, `/Z7`
+  à la place de `/Zi`, et la base de compilation de CMake à la place du build-wrapper de SonarQube, qui ne voit pas
+  une compilation servie par le cache). Son analyse, environ 9 min, ne profite du cache de SonarQube Cloud que quand ni
+  son analyseur ni le profil qualité n'ont changé depuis la dernière. `/MP` ne vaut que pour un générateur Visual
+  Studio ; un build local par `cmake --build` sans `--parallel` ni `CMAKE_BUILD_PARALLEL_LEVEL` construit encore un
+  projet après l'autre.
 
 ## Pièges
 
@@ -887,10 +903,14 @@ ini, celui des formats qui n'ont pas le leur).
 - `QGraphicsScene` donne les événements de survol à l'item le plus haut qui les accepte, même sous un item qui ne les
   accepte pas : un `LinkItem` est survolé sous un `ComponentItem`. Il ne se dit donc survolé que s'il est l'item le plus
   haut à cet endroit (`itemAt()`).
-- `StudioPlugin` recompile les sources de `NebulaStudio/src/` (un `GLOB_RECURSE`) : une nouvelle source y entre
-  d'elle-même, et une qui inclut `NebulaStudio_info.h`, celui de l'exécutable (`SplashScreen`), doit être
-  retirée de la liste dans `StudioPlugin/CMakeLists.txt`. Quand NebulaStudio charge le plugin, ses classes sont en deux
-  exemplaires, chacun avec ses statiques (`applyTheme()` et ses ressources, rappelés par le premier `StudioComponent`) :
+- `NebulaStudioClasses` est faite de toutes les sources de `NebulaStudio/src/` (un `GLOB_RECURSE`) : une nouvelle
+  source y entre d'elle-même, et sert à l'exécutable, à `StudioPlugin` et aux tests sans rien ajouter ; une qui inclut
+  `NebulaStudio_info.h`, celui de l'exécutable, va dans `NebulaStudio/app/`. C'est une bibliothèque statique, dont
+  chaque binaire ne garde que les objets dont il se sert : une initialisation statique d'une source de `src/` n'est
+  faite que si un autre symbole de son objet est employé. Les ressources, que rien n'appelle, sont donc à part, dans
+  `NebulaStudioResources`, une bibliothèque d'objets, liée entière : un test qui montre les icônes ou la police la lie,
+  avec Qt Svg. Quand NebulaStudio charge le plugin, ses classes sont en deux exemplaires, chacun avec ses statiques
+  (`applyTheme()` et ses ressources, rappelés par le premier `StudioComponent`) :
   rien ne passe de l'un à l'autre, et les interfaces `Studio`, `EditionZone` et `Project` ne se lient qu'entre les
   composants du plugin.
 - La galaxy de NebulaStudio a son `Universe`, celle de son `StudioComponent`, à côté de celle de l'application qui la
@@ -912,12 +932,6 @@ ini, celui des formats qui n'ont pas le leur).
   catégories est global au processus et les filtres se chaînent : on ne retire le sien que s'il est en haut de la
   chaîne. Les règles (`setFilterRules()`, celles de `NebulaApplication`) passent, elles, par le filtre installé, donc par
   celui d'un `LogComponent` en cours.
-- NebulaStudio est un exécutable : ses tests recompilent ses sources, listées dans `tests/NebulaStudio/CMakeLists.txt`.
-  Un nouveau `.cpp` qu'utilisent la scène, ses items ou ses fenêtres s'ajoute à `_scene`, les `SOURCES` de
-  `TestEditionScene`, de `TestComponentFinder` et de `TestStargateDialog`, sans quoi l'édition de liens échoue (un
-  en-tête seul, comme `SceneItems.h`, n'a rien à y ajouter) ; un qu'utilise `SettingsDialog`, à ceux de
-  `TestSettingsDialog`, comme `ChoicePanel.cpp` ; un qu'utilise `SettingsValueEditor`, à `_settings_values`, les
-  `SOURCES` de `TestSettingsValueEditor` et de `TestPropertyEditor`.
 - Le `PropertyEditor` a deux tables, celle d'un composant et celle d'un fichier de réglages, dans un `QStackedWidget`
   qui met la page montrée en dernier parmi ses enfants (`raise()`) : `findChild<QTableWidget*>()` ne trouve pas
   toujours la même. `TestPropertyEditor` prend celle qui n'est pas sous le `SettingsValueEditor` (`isAncestorOf()`).

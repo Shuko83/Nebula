@@ -14,6 +14,11 @@ cmake --build . --config Debug
 ctest -C Debug --output-on-failure
 ```
 
+- Avec Visual Studio, chaque projet compile ses fichiers en parallèle (`/MP`, que donne le `CMakeLists.txt` racine,
+  issue #146), et l'IDE construit plusieurs projets à la fois. `cmake --build`, lui, ne construit qu'un projet à la
+  fois, sauf avec `--parallel`, ou une fois définie la variable d'environnement `CMAKE_BUILD_PARALLEL_LEVEL`, le nombre
+  de projets à construire ensemble (`setx CMAKE_BUILD_PARALLEL_LEVEL 8` sous Windows, pour les terminaux ouverts
+  ensuite).
 - `ctest -R TestUniverse` ne lance que les tests dont le nom correspond.
 - `ctest -V` affiche le journal de chaque test, même réussi.
 - Un exécutable accepte les options de QTest : `TestUniverse.exe saveAndLoad` ne lance qu'une fonction,
@@ -99,8 +104,9 @@ support raise()`) ni lui donner le clavier (`This plugin does not support grabbi
 attendus par `QTest::ignoreMessage()` à chaque menu. Le popup d'un `QCompleter` donne les deux mêmes chaque fois qu'il
 s'ouvre, caché jusque-là (`TestComponentFinder`).
 
-Une classe de NebulaStudio n'est pas dans une bibliothèque : son test recompile ses sources (`SOURCES`), avec
-`nebulastudio.qrc` quand il lui faut les icônes ou la police.
+Les classes de NebulaStudio sont dans une bibliothèque statique, `NebulaStudioClasses`, compilée une fois (issue
+#146) : leur test la lie (`LINK_LIBRARIES`), et l'éditeur de liens n'en garde que ce qu'il emploie. Il lie aussi
+`NebulaStudioResources` (`nebulastudio.qrc`) et `Qt6::Svg` quand il lui faut les icônes ou la police.
 
 ### Les composants de test
 
