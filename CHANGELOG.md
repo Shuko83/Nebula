@@ -7,12 +7,14 @@ to it.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-09
+
 ### Added
 
 - `StandardPlugin` (#130), the first standard plugin, shipped with Nebula for any application, built with NebulaStudio
   and the example applications and installed next to each application of the package. Its components provide the
   interfaces of `Nebula::Standard`, a library of headers only that a plugin links to consume them:
-  `find_package(Nebula 2.1 REQUIRED COMPONENTS Core Standard)`.
+  `find_package(Nebula 3.0 REQUIRED COMPONENTS Core Standard)`.
 - `LogComponent` (#130), the log of the application. It provides `log`, a `Nebula::ILog`, which writes the messages of
   components to Qt's journal under its `category`, after their source, and `logControl`, a `Nebula::ILogControl`,
   which starts and stops the log and sets its level (`Nebula::LogLevel`). While it runs, its `logging` and its `level`
@@ -44,7 +46,7 @@ to it.
   NebulaStudio keeps them in the `HistoryComponent` of its galaxy.
 - `Universe::restoreGalaxy()`, which gives a galaxy placed what was saved of it, without reading its file (#132).
 - `NEBULA_VERSION_SUFFIX` (#139), a suffix of the version, a dash then letters or digits: built with
-  `-DNEBULA_VERSION_SUFFIX=-rc0`, Nebula 2.2.0 is a `2.2.0-rc0`, in the details of each binary, the version
+  `-DNEBULA_VERSION_SUFFIX=-rc0`, Nebula 3.0.0 is a `3.0.0-rc0`, in the details of each binary, the version
   NebulaStudio tells and the name of the package. CMakeUtils gives it to every target, as `cmu_version_suffix`.
 - Cut, copy, paste and duplicate in NebulaStudio (#136): its **Edit** menu cuts (Ctrl+X), copies (Ctrl+C), pastes
   (Ctrl+V) and duplicates (Ctrl+D) the instances selected in the edition zone, components and galaxies placed, with
@@ -59,7 +61,7 @@ to it.
 - `Nebula::WholeFile::write()` (#152), which writes a file whole or not at all, its directory created when needed,
   attempting again a replacement Windows refuses, as Nebula writes its settings files and NebulaStudio its projects.
 - An installer of NebulaStudio for Windows (#140), published with each release next to its zip and named as it is,
-  `NebulaStudio_2.2.0_win-x64_msvc2022_Qt6.12_setup.exe`. It installs NebulaStudio with what it needs to start, the
+  `NebulaStudio_3.0.0_win-x64_msvc2022_Qt6.12_setup.exe`. It installs NebulaStudio with what it needs to start, the
   DLLs of Nebula, of Qt and of the compiler, the plugins of its galaxy and its galaxy, for the user who runs it, without
   asking to be an administrator, or for all the users; it adds NebulaStudio to the Start menu and to **Settings** >
   **Apps**, where it is uninstalled, and installing another version replaces the one installed. `cpack -C Release`
@@ -71,10 +73,13 @@ to it.
 
 ### Changed
 
+- The major version of Nebula is 3 (#159), the public API of Core having changed with #137, see below: Core 3.0.0
+  refuses the plugins built against 2.x, to be built again, and `find_package(Nebula 3.0 …)` finds the package, which
+  `find_package(Nebula 2.1 …)` no longer does.
 - The package is built with Qt 6.12, formerly Qt 6.8 (#141), as the continuous integration builds and tests Nebula:
   a plugin built against it is built with Qt 6.12.
 - The zip of a release, and the folder in it, are named after what its binaries are built for and with (#139),
-  `Nebula_<version>_<platform>_<compiler>_Qt<major>.<minor>`: `Nebula_2.2.0_win-x64_msvc2022_Qt6.12.zip`, formerly
+  `Nebula_<version>_<platform>_<compiler>_Qt<major>.<minor>`: `Nebula_3.0.0_win-x64_msvc2022_Qt6.12.zip`, formerly
   `Nebula-2.1.0-win64-msvc2022-qt6.8.zip`.
 - On Windows, the details of each binary tell what it is built for and with (#139): its description is its name
   followed by its platform, its compiler and its Qt, `NebulaStudio (win-x64, MSVC 19.44.35211.0, Qt 6.12.0)`, which
@@ -90,7 +95,7 @@ to it.
   `void`. `save()` thus writes the bindings of the edition while the application runs, as it writes the values of its
   properties. What Core does itself still unbinds meanwhile: an interface that a property removes, as a settings file
   changes it, and a component destroyed. Code that keeps the reference `addSettingsFile()` returned is to keep the
-  pointer instead; `Component.h` changes, so every plugin is to be built again.
+  pointer instead; `Component.h` changes, hence the major version.
 
 ### Fixed
 
@@ -98,6 +103,8 @@ to it.
   is no longer refused now and then, "Access is denied" (#152): NebulaStudio follows the files it shows, which made
   the second of two writings close together fail at times, when a value was edited in the inspector of a settings
   file or written by the application running. Its replacement is attempted again, ten times at most, 10 ms apart.
+- Flags with no value set, when their enumeration names none for 0, are written `""` in a project or a settings file
+  and read again (#135), rather than written `null` and given back their default value once opened.
 
 ## [2.1.0] - 2026-11-03
 
@@ -307,6 +314,7 @@ First published version.
 - The package for other projects: `find_package(AppForge 0.2 REQUIRED COMPONENTS Core)`.
 - Examples: `ExamplePlugin`, `ExternalPlugin`, `ExampleApp` and `ExampleForgeApp`.
 
+[3.0.0]: https://github.com/Shuko83/Nebula/releases/tag/3.0.0
 [2.1.0]: https://github.com/Shuko83/Nebula/releases/tag/2.1.0
 [2.0.0]: https://github.com/Shuko83/Nebula/releases/tag/2.0.0
 [1.0.0]: https://github.com/Shuko83/Nebula/releases/tag/1.0.0
