@@ -1,25 +1,27 @@
 # Copyright (C) 2026 Fabien Di Grande
 # SPDX-License-Identifier: MPL-2.0
 
-# The name of the package and the details of the binaries (#139): checks of the build rather than of a class.
+# The name of the package and the details of the binaries (#139), and what the installer of NebulaStudio installs
+# (#140): checks of the build rather than of a class.
 add_test(NAME TestPackageName
     COMMAND ${CMAKE_COMMAND} -D "NEBULA_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -D "PACKAGE_NAME=${NEBULA_PACKAGE_NAME}"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/TestPackageName.cmake")
+        -D "INSTALLER_NAME=${NEBULA_INSTALLER_NAME}" -P "${CMAKE_CURRENT_SOURCE_DIR}/TestPackageName.cmake")
 
-# A version resource is a Windows one.
+# A version resource and the installer are Windows ones.
 if(NOT WIN32)
     return()
 endif()
 
-# The four numbers of the version of the project, which a binary has in its details: 0 for those it does not give.
-set(_number "${PROJECT_VERSION_MAJOR}")
-foreach(_part IN ITEMS MINOR PATCH TWEAK)
-    if("${PROJECT_VERSION_${_part}}" STREQUAL "")
-        string(APPEND _number ".0")
-    else()
-        string(APPEND _number ".${PROJECT_VERSION_${_part}}")
-    endif()
-endforeach()
+# The component of the installation the installer is made of, installed in the build directory of the test.
+if(TARGET Qt6::windeployqt)
+    add_test(NAME TestInstallerContent
+        COMMAND ${CMAKE_COMMAND} -D "BUILD_DIR=${CMAKE_BINARY_DIR}" -D "CONFIG=$<CONFIG>"
+            -D "PREFIX=${CMAKE_CURRENT_BINARY_DIR}/installer/$<CONFIG>" -D "MSVC=${MSVC}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/TestInstallerContent.cmake")
+endif()
+
+# The four numbers of the version of the project, which a binary has in its details.
+nebula_version_numbers(_number "${PROJECT_VERSION}")
 
 # Adds the test TestVersionDetails<TARGET>, which reads the details of the file of TARGET, a binary of the project
 # that leaves its version to CMakeUtils.

@@ -30,6 +30,9 @@ nebula_package_name(_package "${PROJECT_VERSION}${NEBULA_VERSION_SUFFIX}" "${cmu
     "${Qt6_VERSION}")
 set(NEBULA_PACKAGE_NAME "${_package}" CACHE INTERNAL "Name of the package of Nebula: its zip and the folder in it")
 message(STATUS "Nebula: the package is ${NEBULA_PACKAGE_NAME}")
+# And the one of the installer of NebulaStudio, which Installer/ gives CPack, and release.yml publishes (#140).
+nebula_installer_name(_installer "${NEBULA_PACKAGE_NAME}")
+set(NEBULA_INSTALLER_NAME "${_installer}" CACHE INTERNAL "Name of the installer of NebulaStudio, without its extension")
 
 # Executables and DLLs side by side, so that Core.dll is found when an application starts;
 # nebula_add_plugin puts the plugins in plugins/ next to them.
@@ -52,6 +55,8 @@ add_subdirectory(NebulaStudio)
 # The parts of NebulaStudio, each a component, and the galaxy that assembles them.
 add_subdirectory(StudioPlugin)
 add_subdirectory(exemple)
+# The installer of NebulaStudio, which CPack builds with Inno Setup: cpack -C Release, from the build directory.
+add_subdirectory(Installer)
 
 # The QTest executables of tests/, run by ctest from the build directory: see docs/testing.md.
 option(NEBULA_BUILD_TESTS "Build the tests of Nebula" ON)

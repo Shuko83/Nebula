@@ -1,8 +1,10 @@
 # Copyright (C) 2026 Fabien Di Grande
 # SPDX-License-Identifier: MPL-2.0
 
-# The name of the package (cmake/PackageName.cmake, #139), run by ctest in script mode:
-#   cmake -D NEBULA_SOURCE_DIR=<sources> -D PACKAGE_NAME=<name of the build> -P TestPackageName.cmake
+# The name of the package (cmake/PackageName.cmake, #139), and of the installer of NebulaStudio (#140), run by ctest in
+# script mode:
+#   cmake -D NEBULA_SOURCE_DIR=<sources> -D PACKAGE_NAME=<name of the build> -D INSTALLER_NAME=<name of the build>
+#       -P TestPackageName.cmake
 # A check that fails stops the script with an error, which fails the test.
 
 include("${NEBULA_SOURCE_DIR}/cmake/PackageName.cmake")
@@ -34,6 +36,16 @@ function(expect_package version platform compiler qt_version expected)
     expect_equal("Package ${version} for ${platform}" "${_name}" "${expected}")
 endfunction()
 
+function(expect_installer package expected)
+    nebula_installer_name(_name "${package}")
+    expect_equal("Installer of ${package}" "${_name}" "${expected}")
+endfunction()
+
+function(expect_numbers version expected)
+    nebula_version_numbers(_numbers "${version}")
+    expect_equal("Numbers of ${version}" "${_numbers}" "${expected}")
+endfunction()
+
 expect_suffix("" TRUE)
 expect_suffix("-rc0" TRUE)
 expect_suffix("-beta2" TRUE)
@@ -57,8 +69,18 @@ expect_compiler(Clang 19.1.7 "" clang19)
 expect_package(2.2.0 win-x64 msvc2022 6.12.0 Nebula_2.2.0_win-x64_msvc2022_Qt6.12)
 expect_package(2.2.0.7-rc0 linux gcc14 6.8.3 Nebula_2.2.0.7-rc0_linux_gcc14_Qt6.8)
 
+expect_installer(Nebula_2.2.0_win-x64_msvc2022_Qt6.12 NebulaStudio_2.2.0_win-x64_msvc2022_Qt6.12_setup)
+expect_installer(Nebula_2.2.0-rc0_win-arm64_msvc2026_Qt6.12 NebulaStudio_2.2.0-rc0_win-arm64_msvc2026_Qt6.12_setup)
+
+expect_numbers(2.2.0 2.2.0.0)
+expect_numbers(2.2.0.7 2.2.0.7)
+expect_numbers(3 3.0.0.0)
+
 # The one of this build: CMake has no {2,3}, hence the third number of the version written apart.
 set(_pattern "^Nebula_[0-9]+\\.[0-9]+\\.[0-9]+(\\.[0-9]+)?(-[0-9A-Za-z]+)?_(win-[0-9a-z]+|linux|macos)_[a-z]+[0-9]+_Qt[0-9]+\\.[0-9]+$")
 if(NOT PACKAGE_NAME MATCHES "${_pattern}")
     message(FATAL_ERROR "The package of this build, '${PACKAGE_NAME}', does not match ${_pattern}")
 endif()
+# And its installer, the one CPack is given.
+nebula_installer_name(_installer "${PACKAGE_NAME}")
+expect_equal("The installer of this build" "${INSTALLER_NAME}" "${_installer}")
