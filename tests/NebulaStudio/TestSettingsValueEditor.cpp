@@ -150,7 +150,7 @@ void TestSettingsValueEditor::init()
     QVERIFY(m_probe != nullptr && m_panel != nullptr);
     m_probe->setProperty("count", 3);
     m_probe->setProperty("text", QStringLiteral("project"));
-    m_file = &m_application->addSettingsFile();
+    m_file = m_application->addSettingsFile();
     m_file->setDirectory(m_directory->path());
     QVERIFY(m_file->add({.component = m_probe, .object = m_probe, .property = QStringLiteral("count")}));
     QVERIFY(m_file->add({.component = m_probe, .object = m_probe, .property = QStringLiteral("text")}));
@@ -382,7 +382,7 @@ void TestSettingsValueEditor::whileRunning()
 // A file without entry tells how to choose them, in place of the values.
 void TestSettingsValueEditor::noEntry()
 {
-    Nebula::SettingsFile& empty = m_application->addSettingsFile();
+    Nebula::SettingsFile& empty = *m_application->addSettingsFile();
     m_editor->setFile(&empty);
 
     const auto* stack = m_editor->findChild<PlaceholderStack*>();

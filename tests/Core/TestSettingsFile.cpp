@@ -10,6 +10,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
+#include <functional>
 #include <memory>
 #include <utility>
 
@@ -73,6 +74,8 @@ class TestSettingsFile : public QObject
     void add();
     void remove();
     void entryLeavesWithItsObject();
+    void changesRefusedWhileRunning_data();
+    void changesRefusedWhileRunning();
 
     void startWritesWhatIsMissing();
     void startReadsTheValues_data();
@@ -120,7 +123,7 @@ void TestSettingsFile::init()
     m_probe = qobject_cast<Probe*>(m_universe->instantiate(testComponentId(QStringLiteral("Probe"))));
     m_panel = qobject_cast<Panel*>(m_universe->instantiate(testComponentId(QStringLiteral("Panel"))));
     QVERIFY(m_probe != nullptr && m_panel != nullptr);
-    m_file = &m_universe->addSettingsFile();
+    m_file = m_universe->addSettingsFile();
     m_file->setDirectory(m_directory->path());
 }
 
@@ -178,7 +181,7 @@ void TestSettingsFile::setFileName()
     QFETCH(bool, set);
     QFETCH(bool, changed);
 
-    QCOMPARE(m_universe->addSettingsFile().fileName(), QStringLiteral("settings2.json"));
+    QCOMPARE(m_universe->addSettingsFile()->fileName(), QStringLiteral("settings2.json"));
     const QSignalSpy changedSpy(m_file, &SettingsFile::changed);
     QCOMPARE(m_file->setFileName(fileName), set);
     QCOMPARE(m_file->fileName(), set ? fileName : QStringLiteral("settings.json"));
@@ -196,7 +199,7 @@ void TestSettingsFile::setName()
     QCOMPARE(m_file->fileName(), QStringLiteral("user.json"));
     QCOMPARE(changed.count(), 1);
     QVERIFY(!m_file->setName({}));
-    QCOMPARE(m_universe->addSettingsFile().fileName(), QStringLiteral("settings.json"));
+    QCOMPARE(m_universe->addSettingsFile()->fileName(), QStringLiteral("settings.json"));
     QVERIFY(!m_file->setName(QStringLiteral("SETTINGS.json")));
     QCOMPARE(m_file->name(), QStringLiteral("user.json"));
 }
@@ -204,8 +207,8 @@ void TestSettingsFile::setName()
 void TestSettingsFile::setDirectory()
 {
     const QSignalSpy changed(m_file, &SettingsFile::changed);
-    m_file->setDirectory(QStringLiteral("config"));
-    m_file->setDirectory(QStringLiteral("config"));
+    QVERIFY(m_file->setDirectory(QStringLiteral("config")));
+    QVERIFY(m_file->setDirectory(QStringLiteral("config")));
     QCOMPARE(m_file->directory(), QStringLiteral("config"));
     QCOMPARE(changed.count(), 1);
 }
@@ -274,7 +277,7 @@ void TestSettingsFile::add()
     const SettingsEntry count{.component = m_probe, .object = m_probe, .property = QStringLiteral("count")};
     const SettingsEntry text{.component = m_probe, .object = m_probe, .property = QStringLiteral("text")};
     QVERIFY(m_file->add(count));
-    QVERIFY(m_universe->addSettingsFile().add(text));
+    QVERIFY(m_universe->addSettingsFile()->add(text));
     const QHash<QString, SettingsEntry> entries{
         {QStringLiteral("count"), {.component = m_probe, .object = m_probe, .property = QStringLiteral("ratio")}},
         {QStringLiteral("page level"),
@@ -303,8 +306,8 @@ void TestSettingsFile::remove()
     QVERIFY(m_file->add(count));
     const QSignalSpy changed(m_file, &SettingsFile::changed);
 
-    m_file->remove(count);
-    m_file->remove(count); // Not held any longer: nothing changes
+    QVERIFY(m_file->remove(count));
+    QVERIFY(m_file->remove(count)); // Not held any longer: nothing changes, which is no refusal
     QVERIFY(m_file->entries().isEmpty());
     QCOMPARE(changed.count(), 1);
     QCOMPARE(m_universe->settingsFile(count), nullptr);
@@ -323,6 +326,51 @@ void TestSettingsFile::entryLeavesWithItsObject()
     QCOMPARE(m_file->entries().size(), 1);
     QCOMPARE(m_file->entries().first().object, m_probe);
     QCOMPARE(changed.count(), 2);
+}
+
+void TestSettingsFile::changesRefusedWhileRunning_data()
+{
+    QTest::addColumn<QString>("change");
+    QTest::addColumn<QString>("why");
+
+    QTest::newRow("setFileName") << "setFileName" << "settings.json cannot be renamed while the application runs";
+    QTest::newRow("setName") << "setName" << "settings.json cannot be renamed while the application runs";
+    QTest::newRow("setDirectory") << "setDirectory" << "settings.json cannot be moved while the application runs";
+    QTest::newRow("add") << "add" << "settings.json cannot hold another property while the application runs";
+    QTest::newRow("remove") << "remove" << "settings.json cannot stop holding a property while the application runs";
+}
+
+void TestSettingsFile::changesRefusedWhileRunning()
+{
+    QFETCH(QString, change);
+    QFETCH(QString, why);
+
+    const SettingsEntry count{.component = m_probe, .object = m_probe, .property = QStringLiteral("count")};
+    const SettingsEntry text{.component = m_probe, .object = m_probe, .property = QStringLiteral("text")};
+    QVERIFY(m_file->add(count));
+    const QHash<QString, std::function<bool()>> changes{
+        {QStringLiteral("setFileName"), [this] { return m_file->setFileName(QStringLiteral("user.json")); }},
+        {QStringLiteral("setName"), [this] { return m_file->setName(QStringLiteral("user.json")); }},
+        {QStringLiteral("setDirectory"), [this] { return m_file->setDirectory(QStringLiteral("config")); }},
+        {QStringLiteral("add"), [this, &text] { return m_file->add(text); }},
+        {QStringLiteral("remove"), [this, &count] { return m_file->remove(count); }},
+    };
+    const QString directory = m_file->directory();
+    QVERIFY(m_universe->start());
+    const QSignalSpy changed(m_file, &SettingsFile::changed);
+
+    // Neither where it is written, nor what it follows, changes while it runs.
+    QVERIFY(!changes.value(change)());
+    QCOMPARE(m_file->errorString(), why);
+    QCOMPARE(changed.count(), 0);
+    QCOMPARE(m_file->fileName(), QStringLiteral("settings.json"));
+    QCOMPARE(m_file->directory(), directory);
+    QVERIFY(m_file->entries() == QList<SettingsEntry>{count});
+
+    // Once it stops, as before.
+    m_universe->stop();
+    QVERIFY(changes.value(change)());
+    QCOMPARE(changed.count(), 1);
 }
 
 void TestSettingsFile::startWritesWhatIsMissing()

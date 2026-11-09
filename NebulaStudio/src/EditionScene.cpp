@@ -1807,9 +1807,10 @@ void EditionScene::removeZone(ZoneItem& zone)
 
 void EditionScene::addSettingsFileAt(const QPointF& position, QWidget* parent)
 {
-    Nebula::SettingsFile& file =
-        m_galaxy != nullptr ? *m_application.addSettingsFile(*m_galaxy) : m_application.addSettingsFile();
-    editSettings(*showSettings(file, position), parent);
+    // Not while the application runs: the menu is not offered then.
+    Nebula::SettingsFile* file =
+        m_galaxy != nullptr ? m_application.addSettingsFile(*m_galaxy) : m_application.addSettingsFile();
+    editSettings(*showSettings(*file, position), parent);
 }
 
 void EditionScene::addStargateAt(const QPointF& position, QWidget* parent)

@@ -40,9 +40,11 @@ namespace Nebula
 // A galaxy placed is assembled as the application is, through an instance of it, which saveGalaxy() writes as its file
 // holds it: once the file is written, reloadGalaxy() gives the other instances, see galaxies(), what it holds now.
 // It is either edited or running, as its components are. While it runs, it is not assembled: its components, and those
-// of its galaxies, are neither instantiated, renamed nor removed. What changes their properties meanwhile, its settings
-// files or its components themselves, is undone once it stops: they have the values of the edition again, the ones
-// save() writes.
+// of its galaxies, are neither instantiated, renamed, removed, bound nor unbound, see Component::bindInterface(), and
+// its settings files are neither added, removed nor changed, see SettingsFile; only the interfaces a property removes
+// meanwhile are unbound, see Component::removeProvidedInterface(). What changes their properties meanwhile, its
+// settings files or its components themselves, is undone once it stops: they have the values of the edition again, the
+// ones save() writes.
 // Its settings files hold the properties its user changes while it runs, and finds again the next time: see
 // SettingsFile.
 // It needs a QCoreApplication, and a QApplication as soon as one of its components shows a widget.
@@ -200,15 +202,15 @@ class CORE_EXPORT Universe : public QObject
     void clear();
 
     // Adds a settings file, which holds no property yet, named settings.json, or settings2.json, settings3.json... when
-    // another one is: see SettingsFile.
-    SettingsFile& addSettingsFile();
+    // another one is: see SettingsFile. nullptr while it runs.
+    SettingsFile* addSettingsFile();
     // Adds a settings file to galaxy, one of its galaxies or of those they hold, named as the file of galaxy names it,
     // see SettingsFile::name(), settings.json, or settings2.json... when another file of galaxy is, or when the one it
-    // has in galaxy is taken; nullptr when galaxy is not one of its galaxies.
+    // has in galaxy is taken; nullptr when galaxy is not one of its galaxies, and while it runs.
     SettingsFile* addSettingsFile(Galaxy& galaxy);
-    // Destroys file, one of its settings files or of those of its galaxies, written and stopped first when it runs: its
-    // properties have their default values again. Does nothing when it is none of them.
-    void removeSettingsFile(SettingsFile& file);
+    // Destroys file, one of its settings files or of those of its galaxies. Returns false, doing nothing, when it is
+    // none of them, and while it runs.
+    bool removeSettingsFile(SettingsFile& file);
     // In the order they were added; not those of its galaxies, see Galaxy::settingsFiles().
     [[nodiscard]] const std::vector<std::unique_ptr<SettingsFile>>& settingsFiles() const;
     // The one of its settings files, or of those of its galaxies, that holds entry; nullptr when none does.
@@ -489,6 +491,8 @@ class CORE_EXPORT Universe : public QObject
     // taken, it is named as addSettingsFile() names it, or with a number after its name in a galaxy, which problems
     // tells.
     SettingsFile& addSettingsFile(const Scope& scope, const QString& fileName, QStringList& problems);
+    // A settings file of the application, named as addSettingsFile() names it, whether it runs or not.
+    SettingsFile& newSettingsFile();
     // addSettingsFile() in the application.
     SettingsFile& addApplicationSettingsFile(const QString& fileName, QStringList& problems);
     // addSettingsFile() in the galaxy of scope.

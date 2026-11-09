@@ -49,14 +49,15 @@ class CORE_EXPORT Component : public QObject, public IComponent
     // makes it available, until unbindInterface() or the destruction of one of them. Replaces what name was bound to;
     // for a list, see consumeInterfaceList(), adds to what it is bound to, after them.
     // Returns false, changing nothing, when it does not consume name, provider does not provide providedName, they
-    // are not of the same type, or name is a list already bound to providedName of provider.
+    // are not of the same type, or name is a list already bound to providedName of provider; and while it, provider or
+    // what name is bound to runs, see ComponentState::Running: an application is not assembled while it runs.
     bool bindInterface(const QString& name, Component& provider, const QString& providedName);
     // name, which it consumes, becomes unavailable and is bound to nothing; for a list, to none of what it was bound
-    // to.
-    void unbindInterface(const QString& name);
+    // to. Returns false, changing nothing, while it or what name is bound to runs.
+    bool unbindInterface(const QString& name);
     // name, which it consumes, is no longer bound to providedName of provider: for a list, it keeps what else it is
-    // bound to. Does nothing when it is not.
-    void unbindInterface(const QString& name, const Component& provider, const QString& providedName);
+    // bound to. Does nothing when it is not. Returns false, changing nothing, while it or provider runs.
+    bool unbindInterface(const QString& name, const Component& provider, const QString& providedName);
     // What name is bound to: nothing when it is unbound, or not an interface it consumes. For a list, the first of
     // bindings().
     [[nodiscard]] InterfaceBinding binding(const QString& name) const;
@@ -174,9 +175,11 @@ class CORE_EXPORT Component : public QObject, public IComponent
     // Withdraws name, which it provides, and forgets it: what was bound to it is told it unavailable, then unbound, see
     // interfaceRemoved(); what the pointer refers to must still exist during this call. The interfaces of a component
     // can depend on one of its properties: the widgets it provides, as many as its count, say, which removes the last
-    // ones as it decreases. Does nothing when it provides no name.
+    // ones as it decreases. While they run too: a settings file can change that property then. Does nothing when it
+    // provides no name.
     void removeProvidedInterface(const QString& name);
-    // Unbinds name, which it consumes, telling it unavailable, and forgets it. Does nothing when it consumes no name.
+    // Unbinds name, which it consumes, telling it unavailable, and forgets it, while it runs too. Does nothing when it
+    // consumes no name.
     void removeConsumedInterface(const QString& name);
 
     // Has the properties of object, see PropertyObject::properties(), edited and saved with its own: NebulaStudio edits
@@ -266,10 +269,19 @@ class CORE_EXPORT Component : public QObject, public IComponent
     // it consumes no name, or consumes newName already.
     bool renameConsumedInterface(const QString& name, const QString& newName);
     // Whether name, which it consumes, can be bound to providedName of provider: of the same type, another
-    // component, and not bound to it yet when name is a list.
+    // component, not bound to it yet when name is a list, and none of them running, see runsWith().
     [[nodiscard]] bool canBind(const QString& name, const Component& provider, const QString& providedName) const;
+    // Whether it runs, or one of the components name, which it consumes, is bound to: the bindings of name only change
+    // then as Core changes them itself, see removeBindings().
+    [[nodiscard]] bool runsWith(const QString& name) const;
     // Binds name, which it consumes, after its other bindings, to providedName of provider, and gives it its pointer.
     void addBinding(const QString& name, Component& provider, const QString& providedName);
+    // Unbinds name, which it consumes, from each interface it is bound to, the last one first. While they run too: Core
+    // does it itself when an interface is removed, or a component destroyed.
+    void removeBindings(const QString& name);
+    // Unbinds name, which it consumes, from providedName of provider, while they run too. Does nothing when it is not
+    // bound to it.
+    void removeBinding(const QString& name, const Component& provider, const QString& providedName);
     // The binding of name, which it consumes, to providedName of provider, and name; nullptrs when there is none.
     std::pair<ConsumedInterface*, Bound*> findBinding(const QString& name, const Component* provider,
                                                       const QString& providedName);

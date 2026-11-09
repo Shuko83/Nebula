@@ -499,7 +499,7 @@ void TestLogComponent::settingsFileKeepsTheLevel()
     const QTemporaryDir directory;
     QVERIFY(directory.isValid());
     Component* component = instantiate();
-    Nebula::SettingsFile& file = m_universe->addSettingsFile();
+    Nebula::SettingsFile& file = *m_universe->addSettingsFile();
     file.setDirectory(directory.path());
     QVERIFY(file.add({.component = component, .object = component, .property = u"level"_s}));
 

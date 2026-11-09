@@ -1,11 +1,13 @@
 // Copyright (C) 2026 Fabien Di Grande
 // SPDX-License-Identifier: MPL-2.0
 
+#include <QHash>
 #include <QRegularExpression>
 #include <QSignalSpy>
 #include <QTest>
 #include <QTimer>
 #include <algorithm>
+#include <functional>
 #include <memory>
 
 #include "Nebula/Component/ComponentFactory.h"
@@ -77,6 +79,12 @@ class TestComponent : public QObject
     void unbindInterface();
     void destroyedProviderUnbinds();
     void destroyedConsumerLeavesItsProvider();
+    void bindingRefusedWhileRunning_data();
+    void bindingRefusedWhileRunning();
+    void unbindingRefusedWhileRunning_data();
+    void unbindingRefusedWhileRunning();
+    void coreUnbindsWhileRunning_data();
+    void coreUnbindsWhileRunning();
     void unboundMandatoryInterfaces_data();
     void unboundMandatoryInterfaces();
 
@@ -399,16 +407,16 @@ void TestComponent::unbindInterface()
     QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("out")));
     const QSignalSpy interfacesChanged(consumer.get(), &Nebula::Component::interfacesChanged);
 
-    consumer->unbindInterface(QStringLiteral("in"));
+    QVERIFY(consumer->unbindInterface(QStringLiteral("in")));
     QCOMPARE(consumer->binding(QStringLiteral("in")).provider, nullptr);
     QCOMPARE(consumer->consumed(QStringLiteral("in")), nullptr);
     QCOMPARE(consumer->events(), (QStringList{"available in", "unavailable in (set)"}));
     QVERIFY(interfacesChanged.count() > 0);
 
-    // Unbound already, or not consumed: nothing happens.
+    // Unbound already, or not consumed: nothing happens, which is no refusal.
     consumer->clearEvents();
-    consumer->unbindInterface(QStringLiteral("in"));
-    consumer->unbindInterface(QStringLiteral("unknown"));
+    QVERIFY(consumer->unbindInterface(QStringLiteral("in")));
+    QVERIFY(consumer->unbindInterface(QStringLiteral("unknown")));
     QVERIFY(consumer->events().isEmpty());
 }
 
@@ -442,6 +450,126 @@ void TestComponent::destroyedConsumerLeavesItsProvider()
     QVERIFY(provider->provideObject(QStringLiteral("out"), nullptr));
     QVERIFY(provider->provideObject(QStringLiteral("out"), &object));
     QVERIFY(provider->providedInterfaces().first().available);
+}
+
+void TestComponent::bindingRefusedWhileRunning_data()
+{
+    // The one that runs: the consumer, the provider it would be bound to, or the one it is bound to, which it would be
+    // unbound from.
+    QTest::addColumn<QString>("running");
+
+    QTest::newRow("consumer") << "consumer";
+    QTest::newRow("provider") << "provider";
+    QTest::newRow("what it is bound to") << "bound";
+}
+
+void TestComponent::bindingRefusedWhileRunning()
+{
+    QFETCH(QString, running);
+
+    QObject first;
+    QObject second;
+    const std::unique_ptr<Probe> consumer = createProbe();
+    const std::unique_ptr<Probe> bound = createProbe();
+    const std::unique_ptr<Probe> provider = createProbe();
+    QVERIFY(consumer->consumeObject(QStringLiteral("in")));
+    QVERIFY(bound->provideObject(QStringLiteral("out"), &first));
+    QVERIFY(provider->provideObject(QStringLiteral("out"), &second));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *bound, QStringLiteral("out")));
+    const QHash<QString, Probe*> probes{{QStringLiteral("consumer"), consumer.get()},
+                                        {QStringLiteral("bound"), bound.get()},
+                                        {QStringLiteral("provider"), provider.get()}};
+    QVERIFY(probes.value(running)->start());
+    consumer->clearEvents();
+
+    QVERIFY(!consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("out")));
+    QCOMPARE(consumer->binding(QStringLiteral("in")).provider, bound.get());
+    QCOMPARE(consumer->consumed(QStringLiteral("in")), &first);
+    QVERIFY(consumer->events().isEmpty());
+
+    // Once it stops, as before.
+    probes.value(running)->stop();
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("out")));
+    QCOMPARE(consumer->consumed(QStringLiteral("in")), &second);
+}
+
+void TestComponent::unbindingRefusedWhileRunning_data()
+{
+    QTest::addColumn<bool>("consumerRuns"); // Otherwise its provider
+    QTest::addColumn<bool>("one");          // Unbound from that provider alone; otherwise from all
+
+    QTest::newRow("consumer, from all") << true << false;
+    QTest::newRow("consumer, from one") << true << true;
+    QTest::newRow("provider, from all") << false << false;
+    QTest::newRow("provider, from one") << false << true;
+}
+
+void TestComponent::unbindingRefusedWhileRunning()
+{
+    QFETCH(bool, consumerRuns);
+    QFETCH(bool, one);
+
+    QObject object;
+    const std::unique_ptr<Probe> consumer = createProbe();
+    const std::unique_ptr<Probe> provider = createProbe();
+    QVERIFY(consumer->consumeObject(QStringLiteral("in")));
+    QVERIFY(provider->provideObject(QStringLiteral("out"), &object));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("out")));
+    Probe& running = consumerRuns ? *consumer : *provider;
+    QVERIFY(running.start());
+    consumer->clearEvents();
+    const auto unbind = [&consumer, &provider, one]
+    {
+        return one ? consumer->unbindInterface(QStringLiteral("in"), *provider, QStringLiteral("out"))
+                   : consumer->unbindInterface(QStringLiteral("in"));
+    };
+
+    QVERIFY(!unbind());
+    QCOMPARE(consumer->binding(QStringLiteral("in")).provider, provider.get());
+    QCOMPARE(consumer->consumed(QStringLiteral("in")), &object);
+    QVERIFY(consumer->events().isEmpty());
+
+    // Once it stops, as before.
+    running.stop();
+    QVERIFY(unbind());
+    QCOMPARE(consumer->binding(QStringLiteral("in")).provider, nullptr);
+    QCOMPARE(consumer->consumed(QStringLiteral("in")), nullptr);
+}
+
+void TestComponent::coreUnbindsWhileRunning_data()
+{
+    QTest::addColumn<QString>("change");
+
+    // The interfaces of a component can depend on a property, which a settings file changes while it runs.
+    QTest::newRow("provided interface removed") << "removeProvided";
+    QTest::newRow("consumed interface removed") << "removeConsumed";
+    QTest::newRow("provider destroyed") << "destroyProvider";
+}
+
+void TestComponent::coreUnbindsWhileRunning()
+{
+    QFETCH(QString, change);
+
+    QObject object;
+    const std::unique_ptr<Probe> consumer = createProbe();
+    std::unique_ptr<Probe> provider = createProbe();
+    QVERIFY(consumer->consumeObject(QStringLiteral("in")));
+    QVERIFY(provider->provideObject(QStringLiteral("out"), &object));
+    QVERIFY(consumer->bindInterface(QStringLiteral("in"), *provider, QStringLiteral("out")));
+    QVERIFY(consumer->start());
+    QVERIFY(provider->start());
+    consumer->clearEvents();
+    const QHash<QString, std::function<void()>> changes{
+        {QStringLiteral("removeProvided"), [&provider] { provider->removeProvided(QStringLiteral("out")); }},
+        {QStringLiteral("removeConsumed"), [&consumer] { consumer->removeConsumed(QStringLiteral("in")); }},
+        {QStringLiteral("destroyProvider"), [&provider] { provider.reset(); }},
+    };
+
+    // As when they are edited.
+    changes.value(change)();
+    QCOMPARE(consumer->binding(QStringLiteral("in")).provider, nullptr);
+    QCOMPARE(consumer->consumed(QStringLiteral("in")), nullptr);
+    QCOMPARE(consumer->events(), QStringList{"unavailable in (set)"});
 }
 
 void TestComponent::unboundMandatoryInterfaces_data()
@@ -599,7 +727,7 @@ void TestComponent::unbindOneOfAList()
     consumer->clearEvents();
     const QSignalSpy interfacesChanged(consumer.get(), &Nebula::Component::interfacesChanged);
 
-    consumer->unbindInterface(QStringLiteral("in"), *provider, QStringLiteral("a"));
+    QVERIFY(consumer->unbindInterface(QStringLiteral("in"), *provider, QStringLiteral("a")));
     QCOMPARE(consumer->consumedList(QStringLiteral("in")), QList<QObject*>{&second});
     QCOMPARE(consumer->bindings(QStringLiteral("in")).size(), 1);
     QCOMPARE(consumer->binding(QStringLiteral("in")).providedName, QStringLiteral("b"));
@@ -611,8 +739,8 @@ void TestComponent::unbindOneOfAList()
 
     // Not bound to it, or not consumed: nothing happens.
     consumer->clearEvents();
-    consumer->unbindInterface(QStringLiteral("in"), *provider, QStringLiteral("a"));
-    consumer->unbindInterface(QStringLiteral("unknown"), *provider, QStringLiteral("b"));
+    QVERIFY(consumer->unbindInterface(QStringLiteral("in"), *provider, QStringLiteral("a")));
+    QVERIFY(consumer->unbindInterface(QStringLiteral("unknown"), *provider, QStringLiteral("b")));
     QVERIFY(consumer->events().isEmpty());
 
     // Neither is an interface consumed alone, but by what it is bound to.

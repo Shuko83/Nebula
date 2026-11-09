@@ -39,6 +39,8 @@ struct SettingsEntry
 // When the application starts, the file gives its values to the properties it holds, once their default values are
 // written to it when it does not exist or misses some; while the application runs, the file follows the changes they
 // notify; when it stops, the file is written a last time, and the properties have their default values again.
+// Meanwhile, it is neither renamed nor moved, and holds the same properties: setFileName(), setName(), setDirectory(),
+// add() and remove() refuse, errorString() telling why. Only an entry whose object is destroyed leaves.
 // It holds the properties of any number of components, under their names, as a project holds them; a property is held
 // by a single file of the application. What else is in the file is kept: another application can share it.
 // Its name is its own among the files of the application, whatever their case and their directories, as two files of
@@ -55,8 +57,8 @@ class CORE_EXPORT SettingsFile : public QObject
     // is given another one. The one of a file of a galaxy is its name() after the galaxies it is in.
     [[nodiscard]] QString fileName() const;
     // Returns false, changing nothing, when fileName is empty or the name of another file of the application, whatever
-    // its case, and for a file of a galaxy, named by setName(). Taken into account the next time the application
-    // starts.
+    // its case, for a file of a galaxy, named by setName(), and while the application runs, with errorString() set.
+    // Taken into account the next time the application starts.
     bool setFileName(const QString& fileName);
     // The name its project gives it: its fileName() in the application; in a galaxy, the one its file gives it, after
     // which each instance of the galaxy names its own: settings.json for Clock1.settings.json, see
@@ -64,14 +66,16 @@ class CORE_EXPORT SettingsFile : public QObject
     [[nodiscard]] QString name() const;
     // Names it name in its project: its fileName() is name in the application, name after the galaxies it is in in a
     // galaxy. Returns false, changing nothing, when name is empty or its fileName() would be the one of another file of
-    // the application, whatever its case. Taken into account the next time the application starts.
+    // the application, whatever its case, and while the application runs, with errorString() set. Taken into account
+    // the next time the application starts.
     bool setName(const QString& name);
     // The galaxy whose components it holds the properties of; nullptr for a file of the application.
     [[nodiscard]] Galaxy* galaxy() const;
     // Where the file is, see filePath(); empty until it is set.
     [[nodiscard]] QString directory() const;
-    // Taken into account the next time the application starts.
-    void setDirectory(const QString& directory);
+    // Taken into account the next time the application starts. Returns false, changing nothing, with errorString()
+    // set, while the application runs.
+    bool setDirectory(const QString& directory);
     // filePath() of its file name and its directory.
     [[nodiscard]] QString filePath() const;
     // fileName in directory: in the configuration directory of the user for the application that runs,
@@ -84,11 +88,12 @@ class CORE_EXPORT SettingsFile : public QObject
     [[nodiscard]] bool contains(const SettingsEntry& entry) const;
     // Holds entry from the next time the application starts. Returns false, changing nothing, when entry is not a
     // property it can hold, see canHold(), of a component of the application, or of the galaxy the file is of, see
-    // Universe::instantiateGalaxy(), or when a file of the application holds it already. An entry leaves once its
-    // object, or its component, is destroyed.
+    // Universe::instantiateGalaxy(), or when a file of the application holds it already; and while the application
+    // runs, with errorString() set. An entry leaves once its object, or its component, is destroyed.
     bool add(const SettingsEntry& entry);
-    // No longer holds entry from the next time the application starts.
-    void remove(const SettingsEntry& entry);
+    // No longer holds entry from the next time the application starts; does nothing when it does not hold it. Returns
+    // false, changing nothing, with errorString() set, while the application runs.
+    bool remove(const SettingsEntry& entry);
 
     // Writes to its file the values its entries have, those of the project as the application does not run, in place
     // of those it holds for them. Returns false, with errorString() set, while the application runs, nothing being
@@ -106,7 +111,8 @@ class CORE_EXPORT SettingsFile : public QObject
     // one of its entries, when its property cannot have value or JSON cannot hold it, and when the file cannot be
     // read, which writeDefaults() would set aside, or written.
     bool writeValue(const SettingsEntry& entry, const QVariant& value);
-    // Why writeDefaults() or writeValue() returned false, or failed() was last emitted.
+    // Why writeDefaults() or writeValue() returned false, why a change was refused while the application runs, or what
+    // failed() last told.
     [[nodiscard]] QString errorString() const;
 
     // Whether a settings file can hold property of object, component itself or one of its objects: as a project, see
@@ -179,6 +185,9 @@ class CORE_EXPORT SettingsFile : public QObject
     void fail(const QString& why);
     // Sets errorString() to why and returns false.
     bool refuse(const QString& why);
+    // Whether it can be changed: not while it runs, which errorString() tells then, after refused, the change refused,
+    // where %1 stands for its file name.
+    bool canChange(const QString& refused);
 
   private slots:
     // Takes the values the sender, an object of its entries, has now: one of its properties changed. A slot: their

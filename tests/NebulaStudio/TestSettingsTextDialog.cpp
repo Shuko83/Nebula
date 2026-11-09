@@ -89,7 +89,7 @@ void TestSettingsTextDialog::init()
     m_directory = std::make_unique<QTemporaryDir>();
     QVERIFY(m_directory->isValid());
     m_application = std::make_unique<Nebula::Universe>();
-    m_file = &m_application->addSettingsFile();
+    m_file = m_application->addSettingsFile();
     m_file->setDirectory(m_directory->path());
 }
 
