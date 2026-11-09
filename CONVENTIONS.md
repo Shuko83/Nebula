@@ -165,4 +165,6 @@ Décrits dans [docs/testing.md](docs/testing.md). L'essentiel :
   `test: …`. Le titre commence par une majuscule et dit ce qui change ; le corps dit pourquoi et cite l'issue.
 - Une branche par issue, `feat/<n°>-<nom-court>` et de même pour `fix`, `docs`, `refactor` ; une PR vers `main`,
   fusionnée en rebase. Rien ne va directement sur `main`.
-- Toute fonctionnalité visible est décrite dans le README dans la même PR.
+- Toute fonctionnalité visible est décrite dans le README dans la même PR, et dans la page du wiki
+  ([docs/wiki](docs/wiki/), en anglais) qui en parle quand elle change ce que celle-ci dit : un raccourci, une étape
+  d'un tutoriel, une option.
