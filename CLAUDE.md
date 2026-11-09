@@ -13,7 +13,7 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `Core/cmake/` | — | `nebula_add_plugin()` et les gabarits `plugin.h.in` / `plugin.json.in`, livrés avec `Core` dans le paquet |
 | `Plugins/Standard/` | `Nebula::Standard` (INTERFACE, en-têtes seuls) | Issue #130 : les interfaces des composants standard, dans `include/Nebula/Standard/` (`LogLevel.h`, `ILog.h`, `ILogControl.h`, et issue #132 `Command.h`, `IHistory.h`), qu'un plugin lie pour les consommer ; composant du paquet, `find_package(Nebula COMPONENTS Core Standard)`. Voir Plugins standard |
 | `Plugins/StandardPlugin/` | `.nbdl` dans `bin/plugins` | Issue #130 : le premier plugin standard, livré avec Nebula pour toute application, à la version de Nebula : `LogComponent` (fournit `log` : `ILog`, et `logControl` : `ILogControl`), qui pilote pendant l'exécution le log de tout le processus, et `HistoryComponent` (issue #132, fournit `history` : `IHistory`), l'historique de ce qui se défait |
-| `NebulaStudio/` | `NebulaStudio` (exe Widgets), `NebulaStudioClasses` (statique), `NebulaStudioResources` (objets) | L'éditeur graphique : son `main.cpp`, dans `NebulaStudio/app/` avec son `SplashScreen`, est une `NebulaApplication` qui fait tourner la galaxy de `StudioPlugin/` (issue #73) ; le code de ses parties est dans `NebulaStudio/src/`, sans namespace, la bibliothèque statique `NebulaStudioClasses` (issue #146, voir Build), celui des fichiers de réglages dans `NebulaStudio/src/Settings/`, celui des galaxies (`GalaxyModel`, `GalaxyViewer`, `GalaxyPanel`) dans `NebulaStudio/src/Galaxy/`, le logo de Nebula, les icônes du glossaire et la police des titres dans `NebulaStudio/resources/` |
+| `NebulaStudio/` | `NebulaStudio` (exe Widgets), `NebulaStudioClasses` (statique), `NebulaStudioResources` (objets) | L'éditeur graphique : son `main.cpp` est une `NebulaApplication` qui fait tourner la galaxy de `StudioPlugin/` (issue #73) ; le code de ses parties est dans `NebulaStudio/src/`, sans namespace, la bibliothèque statique `NebulaStudioClasses` (issue #146, voir Build, sans `main.cpp` ni `SplashScreen`), celui des fichiers de réglages dans `NebulaStudio/src/Settings/`, celui des galaxies (`GalaxyModel`, `GalaxyViewer`, `GalaxyPanel`) dans `NebulaStudio/src/Galaxy/`, le logo de Nebula, les icônes du glossaire et la police des titres dans `NebulaStudio/resources/` |
 | `StudioPlugin/` | `.nbdl` dans `bin/plugins` | Issue #103 : les parties de NebulaStudio, chacune un composant (`src/`, voir NebulaStudio), faites de ses classes, que le plugin lie (`NebulaStudioClasses`, et `NebulaStudioResources` pour `nebulastudio.qrc`), et `NebulaStudio.nbp`, la galaxy qui les assemble en la fenêtre de NebulaStudio, copiée dans `<build>/bin[/<config>]/scene/` à chaque build (cible `StudioGalaxy`) |
 | `exemple/ExamplePlugin` | `.nbdl` dans `bin/plugins` | Composant `Greeter` (fournit `greeter` : `IGreeter`) |
 | `exemple/WidgetsPlugin` | `.nbdl` dans `bin/plugins` | L'exemple de la bonne pratique (issue #79) : des composants nommés `<Nom>Component`, chacun créant ses objets (membres) dans son constructeur. `MainWindowComponent` (fournit `mainWindow` : la `QMainWindow`, montrée pendant l'exécution ; consomme `centralWidget` : `QWidget`), `TopBarComponent` (une `QToolBar` ; consomme `mainWindow`, `Mandatory`, les listes `actions` : `QAction` et `widgets` : `QWidget`, montrés dans l'ordre de leurs liaisons, issue #67), `ActionComponent` (fournit `action` : `QAction`), `CounterComponent` (consomme `action`, `Mandatory`, compte pendant l'exécution ; fournit `display` : son `QLabel`) et `LabelsComponent` (issue #86 : fournit `label1`… autant de `QWidget` que son `count`, 1 au départ, de 0 à `MaxCount` = 10, chacun le `QLabel` d'un `Label`, objet dont le `text` est édité dans le groupe de son nom ; régler `count` ajoute les suivants ou retire les derniers par `removeProvidedInterface()`) |
@@ -60,8 +60,9 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   NebulaStudio (`NebulaStudio/src/`, un `GLOB_RECURSE`) sont compilées une fois, en `NebulaStudioClasses`, bibliothèque
   statique (`add_library`, hors du paquet, `POSITION_INDEPENDENT_CODE` pour `StudioPlugin`) que lient l'exécutable,
   `StudioPlugin` et les tests, et `nebulastudio.qrc` en `NebulaStudioResources`, bibliothèque d'objets, que lient ceux
-  qui montrent ses icônes ou sa police (voir Pièges). L'exécutable n'a que ses sources de `NebulaStudio/app/`
-  (`cmu_sources_dir`), celles qui incluent `NebulaStudio_info.h` : `main.cpp` et `SplashScreen`.
+  qui montrent ses icônes ou sa police (voir Pièges). `main.cpp` et `SplashScreen`, qui incluent `NebulaStudio_info.h`,
+  n'en sont pas : `cmu_add_executable` donne à l'exécutable tout `src/`, dont il ne garde qu'eux (sa propriété
+  `SOURCES` réécrite sans les sources de la bibliothèque).
 - `add_dependencies(NebulaStudio ExamplePlugin WidgetsPlugin ExternalPlugin StudioPlugin StudioGalaxy StandardPlugin)`,
   de même pour `ExampleUniverseApp` (et `ExampleApp` pour ceux de `plugins/`), dans `exemple/CMakeLists.txt` :
   construire l'un reconstruit les plugins du dépôt, et recopie la galaxy de NebulaStudio dans `scene/`.
@@ -429,7 +430,7 @@ dans un splitter horizontal (issue #104), à gauche la zone d'édition au-dessus
 qui prend ce que gagne la fenêtre, à droite un splitter vertical, masqué tant que ce qu'on glisse de ses listes en est
 sorti (`DragAside`) : un `QTabWidget` en mode document (onglets **Components**, montré au départ, **Galaxies** et
 **Plugins**) au-dessus du `PropertyEditor`, puis la vue d'ensemble de la zone d'édition (`SceneOverview`, issue #64).
-L'exécutable ne compile que `app/` (`main.cpp`, `SplashScreen`) et lie `NebulaStudioClasses`, dont il n'emploie que
+L'exécutable ne compile que `main.cpp` et `SplashScreen` et lie `NebulaStudioClasses`, dont il n'emploie que
 `Theme`. `SettingsItem`,
 `SettingsDialog`, `SettingsTextDialog` et `SettingsValueEditor` sont dans `src/Settings/`, inclus par
 `"Settings/SettingsItem.h"` ; `GalaxyModel`, `GalaxyViewer`,
@@ -905,7 +906,10 @@ ini, celui des formats qui n'ont pas le leur).
   haut à cet endroit (`itemAt()`).
 - `NebulaStudioClasses` est faite de toutes les sources de `NebulaStudio/src/` (un `GLOB_RECURSE`) : une nouvelle
   source y entre d'elle-même, et sert à l'exécutable, à `StudioPlugin` et aux tests sans rien ajouter ; une qui inclut
-  `NebulaStudio_info.h`, celui de l'exécutable, va dans `NebulaStudio/app/`. C'est une bibliothèque statique, dont
+  `NebulaStudio_info.h`, celui de l'exécutable, s'ajoute à `_own` dans `NebulaStudio/CMakeLists.txt`, comme
+  `main.cpp` et `SplashScreen`, ce qui la retire de la bibliothèque et la laisse à l'exécutable. Ils restent dans
+  `src/` : SonarQube Cloud compte un fichier déplacé comme du code nouveau, et un fichier que rien ne teste fait alors
+  échouer sa quality gate (80 % du code nouveau couvert). C'est une bibliothèque statique, dont
   chaque binaire ne garde que les objets dont il se sert : une initialisation statique d'une source de `src/` n'est
   faite que si un autre symbole de son objet est employé. Les ressources, que rien n'appelle, sont donc à part, dans
   `NebulaStudioResources`, une bibliothèque d'objets, liée entière : un test qui montre les icônes ou la police la lie,
