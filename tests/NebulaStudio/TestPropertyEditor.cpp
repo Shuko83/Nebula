@@ -265,7 +265,7 @@ void TestPropertyEditor::writtenThroughItsEdit()
 void TestPropertyEditor::settingsFile()
 {
     const QTemporaryDir directory;
-    Nebula::SettingsFile& file = m_application->addSettingsFile();
+    Nebula::SettingsFile& file = *m_application->addSettingsFile();
     file.setDirectory(directory.path());
     QVERIFY(file.add({.component = m_outlets, .object = m_outlets, .property = QStringLiteral("count")}));
     const auto* pages = m_editor->findChild<QStackedWidget*>();

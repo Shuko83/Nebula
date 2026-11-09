@@ -568,7 +568,7 @@ void TestGalaxy::settingsFiles()
     Nebula::Component* probe = first->component(u"P"_s);
     QCOMPARE(universe.settingsFile({.component = probe, .object = probe, .property = u"count"_s}), &firstFile);
     // The application cannot give another file their names.
-    QVERIFY(!universe.addSettingsFile().setFileName(u"Clock2.clock.json"_s));
+    QVERIFY(!universe.addSettingsFile()->setFileName(u"Clock2.clock.json"_s));
 
     // Started with the application: the values of the user of each instance in its own file.
     QVERIFY(universe.start());
@@ -1244,12 +1244,19 @@ void TestGalaxy::settingsFilesInGalaxy()
     QVERIFY(!file->add({.component = outside, .object = outside, .property = u"ratio"_s}));
 
     // Removed from its galaxy.
-    universe.removeSettingsFile(*file);
+    QVERIFY(universe.removeSettingsFile(*file));
     QCOMPARE(clock->settingsFiles().size(), std::size_t{1});
     QVERIFY(universe.settingsFile(u"Home1.Alarm.user.json"_s) == nullptr);
     // Not added to a galaxy of another application.
     Universe other;
     QVERIFY(other.addSettingsFile(*clock) == nullptr);
+
+    // Neither added nor removed while the application runs.
+    QVERIFY(universe.start());
+    QVERIFY(universe.addSettingsFile(*clock) == nullptr);
+    QVERIFY(!universe.removeSettingsFile(*clock->settingsFiles().front()));
+    QCOMPARE(clock->settingsFiles().size(), std::size_t{1});
+    universe.stop();
 }
 
 void TestGalaxy::saveGalaxy()

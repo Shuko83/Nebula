@@ -177,9 +177,9 @@ void TestSettingsDialog::init()
     m_probe = qobject_cast<Probe*>(m_application->instantiate(testComponentId(QStringLiteral("Probe"))));
     m_panel = qobject_cast<Panel*>(m_application->instantiate(testComponentId(QStringLiteral("Panel"))));
     QVERIFY(m_probe != nullptr && m_panel != nullptr);
-    m_file = &m_application->addSettingsFile();
+    m_file = m_application->addSettingsFile();
     QVERIFY(m_file->add({.component = m_probe, .object = m_probe, .property = QStringLiteral("count")}));
-    Nebula::SettingsFile& other = m_application->addSettingsFile();
+    Nebula::SettingsFile& other = *m_application->addSettingsFile();
     QVERIFY(other.setFileName(QStringLiteral("other.json")));
     QVERIFY(other.add({.component = m_probe, .object = m_probe, .property = QStringLiteral("ratio")}));
     m_dialog = std::make_unique<SettingsDialog>(*m_file, *m_application, Nebula::ComponentFactory::instance());
@@ -459,7 +459,7 @@ void TestSettingsDialog::noProperty()
 {
     m_dialog.reset();
     m_application = std::make_unique<Nebula::Universe>();
-    m_dialog = std::make_unique<SettingsDialog>(m_application->addSettingsFile(), *m_application,
+    m_dialog = std::make_unique<SettingsDialog>(*m_application->addSettingsFile(), *m_application,
                                                 Nebula::ComponentFactory::instance());
     QVERIFY(shownPlaceholder() != nullptr);
     QCOMPARE(shownPlaceholder()->text(),

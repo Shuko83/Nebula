@@ -149,6 +149,9 @@ class TestUniverse : public QObject
     void runningRestoresEditedValues_data();
     void runningRestoresEditedValues();
     void assemblyRefusedWhileRunning();
+    void bindingsRefusedWhileRunning();
+    void interfacesFollowAPropertyWhileRunning();
+    void settingsFilesRefusedWhileRunning();
     void clear();
 
     void addSettingsFile_data();
@@ -1104,6 +1107,70 @@ void TestUniverse::assemblyRefusedWhileRunning()
     QVERIFY(universe.rename(*probe, QStringLiteral("Renamed")));
 }
 
+void TestUniverse::bindingsRefusedWhileRunning()
+{
+    Universe universe;
+    Source* first = ::instantiate<Source>(universe);
+    Source* second = ::instantiate<Source>(universe);
+    Sink* sink = ::instantiate<Sink>(universe);
+    QVERIFY(sink->bindInterface(QStringLiteral("object"), *first, QStringLiteral("object")));
+    QVERIFY(sink->bindInterface(QStringLiteral("objects"), *first, QStringLiteral("object")));
+    const QJsonArray edited = universe.save().value(u"bindings").toArray();
+    QVERIFY(universe.start());
+
+    QVERIFY(!sink->bindInterface(QStringLiteral("object"), *second, QStringLiteral("object")));
+    QVERIFY(!sink->bindInterface(QStringLiteral("objects"), *second, QStringLiteral("object")));
+    QVERIFY(!sink->unbindInterface(QStringLiteral("object")));
+    QVERIFY(!sink->unbindInterface(QStringLiteral("objects"), *first, QStringLiteral("object")));
+    QCOMPARE(sink->object(), &first->object());
+    QCOMPARE(sink->objects(), QList<QObject*>{&first->object()});
+    // What it writes meanwhile is what was edited, as for the values.
+    QCOMPARE(universe.save().value(u"bindings").toArray(), edited);
+
+    universe.stop();
+    QVERIFY(sink->bindInterface(QStringLiteral("object"), *second, QStringLiteral("object")));
+}
+
+void TestUniverse::interfacesFollowAPropertyWhileRunning()
+{
+    Universe universe;
+    Outlets* outlets = ::instantiate<Outlets>(universe);
+    Sink* sink = ::instantiate<Sink>(universe);
+    outlets->setCount(3);
+    QVERIFY(sink->bindInterface(QStringLiteral("objects"), *outlets, QStringLiteral("object1")));
+    QVERIFY(sink->bindInterface(QStringLiteral("objects"), *outlets, QStringLiteral("object3")));
+    QVERIFY(universe.start());
+
+    // As a settings file would: the last one goes with what is bound to it, though they run.
+    outlets->setCount(2);
+    QCOMPARE(outlets->providedInterfaces().size(), 2);
+    QCOMPARE(sink->objects(), QList<QObject*>{outlets->objects().at(0)});
+    QCOMPARE(sink->bindings(QStringLiteral("objects")).size(), 1);
+
+    // Its count is given back once it stops, its last one new: bound to nothing.
+    universe.stop();
+    QCOMPARE(outlets->count(), 3);
+    QCOMPARE(sink->bindings(QStringLiteral("objects")).size(), 1);
+}
+
+void TestUniverse::settingsFilesRefusedWhileRunning()
+{
+    Universe universe;
+    Nebula::SettingsFile* file = universe.addSettingsFile();
+    QVERIFY(file != nullptr);
+    QVERIFY(universe.start());
+    const QSignalSpy settingsFilesChanged(&universe, &Universe::settingsFilesChanged);
+
+    QCOMPARE(universe.addSettingsFile(), nullptr);
+    QVERIFY(!universe.removeSettingsFile(*file));
+    QCOMPARE(universe.settingsFiles().size(), std::size_t{1});
+    QCOMPARE(settingsFilesChanged.count(), 0);
+
+    universe.stop();
+    QVERIFY(universe.removeSettingsFile(*file));
+    QVERIFY(universe.settingsFiles().empty());
+}
+
 void TestUniverse::clear()
 {
     Universe universe;
@@ -1155,8 +1222,12 @@ void TestUniverse::addSettingsFile()
     QCOMPARE(added, fileNames);
 
     // The first free name.
-    universe.removeSettingsFile(*universe.settingsFiles().front());
-    QCOMPARE(universe.addSettingsFile().fileName(), QStringLiteral("settings.json"));
+    QVERIFY(universe.removeSettingsFile(*universe.settingsFiles().front()));
+    QCOMPARE(universe.addSettingsFile()->fileName(), QStringLiteral("settings.json"));
+    // Not one of its files.
+    Universe other;
+    QVERIFY(!universe.removeSettingsFile(*other.addSettingsFile()));
+    QCOMPARE(universe.settingsFiles().size(), std::size_t(count));
 }
 
 void TestUniverse::saveAndLoadSettingsFiles()
@@ -1166,12 +1237,12 @@ void TestUniverse::saveAndLoadSettingsFiles()
         Universe universe;
         Probe* probe = ::instantiate<Probe>(universe);
         Panel* panel = ::instantiate<Panel>(universe);
-        Nebula::SettingsFile& file = universe.addSettingsFile();
+        Nebula::SettingsFile& file = *universe.addSettingsFile();
         file.setDirectory(QStringLiteral("config"));
         QVERIFY(file.add({.component = probe, .object = probe, .property = QStringLiteral("count")}));
         QVERIFY(file.add({.component = panel, .object = panel->pages().at(1), .property = QStringLiteral("level")}));
         QVERIFY(file.add({.component = panel, .object = &panel->general(), .property = QStringLiteral("enabled")}));
-        universe.addSettingsFile().setFileName(QStringLiteral("other.json"));
+        universe.addSettingsFile()->setFileName(QStringLiteral("other.json"));
         saved = universe.save();
     }
     const QJsonArray settings = saved.value(u"settings").toArray();

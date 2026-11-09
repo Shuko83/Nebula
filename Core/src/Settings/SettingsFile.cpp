@@ -274,7 +274,7 @@ Galaxy* SettingsFile::galaxy() const
 
 bool SettingsFile::rename(const QString& fileName, const QString& name)
 {
-    if(name.isEmpty() || !isFreeFileName(fileName))
+    if(!canChange(QStringLiteral("%1 cannot be renamed")) || name.isEmpty() || !isFreeFileName(fileName))
     {
         return false;
     }
@@ -297,14 +297,17 @@ QString SettingsFile::directory() const
     return m_directory;
 }
 
-void SettingsFile::setDirectory(const QString& directory)
+bool SettingsFile::setDirectory(const QString& directory)
 {
-    if(directory == m_directory)
+    if(!canChange(QStringLiteral("%1 cannot be moved")))
     {
-        return;
+        return false;
     }
-    m_directory = directory;
-    emit changed();
+    if(std::exchange(m_directory, directory) != directory)
+    {
+        emit changed();
+    }
+    return true;
 }
 
 QString SettingsFile::filePath() const
@@ -334,7 +337,7 @@ bool SettingsFile::contains(const SettingsEntry& entry) const
 
 bool SettingsFile::add(const SettingsEntry& entry)
 {
-    if(!canAdd(entry))
+    if(!canChange(QStringLiteral("%1 cannot hold another property")) || !canAdd(entry))
     {
         return false;
     }
@@ -351,12 +354,17 @@ bool SettingsFile::canAdd(const SettingsEntry& entry) const
            canHold(*entry.component, entry.object, entry.property) && m_application.settingsFile(entry) == nullptr;
 }
 
-void SettingsFile::remove(const SettingsEntry& entry)
+bool SettingsFile::remove(const SettingsEntry& entry)
 {
+    if(!canChange(QStringLiteral("%1 cannot stop holding a property")))
+    {
+        return false;
+    }
     if(m_entries.removeAll(entry) > 0)
     {
         emit changed();
     }
+    return true;
 }
 
 bool SettingsFile::writeDefaults()
@@ -565,6 +573,11 @@ bool SettingsFile::refuse(const QString& why)
 {
     m_errorString = why;
     return false;
+}
+
+bool SettingsFile::canChange(const QString& refused)
+{
+    return !m_running || refuse(refused.arg(m_fileName) + QStringLiteral(" while the application runs"));
 }
 
 void SettingsFile::takeValues()

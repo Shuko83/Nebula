@@ -1001,19 +1001,14 @@ void Universe::clear()
     m_description.clear();
 }
 
-SettingsFile& Universe::addSettingsFile()
+SettingsFile* Universe::addSettingsFile()
 {
-    // Not made with std::make_unique: its constructor is only for the application.
-    SettingsFile& file = *m_settingsFiles.emplace_back(new SettingsFile(*this, newSettingsFileName()));
-    connect(&file, &SettingsFile::changed, this, &Universe::settingsFilesChanged);
-    connect(&file, &SettingsFile::failed, this, &Universe::settingsFileFailed);
-    emit settingsFilesChanged();
-    return file;
+    return m_running ? nullptr : &newSettingsFile();
 }
 
 SettingsFile* Universe::addSettingsFile(Galaxy& galaxy)
 {
-    const std::optional<Scope> scope = galaxyScope(&galaxy);
+    const std::optional<Scope> scope = m_running ? std::nullopt : galaxyScope(&galaxy);
     if(!scope)
     {
         return nullptr;
@@ -1025,12 +1020,14 @@ SettingsFile* Universe::addSettingsFile(Galaxy& galaxy)
     return &file;
 }
 
-void Universe::removeSettingsFile(SettingsFile& file)
+bool Universe::removeSettingsFile(SettingsFile& file)
 {
-    if(take(settingsFilesOf(file.m_galaxy), file) != nullptr) // Stopped first while it runs, see ~SettingsFile()
+    if(m_running || take(settingsFilesOf(file.m_galaxy), file) == nullptr)
     {
-        emit settingsFilesChanged();
+        return false;
     }
+    emit settingsFilesChanged();
+    return true;
 }
 
 const std::vector<std::unique_ptr<SettingsFile>>& Universe::settingsFiles() const
@@ -1950,9 +1947,19 @@ SettingsFile& Universe::addSettingsFile(const Scope& scope, const QString& fileN
                                    : addGalaxySettingsFile(scope, fileName, problems);
 }
 
+SettingsFile& Universe::newSettingsFile()
+{
+    // Not made with std::make_unique: its constructor is only for the application.
+    SettingsFile& file = *m_settingsFiles.emplace_back(new SettingsFile(*this, newSettingsFileName()));
+    connect(&file, &SettingsFile::changed, this, &Universe::settingsFilesChanged);
+    connect(&file, &SettingsFile::failed, this, &Universe::settingsFileFailed);
+    emit settingsFilesChanged();
+    return file;
+}
+
 SettingsFile& Universe::addApplicationSettingsFile(const QString& fileName, QStringList& problems)
 {
-    SettingsFile& file = addSettingsFile();
+    SettingsFile& file = newSettingsFile();
     // Not the name of one read before: they would be written over each other.
     if(!fileName.isEmpty() && !file.setFileName(fileName))
     {

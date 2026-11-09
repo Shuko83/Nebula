@@ -68,6 +68,12 @@ std::function<void(void*)> withoutPointer(std::function<void()> callback)
     return [callback = std::move(callback)](void* /*pointer*/) { callback(); };
 }
 
+// Whether component runs: its bindings are not changed then, see Component::bindInterface().
+bool runs(const Component& component)
+{
+    return component.state() == ComponentState::Running;
+}
+
 } // namespace
 
 Component::Component() = default;
@@ -129,34 +135,30 @@ bool Component::bindInterface(const QString& name, Component& provider, const QS
     }
     if(!findNamed(m_consumedInterfaces, name)->list)
     {
-        unbindInterface(name);
+        removeBindings(name);
     }
     addBinding(name, provider, providedName);
     return true;
 }
 
-void Component::unbindInterface(const QString& name)
+bool Component::unbindInterface(const QString& name)
 {
-    const ConsumedInterface* consumed = findNamed(m_consumedInterfaces, name);
-    // The last one first, each found again, and no more than there are: what an unbinding calls can change them.
-    for(qsizetype count = consumed != nullptr ? consumed->bindings.size() : 0; count > 0; --count)
+    if(runsWith(name))
     {
-        if(!unbindLast(name))
-        {
-            return;
-        }
+        return false;
     }
+    removeBindings(name);
+    return true;
 }
 
-void Component::unbindInterface(const QString& name, const Component& provider, const QString& providedName)
+bool Component::unbindInterface(const QString& name, const Component& provider, const QString& providedName)
 {
-    withdrawInterface(name, provider, providedName);
-    // Found again: what withdrawing calls can have the component declare another interface.
-    ConsumedInterface* consumed = findNamed(m_consumedInterfaces, name);
-    if(consumed != nullptr && consumed->unbind(&provider, providedName))
+    if(runs(*this) || runs(provider))
     {
-        emit interfacesChanged();
+        return false;
     }
+    removeBinding(name, provider, providedName);
+    return true;
 }
 
 InterfaceBinding Component::binding(const QString& name) const
@@ -387,7 +389,7 @@ void Component::removeConsumedInterface(const QString& name)
     {
         return;
     }
-    unbindInterface(name);
+    removeBindings(name);
     removeNamed(m_consumedInterfaces, name);
     emit interfacesChanged();
 }
@@ -398,16 +400,48 @@ bool Component::canBind(const QString& name, const Component& provider, const QS
     const ProvidedInterface* provided = findNamed(provider.m_providedInterfaces, providedName);
     // Not to itself either: it would be told of its own destruction once its interfaces are gone.
     return &provider != this && consumed != nullptr && provided != nullptr && consumed->type == provided->type &&
-           !(consumed->list && consumed->bound(&provider, providedName) != nullptr);
+           !(consumed->list && consumed->bound(&provider, providedName) != nullptr) && !runs(provider) &&
+           !runsWith(name);
+}
+
+bool Component::runsWith(const QString& name) const
+{
+    const ConsumedInterface* consumed = findNamed(m_consumedInterfaces, name);
+    const auto providerRuns = [](const Bound& bound) { return runs(*bound.provider); };
+    return runs(*this) || (consumed != nullptr && std::ranges::any_of(consumed->bindings, providerRuns));
 }
 
 void Component::addBinding(const QString& name, Component& provider, const QString& providedName)
 {
-    // Found again: the callback unbindInterface() called can have the component declare another interface.
+    // Found again: the callback removeBindings() called can have the component declare another interface.
     findNamed(m_consumedInterfaces, name)->bindings.append(Bound{.provider = &provider, .providedName = providedName});
     followProvider(name, provider, providedName);
     emit interfacesChanged(); // Bound, before it is told again when it becomes available
     deliverInterface(name, provider, providedName);
+}
+
+void Component::removeBindings(const QString& name)
+{
+    const ConsumedInterface* consumed = findNamed(m_consumedInterfaces, name);
+    // The last one first, each found again, and no more than there are: what an unbinding calls can change them.
+    for(qsizetype count = consumed != nullptr ? consumed->bindings.size() : 0; count > 0; --count)
+    {
+        if(!unbindLast(name))
+        {
+            return;
+        }
+    }
+}
+
+void Component::removeBinding(const QString& name, const Component& provider, const QString& providedName)
+{
+    withdrawInterface(name, provider, providedName);
+    // Found again: what withdrawing calls can have the component declare another interface.
+    ConsumedInterface* consumed = findNamed(m_consumedInterfaces, name);
+    if(consumed != nullptr && consumed->unbind(&provider, providedName))
+    {
+        emit interfacesChanged();
+    }
 }
 
 std::pair<Component::ConsumedInterface*, Component::Bound*>
@@ -426,7 +460,7 @@ bool Component::unbindLast(const QString& name)
         return false;
     }
     const Bound last = consumed->bindings.constLast();
-    unbindInterface(name, *last.provider, last.providedName);
+    removeBinding(name, *last.provider, last.providedName);
     return true;
 }
 
@@ -437,7 +471,7 @@ void Component::unbindProvider(const QString& name, const Component* provider)
     const QStringList providedNames = consumed != nullptr ? consumed->providedNames(provider) : QStringList();
     for(const QString& providedName : providedNames)
     {
-        unbindInterface(name, *provider, providedName);
+        removeBinding(name, *provider, providedName);
     }
 }
 
@@ -472,7 +506,7 @@ QList<QMetaObject::Connection> Component::followBindings(const QString& name, Co
                     [this, name, provider](const QString& former, const QString& renamed)
                     { followRename(name, provider, former, renamed); }),
             connect(provider, &Component::interfaceRemoved, this,
-                    [this, name, provider](const QString& removed) { unbindInterface(name, *provider, removed); }),
+                    [this, name, provider](const QString& removed) { removeBinding(name, *provider, removed); }),
             connect(provider, &QObject::destroyed, this, [this, name, provider] { unbindProvider(name, provider); })};
 }
 
@@ -619,7 +653,7 @@ void Component::releaseInterfaces()
     for(qsizetype index = 0; index < m_consumedInterfaces.size(); ++index)
     {
         const QString name = m_consumedInterfaces.at(index).name;
-        unbindInterface(name);
+        removeBindings(name);
     }
     for(qsizetype index = 0; index < m_providedInterfaces.size(); ++index)
     {
