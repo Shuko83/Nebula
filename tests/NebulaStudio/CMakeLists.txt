@@ -1,106 +1,34 @@
 # Copyright (C) 2026 Fabien Di Grande
 # SPDX-License-Identifier: MPL-2.0
 
-# The classes of NebulaStudio that do not need its window, compiled again with each test: NebulaStudio is an
-# executable, nothing links to it.
-set(_studio "${PROJECT_SOURCE_DIR}/NebulaStudio")
-# The icons and the font of the theme.
-set(_resources "${_studio}/resources/nebulastudio.qrc")
+# The classes of NebulaStudio, which each test links from NebulaStudioClasses, compiled once (#146): the linker only
+# keeps what the test uses. A test that shows the icons or the font of the theme also links NebulaStudioResources, and
+# Qt Svg, which draws the icons.
+set(_resources NebulaStudioResources Qt6::Svg)
 
-nebula_add_test(TestColors INCLUDE_DIRECTORIES "${_studio}/src" LINK_LIBRARIES Qt6::Gui)
-nebula_add_test(TestTheme
-    SOURCES "${_studio}/src/Theme.cpp" ${_resources}
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES Qt6::Widgets Qt6::Svg)
-nebula_add_test(TestPluginModel
-    SOURCES "${_studio}/src/PluginModel.cpp"
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES Nebula::Core Qt6::Gui)
-nebula_add_test(TestComponentModel
-    SOURCES "${_studio}/src/ComponentModel.cpp" "${_studio}/src/Theme.cpp" ${_resources}
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
-nebula_add_test(TestEditionView
-    SOURCES "${_studio}/src/EditionView.cpp"
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES Qt6::Widgets)
+nebula_add_test(TestColors LINK_LIBRARIES NebulaStudioClasses)
+nebula_add_test(TestTheme LINK_LIBRARIES NebulaStudioClasses ${_resources})
+nebula_add_test(TestPluginModel LINK_LIBRARIES NebulaStudioClasses)
+nebula_add_test(TestComponentModel LINK_LIBRARIES NebulaStudioClasses TestComponents ${_resources})
+nebula_add_test(TestEditionView LINK_LIBRARIES NebulaStudioClasses)
 # The overview of the edition zone, which follows its view.
-nebula_add_test(TestSceneOverview
-    SOURCES "${_studio}/src/SceneOverview.cpp" "${_studio}/src/EditionView.cpp"
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES Qt6::Widgets)
+nebula_add_test(TestSceneOverview LINK_LIBRARIES NebulaStudioClasses)
 # What makes room as rows are dragged from a list.
-nebula_add_test(TestDragAside
-    SOURCES "${_studio}/src/DragAside.cpp" "${_studio}/src/DraggableView.cpp"
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES Qt6::Widgets)
-nebula_add_test(TestPreferences
-    SOURCES "${_studio}/src/Preferences.cpp"
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES Qt6::Core)
-# The edition zone, with its items, the dialogs it opens and the steps of its history, which needs Nebula::Standard.
-set(_scene
-    "${_studio}/src/EditionScene.cpp" "${_studio}/src/SceneCommand.cpp" "${_studio}/src/ContextMenu.cpp"
-    "${_studio}/src/ComponentItem.cpp" "${_studio}/src/CopiedInstances.cpp"
-    "${_studio}/src/InterfaceItem.cpp" "${_studio}/src/LinkItem.cpp" "${_studio}/src/AnchorItem.cpp"
-    "${_studio}/src/LinkAnchors.cpp" "${_studio}/src/DashedLinkItem.cpp" "${_studio}/src/NameEditor.cpp"
-    "${_studio}/src/ZoneItem.cpp" "${_studio}/src/Theme.cpp" "${_studio}/src/EditDialog.cpp"
-    "${_studio}/src/PropertyTree.cpp" "${_studio}/src/WarningLabel.cpp" "${_studio}/src/DialogHeader.cpp"
-    "${_studio}/src/PlaceholderStack.cpp" "${_studio}/src/ChoicePanel.cpp"
-    "${_studio}/src/Galaxy/StargateItem.cpp" "${_studio}/src/Galaxy/StargateDialog.cpp"
-    "${_studio}/src/Settings/SettingsItem.cpp" "${_studio}/src/Settings/SettingsDialog.cpp"
-    "${_studio}/src/Settings/SettingsTextDialog.cpp" "${_studio}/src/FileFollower.cpp"
-    ${_resources})
-nebula_add_test(TestEditionScene
-    SOURCES ${_scene}
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES TestComponents Nebula::Standard Qt6::Widgets Qt6::Svg)
+nebula_add_test(TestDragAside LINK_LIBRARIES NebulaStudioClasses)
+nebula_add_test(TestPreferences LINK_LIBRARIES NebulaStudioClasses)
+# The edition zone, with its items, the dialogs it opens and the steps of its history.
+nebula_add_test(TestEditionScene LINK_LIBRARIES NebulaStudioClasses TestComponents ${_resources})
 # The steps of the history of the edition zone: each edit undone, then done again.
-nebula_add_test(TestSceneCommand
-    SOURCES ${_scene}
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES TestComponents Nebula::Standard Qt6::Widgets Qt6::Svg)
+nebula_add_test(TestSceneCommand LINK_LIBRARIES NebulaStudioClasses TestComponents ${_resources})
 # The field that finds the instances of the edition zone.
-nebula_add_test(TestComponentFinder
-    SOURCES "${_studio}/src/ComponentFinder.cpp" ${_scene}
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES TestComponents Nebula::Standard Qt6::Widgets Qt6::Svg)
-# The values of a settings file, which the property editor shows in place of a component.
-set(_settings_values
-    "${_studio}/src/Settings/SettingsValueEditor.cpp" "${_studio}/src/FileFollower.cpp"
-    "${_studio}/src/PlaceholderStack.cpp" "${_studio}/src/PropertyTree.cpp" "${_studio}/src/PropertyTable.cpp"
-    "${_studio}/src/PropertyDelegate.cpp" "${_studio}/src/PropertyValues.cpp" "${_studio}/src/ValueEditors.cpp"
-    "${_studio}/src/WarningLabel.cpp" "${_studio}/src/Theme.cpp" ${_resources})
-nebula_add_test(TestPropertyEditor
-    SOURCES "${_studio}/src/PropertyEditor.cpp" ${_settings_values}
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
-nebula_add_test(TestSettingsValueEditor
-    SOURCES ${_settings_values}
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
+nebula_add_test(TestComponentFinder LINK_LIBRARIES NebulaStudioClasses TestComponents ${_resources})
+# The property editor, and the values of a settings file, which it shows in place of a component.
+nebula_add_test(TestPropertyEditor LINK_LIBRARIES NebulaStudioClasses TestComponents ${_resources})
+nebula_add_test(TestSettingsValueEditor LINK_LIBRARIES NebulaStudioClasses TestComponents ${_resources})
 # The dialog that shows and edits the text of a settings file.
-nebula_add_test(TestSettingsTextDialog
-    SOURCES
-        "${_studio}/src/Settings/SettingsTextDialog.cpp" "${_studio}/src/FileFollower.cpp"
-        "${_studio}/src/EditDialog.cpp" "${_studio}/src/DialogHeader.cpp" "${_studio}/src/WarningLabel.cpp"
-        "${_studio}/src/Theme.cpp" ${_resources}
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
+nebula_add_test(TestSettingsTextDialog LINK_LIBRARIES NebulaStudioClasses TestComponents ${_resources})
 # The dialog of a settings file.
-nebula_add_test(TestSettingsDialog
-    SOURCES
-        "${_studio}/src/Settings/SettingsDialog.cpp" "${_studio}/src/EditDialog.cpp" "${_studio}/src/DialogHeader.cpp"
-        "${_studio}/src/PlaceholderStack.cpp" "${_studio}/src/PropertyTree.cpp" "${_studio}/src/WarningLabel.cpp"
-        "${_studio}/src/ChoicePanel.cpp" "${_studio}/src/Theme.cpp" ${_resources}
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES TestComponents Qt6::Widgets Qt6::Svg)
+nebula_add_test(TestSettingsDialog LINK_LIBRARIES NebulaStudioClasses TestComponents ${_resources})
 # The dialog of a stargate, with the items whose names it shows.
-nebula_add_test(TestStargateDialog
-    SOURCES ${_scene}
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES TestComponents Nebula::Standard Qt6::Widgets Qt6::Svg)
-nebula_add_test(TestGalaxyModel
-    SOURCES "${_studio}/src/Galaxy/GalaxyModel.cpp" "${_studio}/src/Theme.cpp" ${_resources}
-    INCLUDE_DIRECTORIES "${_studio}/src"
-    LINK_LIBRARIES Nebula::Core Qt6::Widgets Qt6::Svg)
+nebula_add_test(TestStargateDialog LINK_LIBRARIES NebulaStudioClasses TestComponents ${_resources})
+nebula_add_test(TestGalaxyModel LINK_LIBRARIES NebulaStudioClasses ${_resources})
