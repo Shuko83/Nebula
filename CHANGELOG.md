@@ -11,8 +11,9 @@ to it.
 
 - The [wiki](https://github.com/Shuko83/Nebula/wiki) (#160), which walks through Nebula step by step: getting started,
   a first plugin built outside Nebula, writing components, the standard plugins, NebulaStudio, galaxies and settings
-  files, running and deploying an application, and troubleshooting. Its pages are written in `docs/wiki/` and copied
-  to the wiki of the repository by a workflow each time they change on `main`.
+  files, running and deploying an application, and troubleshooting, and a course of eight lessons with exercises and
+  their solutions, from assembling without code to a plugin of one's own. Its pages are written in `docs/wiki/` and
+  copied to the wiki of the repository by a workflow each time they change on `main`.
 
 ## [3.0.0] - 2026-11-09
 
