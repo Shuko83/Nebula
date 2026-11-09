@@ -21,11 +21,12 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `exemple/ExampleApp` | exe console | Scanne, charge, liste et fait tourner un `Greeter` |
 | `exemple/ExampleUniverseApp` | exe console + Widgets | Le `main` type : options de `Universe::addCommandLineOptions()`, `applyCommandLine()`, `open()` du projet passé en argument, puis `start()` |
 | `CMakeUtils/` | sous-module git | `cmu_add_target` / `cmu_add_executable` / `cmu_add_shared_library` |
-| `cmake/` | — | Issue #139 : `PackageName.cmake`, le nom du paquet (`nebula_package_name()`, `nebula_compiler_name()`, `nebula_visual_studio_year()`, `nebula_is_version_suffix()`), des fonctions de leurs seuls arguments, que `tests/Package/` lance en mode script. Pas livré |
+| `cmake/` | — | Issue #139 : `PackageName.cmake`, le nom du paquet (`nebula_package_name()`, `nebula_compiler_name()`, `nebula_visual_studio_year()`, `nebula_is_version_suffix()`), celui de l'installeur de NebulaStudio (issue #140, `nebula_installer_name()`) et les quatre nombres d'une version (`nebula_version_numbers()`), des fonctions de leurs seuls arguments, que `tests/Package/` lance en mode script. Pas livré |
+| `Installer/` | — | Issue #140 : l'installeur de NebulaStudio, les règles d'installation du composant `NebulaStudio` (`EXCLUDE_FROM_ALL`) et la configuration de CPack, générateur Inno Setup (voir Build) |
 | `docs/release-notes/` | — | Notes de chaque version, `<x.y.z>.md` : le texte de sa release GitHub |
 | `CHANGELOG.md` | — | Ce qui change d'une version à l'autre, la dernière en premier, au format Keep a Changelog, en anglais : une section `## [x.y.z] - <date>` par version (Added, Changed, Removed, Fixed) et son lien vers la release en bas |
 | `docs/glossary.md` | — | Glossaire Nebula (Nebula, Univers, Galaxy, Astre, Comet, Stargate), en anglais puis en français, référencé par le README : le vocabulaire à employer pour nommer code, documentation et interface ; Nebula et Univers (la classe `Universe`) sont déjà employés, Galaxy pour un fichier de projet (`GalaxyInfo`, onglet **Galaxies**), et Stargate pour ce qu'une galaxy expose (`Stargate`) |
-| `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Application/` (`TestNebulaApplication`, `QTEST_APPLESS_MAIN` : chaque test construit sa `NebulaApplication`, l'une après l'autre, avec sa ligne de commande), `Core/` (une par classe, `TestUniverse` avec les morceaux de projet copiés et collés, `TestGalaxy` pour les galaxies posées, leurs interfaces, leurs propriétés exposées, leur édition, leur relecture et leur copier-coller, `TestStargate` pour la Stargate dans l'application qui l'édite, `TestWholeFile` pour `Nebula::WholeFile::write()`) et `NebulaStudio/` (Colors, Theme avec les bords de son style et le schéma choisi, PluginModel, ComponentModel, EditionView, SceneOverview, DragAside, EditionScene pour ses liens et son copier-coller, SceneCommand pour les étapes de son historique, ComponentFinder, PropertyEditor pour ses groupes et son édition et la page d'un fichier de réglages, SettingsDialog, SettingsValueEditor et SettingsTextDialog pour les valeurs et le texte d'un fichier de réglages, suivi sur le disque, GalaxyModel, Preferences, chacun liant `NebulaStudioClasses`), `StudioPlugin/` (`TestStudioPlugin` : ses composants chargés depuis le plugin, la galaxy de NebulaStudio ouverte, lancée et relue), `StandardPlugin/` (`TestLogComponent` : le `LogComponent` chargé depuis le plugin, consommé par les interfaces de `Nebula::Standard`, et le niveau du processus vu d'une catégorie du test ; `TestHistoryComponent` : ses commandes faites, défaites et refaites, sa taille, ses options et les commandes composées), `exemple/` (`TestWidgetsPlugin` : ses composants chargés depuis le plugin et assemblés), `Package/` (issue #139, pas des exécutables Qt Test : `TestPackageName`, `cmake -P` de `cmake/PackageName.cmake` et du nom de ce build, et sous Windows `TestVersionDetails<Cible>`, un script PowerShell qui lit la ressource de version de `NebulaStudio`, `Core` et `StandardPlugin`), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`, `Outlets` : autant d'interfaces et d'objets que son `count`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`, et `Plugins/`, les plugins de test construits par `nebula_add_test_plugin()` (`nebula_add_plugin()`, puis retirés du paquet) : `FirstPlugin` (`Alpha`) et `ThirdPlugin` (`Gamma`, `Delta`) dans `test-plugins/`, `SecondPlugin` (`Beta`) dans `other-test-plugins/`, à côté des tests mais pas dans leur `plugins/` (`NEBULA_TEST_PLUGINS_DIR`, `NEBULA_OTHER_TEST_PLUGINS_DIR`). `PluginManager`, les plugins d'un projet ou d'une galaxy et `PluginModel` se testent sur eux : seul `TestWidgetsPlugin` dépend d'un exemple, celui qu'il teste (issue #83). Rien n'est installé |
+| `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Application/` (`TestNebulaApplication`, `QTEST_APPLESS_MAIN` : chaque test construit sa `NebulaApplication`, l'une après l'autre, avec sa ligne de commande), `Core/` (une par classe, `TestUniverse` avec les morceaux de projet copiés et collés, `TestGalaxy` pour les galaxies posées, leurs interfaces, leurs propriétés exposées, leur édition, leur relecture et leur copier-coller, `TestStargate` pour la Stargate dans l'application qui l'édite, `TestWholeFile` pour `Nebula::WholeFile::write()`) et `NebulaStudio/` (Colors, Theme avec les bords de son style et le schéma choisi, PluginModel, ComponentModel, EditionView, SceneOverview, DragAside, EditionScene pour ses liens et son copier-coller, SceneCommand pour les étapes de son historique, ComponentFinder, PropertyEditor pour ses groupes et son édition et la page d'un fichier de réglages, SettingsDialog, SettingsValueEditor et SettingsTextDialog pour les valeurs et le texte d'un fichier de réglages, suivi sur le disque, GalaxyModel, Preferences, chacun liant `NebulaStudioClasses`), `StudioPlugin/` (`TestStudioPlugin` : ses composants chargés depuis le plugin, la galaxy de NebulaStudio ouverte, lancée et relue), `StandardPlugin/` (`TestLogComponent` : le `LogComponent` chargé depuis le plugin, consommé par les interfaces de `Nebula::Standard`, et le niveau du processus vu d'une catégorie du test ; `TestHistoryComponent` : ses commandes faites, défaites et refaites, sa taille, ses options et les commandes composées), `exemple/` (`TestWidgetsPlugin` : ses composants chargés depuis le plugin et assemblés), `Package/` (issue #139, pas des exécutables Qt Test : `TestPackageName`, `cmake -P` de `cmake/PackageName.cmake` et des noms du paquet et de l'installeur de ce build, et sous Windows `TestVersionDetails<Cible>`, un script PowerShell qui lit la ressource de version de `NebulaStudio`, `Core` et `StandardPlugin`, et `TestInstallerContent`, issue #140, `cmake -P` qui installe le composant `NebulaStudio` dans `<build>/tests/Package/installer/<config>` et vérifie ce qui y est ; `TestInstaller.ps1`, que `release.yml` lance sur l'installeur, n'est pas un test de CTest), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`, `Outlets` : autant d'interfaces et d'objets que son `count`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`, et `Plugins/`, les plugins de test construits par `nebula_add_test_plugin()` (`nebula_add_plugin()`, puis retirés du paquet) : `FirstPlugin` (`Alpha`) et `ThirdPlugin` (`Gamma`, `Delta`) dans `test-plugins/`, `SecondPlugin` (`Beta`) dans `other-test-plugins/`, à côté des tests mais pas dans leur `plugins/` (`NEBULA_TEST_PLUGINS_DIR`, `NEBULA_OTHER_TEST_PLUGINS_DIR`). `PluginManager`, les plugins d'un projet ou d'une galaxy et `PluginModel` se testent sur eux : seul `TestWidgetsPlugin` dépend d'un exemple, celui qu'il teste (issue #83). Rien n'est installé |
 | `docs/testing.md` | — | Lancer, déboguer et écrire les tests, et mesurer ce qu'ils couvrent, en français |
 | `sonar-project.properties` | — | Issue #147 : ce qu'analyse SonarQube Cloud, que la CI complète de ce que donne le build (voir Build) |
 | `CFmake/` | non suivi, dépôt à part | Ne fait pas partie du build : ne pas y toucher |
@@ -51,7 +52,29 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   `NEBULA_PACKAGE_NAME` (cache interne), calculé après `find_package(Qt6)` par `cmake/PackageName.cmake` :
   `Nebula_<version>_<cmu_platform>_<compilateur>_Qt<majeure>.<mineure>` (`Nebula_2.2.0_win-x64_msvc2022_Qt6.12`,
   `msvc` et l'année de Visual Studio tirée de `MSVC_VERSION`, sinon l'id et la majeure : `gcc14`), que `release.yml`
-  lit dans `CMakeCache.txt` pour nommer le zip et son dossier.
+  lit dans `CMakeCache.txt` pour nommer le zip et son dossier ; `NEBULA_INSTALLER_NAME` (cache interne, issue #140),
+  celui de l'installeur, `nebula_installer_name()` : `NebulaStudio_<le reste>_setup`.
+- Installeur de NebulaStudio (issue #140, `Installer/`, Windows seulement, et seulement si Qt a `Qt6::windeployqt`) :
+  CPack, générateur `INNOSETUP` (CMake 3.27 au moins pour `cpack`, Inno Setup 6, cherché dans `PATH` puis dans
+  `C:\Program Files (x86)\Inno Setup 6`, installé sur l'image `windows-2025` de GitHub : rien à télécharger ; NSIS n'y
+  est pas, WiX 3 est en fin de vie). Il emballe le seul composant `NebulaStudio` (`CPACK_INSTALL_CMAKE_PROJECTS`),
+  dont toutes les règles sont `EXCLUDE_FROM_ALL` : un `cmake --install` sans composant, celui du zip, ne les voit pas,
+  ni `cmu_package`. À la racine : `NebulaStudio.exe`, `Core.dll`, `Application.dll` (`install(PROGRAMS
+  $<TARGET_FILE:…>)`, pas `install(TARGETS)`, qui y mettrait les bibliothèques d'import), les DLL du runtime de MSVC
+  (`InstallRequiredSystemLibraries` avec `CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP`, sans quoi le module les mettrait
+  aussi dans le zip, dans `bin/`), `LICENSE.txt` et `SpaceGrotesk-OFL.txt` ; `plugins/` : `StudioPlugin.nbdl` et
+  `StandardPlugin.nbdl` seulement ; `scene/NebulaStudio.nbp`, celui des sources ; puis Qt, par windeployqt sur l'exe
+  installé (`install(CODE)`, `--no-compiler-runtime --no-translations --no-opengl-sw --no-system-d3d-compiler
+  --no-system-dxc-compiler`), qui couvre aussi les plugins (mêmes modules). Inno Setup : `AppId` =
+  `CPACK_PACKAGE_INSTALL_REGISTRY_KEY` = `FabienDG.NebulaStudio` et dossier `NebulaStudio`, les mêmes d'une version à
+  l'autre (une version remplace l'autre) ; `PrivilegesRequired=lowest` et `PrivilegesRequiredOverridesAllowed=dialog
+  commandline` : pour l'utilisateur, `{autopf}` = `%LOCALAPPDATA%\Programs`, ou pour tous, `Program Files` ;
+  `x64compatible` ; raccourci en haut du menu Démarrer (`CPACK_INNOSETUP_PROGRAM_MENU_FOLDER` `.`), un sur le bureau
+  si la case est cochée (CPack déclare toujours la tâche `desktopicon`, décochée : `CPACK_CREATE_DESKTOP_LINKS` lui
+  donne un effet), NebulaStudio lancé à la fin ; `AppVersion` = `PROJECT_VERSION` et son suffixe, `VersionInfoVersion`
+  = ses quatre nombres (`nebula_version_numbers()`) ; pas de page de licence. `CPACK_VERBATIM_VARIABLES`, pour les `\`
+  des chemins d'Inno Setup. `cpack -C Release` depuis le build ; sous Windows, `cpack` dans `PATH` peut être celui de
+  Chocolatey : `release.yml` lance `CMAKE_CPACK_COMMAND` du cache.
 - Sorties : `<build>/bin[/<config>]`, plugins dans `plugins/` à côté. Extension `.nbdl`, seule scannée.
 - Temps de build (issue #146) : avec un générateur Visual Studio, le `CMakeLists.txt` racine donne `/MP` à MSVC
   (`add_compile_options()`), qui compile en parallèle les fichiers d'un projet, dans l'IDE comme par `cmake --build` ;
@@ -91,8 +114,14 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   vérifié (le fichier dont le paquet choco vérifiait le SHA-512), puis il est installé en silence (Inno Setup) et son
   dossier, `C:\Program Files\OpenCppCoverage`, ajouté à `GITHUB_PATH`.
   `release.yml` fait la même compilation sur un tag de version (`0.2.0`) et publie la release (voir Process) ; sur une PR qui le modifie, il s'exécute sans rien publier et dépose le zip
-  en artefact. Il ajoute au paquet la licence de Space Grotesk à côté de chaque application (NebulaStudio.exe et
+  et l'installeur en artefact. Il ajoute au paquet la licence de Space Grotesk à côté de chaque application (NebulaStudio.exe et
   `StudioPlugin.nbdl` la contiennent) et la galaxy de NebulaStudio dans `scene/` de NebulaStudio et d'ExampleUniverseApp.
+  Puis il construit l'installeur (issue #140, `cpack` dans `build/installer`, copié dans `dist/`), le vérifie par
+  `tests/Package/TestInstaller.ps1` (installé sans un mot pour l'utilisateur dans `RUNNER_TEMP`, fichiers, raccourci,
+  version de l'entrée de Paramètres > Applications, NebulaStudio lancé jusqu'à sa fenêtre avec `--log-file` et
+  `QT_MESSAGE_PATTERN` qui écrit le type de chaque message, aucun `critical`, fermé par `CloseMainWindow()` avec le
+  code 0, puis désinstallé : dossier, raccourci et entrée partis), et le publie avec le zip. La CI des PR ne le
+  construit pas (issue #146) : elle n'en vérifie que le contenu, par `TestInstallerContent`.
 - C++ récent requis (concepts, `std::ranges`, initialiseurs désignés, `std::type_identity_t`).
 - Paquet : CMakeUtils installe chaque target dans `<préfixe>/<target>/` (mode `TARGET`) et copie le résultat dans
   `<build>/package` après chaque build. `cmu_add_cmake_files(TARGET Core …)` y livre `NebulaPlugin.cmake`,
@@ -767,6 +796,15 @@ ini, celui des formats qui n'ont pas le leur).
   autres plateformes et compilateurs (`linux`, `gcc14`) ne sont vérifiés que par `TestPackageName`, sur des valeurs
   données. Windows montre la description d'un exécutable comme son nom (gestionnaire des tâches, « Ouvrir avec ») :
   plateforme, compilateur et Qt compris.
+- Installeur (#140) : Windows seulement, ni macOS ni Linux, et ni MSI ni signature (Windows SmartScreen avertit d'un
+  installeur non signé téléchargé). Seule `release.yml` compile le script d'Inno Setup et lance l'installeur : la CI
+  des PR n'en vérifie que le contenu, et en local il faut Inno Setup. Installé pour tous les utilisateurs, dans
+  `Program Files`, NebulaStudio ne peut écrire ni dans `scene/`, d'où partent ses dialogues, ni un fichier de réglages
+  au dossier relatif d'une application lancée depuis lui. Il n'installe que les plugins de sa galaxy, ni ceux des
+  exemples ni de quoi construire un plugin (le zip les a). Une mise à jour laisse les fichiers que la nouvelle version
+  n'installe plus (un plugin retiré de `plugins/` y resterait). L'assistant garde les images d'Inno Setup (seule
+  l'icône est celle de NebulaStudio), en anglais seulement. Ni l'installeur ni le zip ne livrent la licence de Qt,
+  dont ils contiennent les DLL.
 - Disposition de NebulaStudio (#104) : le côté droit (listes et propriétés) ne se masque que le temps d'un glisser qui
   part de lui ; rien ne le replie à la demande (on le réduit en tirant la poignée du splitter), et les tailles des
   colonnes ne sont pas gardées d'un lancement à l'autre. Masqué, il perd le clavier, que Qt donne au widget suivant (le
