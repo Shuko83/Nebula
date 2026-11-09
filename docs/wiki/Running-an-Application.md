@@ -114,7 +114,7 @@ Nebula::NebulaApplication app(argc, argv, parser, QStringLiteral("Clock.nbp"),
 ```
 
 `Clock_info.h` holds what CMake knows of the executable: its `name`, the `version` of the project, and the
-`organization`, `cmu_organization`. `Clock --version` then prints `Clock 1.0.0`.
+`organization`, `cmu_organization`. `Clock --version` then shows `Clock 1.0.0`.
 
 `executable` is what the executable tells of itself: the version that `--version` shows, and its organization and name,
 which name the directory its [settings files](Settings-Files.md) are written to by default. Set them before you

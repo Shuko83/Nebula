@@ -8,9 +8,9 @@ and run them. The code below is complete: copy it as it is.
 
 - **A Nebula to build against**: the unzipped zip of a [release](https://github.com/Shuko83/Nebula/releases), or
   `<build>/package`, which a build of Nebula stages. See [getting started](Getting-Started.md).
-- **The same Qt and compiler as that Nebula**, whose name tells them: `Nebula_3.0.0_win-x64_msvc2022_Qt6.12` is built
-  with Visual Studio 2022 and Qt 6.12. A plugin built with another Qt, or another compiler, is not one that Nebula can
-  load.
+- **The Qt and the compiler of that Nebula**, whose name tells them: `Nebula_3.0.0_win-x64_msvc2026_Qt6.12` is built
+  with Visual Studio 2026 and Qt 6.12. Use that Qt, and that Visual Studio or a newer one: a plugin built with another
+  Qt, or another compiler, is not one that Nebula can load.
 - **CMake 3.21** or later.
 
 ## The project
@@ -286,7 +286,7 @@ What to notice:
 From the folder that holds `Acme`, with the paths of your Nebula and of your Qt:
 
 ```bash
-cmake -S Acme -B Acme/build "-DCMAKE_PREFIX_PATH=C:/Nebula_3.0.0_win-x64_msvc2022_Qt6.12;C:/Qt/6.12.0/msvc2022_64"
+cmake -S Acme -B Acme/build "-DCMAKE_PREFIX_PATH=C:/Nebula_3.0.0_win-x64_msvc2026_Qt6.12;C:/Qt/6.12.0/msvc2022_64"
 ```
 
 ```bash
@@ -330,6 +330,8 @@ plugin built against the former ones then crashes as soon as one of its componen
 
 ## Where to go next
 
+- [The course](Course.md), from [lesson 4](Course-4-Properties-and-Modes.md): exercises that grow this plugin into an
+  alarm clock you ship.
 - [Writing components](Writing-Components.md): lists of interfaces, the properties of the objects a component is made
   of, the types a property can have, and the pitfalls.
 - [Using the standard plugins](Using-the-Standard-Plugins.md): write to the log of the application from the clock.
