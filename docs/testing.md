@@ -48,6 +48,26 @@ OpenCppCoverage --cover_children --modules <build> --sources <dépôt> --exclude
 
 Le rapport HTML est écrit dans `CoverageReport-<date>/`.
 
+### Installeur
+
+L'installeur de NebulaStudio (issue #140) n'est construit ni par le build ni par la CI des PR : seulement par
+`release.yml`, sur un tag ou une PR qui le modifie. En local, il faut [Inno Setup](https://jrsoftware.org/isinfo.php) 6,
+dans `C:\Program Files (x86)\Inno Setup 6` ou dans `PATH`, puis, depuis le dossier de build, un build Release de
+NebulaStudio, `StudioPlugin` et `StandardPlugin` :
+
+```bash
+cpack -C Release
+```
+
+écrit `NebulaStudio_<version>_<plateforme>_<compilateur>_Qt<x.y>_setup.exe` dans le dossier de build. Sans Inno Setup,
+`cpack -G ZIP -C Release` met dans un zip ce que l'installeur installe. `TestInstallerContent` vérifie ce contenu sans
+rien construire d'autre. Sous Windows, `cpack` peut être celui de Chocolatey : appeler celui du dossier de `cmake`.
+
+`tests/Package/TestInstaller.ps1 -Installer <setup.exe> -Folder <dossier qui n'existe pas>` fait ce que fait
+`release.yml` : il installe NebulaStudio pour l'utilisateur, avec son raccourci et son entrée dans Paramètres >
+Applications, le lance, le ferme, puis le désinstalle. Sur un poste où NebulaStudio est déjà installé, il remplacerait
+cette installation : il est fait pour la machine jetable de la CI.
+
 ## Organisation
 
 | Dossier | Contenu |
@@ -61,7 +81,7 @@ Le rapport HTML est écrit dans `CoverageReport-<date>/`.
 | `tests/StudioPlugin/` | Les composants de `StudioPlugin`, chargés depuis son fichier : `TestStudioPlugin` (la galaxy de NebulaStudio ouverte, ses parties opérationnelles, sa fenêtre et ses menus pendant l'exécution, ses parties qui partent avec le `Studio` et reviennent avec un autre, l'arrêt de l'application qu'elle assemble, le thème choisi dans **View** > **Theme**, gardé pour le lancement suivant, la vue d'ensemble masquée puis remontrée par **View** > **Overview**, gardée de même, le menu **Edit** qui suit son historique, le dossier de la liste des galaxies, le projet ouvert à son démarrage, les instances de ses galaxies trouvées au-dessus de la zone d'édition, leur galaxy ouverte, puis quittée, les composants de mise en page, et l'aller-retour de son fichier) |
 | `tests/StandardPlugin/` | Les composants de `StandardPlugin`, chargés depuis son fichier et consommés depuis le test par les interfaces de `Nebula::Standard`, comme le fait un autre plugin : `TestLogComponent` (ses interfaces et leurs types, les messages écrits sous sa catégorie, à leur niveau, après leur source, ses noms refusés, rien de filtré en édition, le niveau du processus pendant l'exécution, sur une catégorie du test, à côté des règles de l'application et sous un filtre posé après lui, son pilotage et ses NOTIFY, les instances en cours qui le partagent, le niveau gardé par un fichier de réglages, et l'aller-retour d'un projet), `TestHistoryComponent` (ses commandes faites, défaites et refaites étape par étape, oubliées par une nouvelle, au-delà de sa taille ou à son arrêt, obsolètes sautées, défaire et refaire désactivés, une commande composée, ce qui est poussé ou défait pendant qu'une commande tourne, et l'aller-retour d'un projet) |
 | `tests/exemple/` | Les composants d'un plugin d'exemple, chargés depuis son fichier comme le fait une application : `TestWidgetsPlugin` (la fenêtre principale, sa barre, les actions et le compteur, assemblés par leurs interfaces), le seul test qui dépend d'un exemple, celui qu'il teste |
-| `tests/Package/` | Ce que le build donne, sans exécutable Qt Test (#139) : `TestPackageName`, un script lancé par `cmake -P` (les fonctions de `cmake/PackageName.cmake` sur des valeurs données, puis le nom du paquet de ce build), et, sous Windows, `TestVersionDetailsNebulaStudio`, `TestVersionDetailsCore` et `TestVersionDetailsStandardPlugin`, un script PowerShell qui lit la ressource de version du binaire : sa description, sa version et ses quatre nombres |
+| `tests/Package/` | Ce que le build donne, sans exécutable Qt Test (#139) : `TestPackageName`, un script lancé par `cmake -P` (les fonctions de `cmake/PackageName.cmake` sur des valeurs données, puis le nom du paquet et celui de l'installeur de NebulaStudio de ce build), et, sous Windows, `TestVersionDetailsNebulaStudio`, `TestVersionDetailsCore` et `TestVersionDetailsStandardPlugin`, un script PowerShell qui lit la ressource de version du binaire : sa description, sa version et ses quatre nombres, et `TestInstallerContent` (#140), un script lancé par `cmake -P` qui installe le composant `NebulaStudio`, ce que CPack met dans l'installeur, dans `<build>/tests/Package/installer/<config>`, puis vérifie ce qui y est : NebulaStudio, les DLL de Nebula, de Qt et du runtime du compilateur, les deux plugins de sa galaxy et rien d'autre dans `plugins/`, sa galaxy, les licences, et ni bibliothèque d'import, ni en-tête, ni traduction. `TestInstaller.ps1`, à côté, n'est pas un test de CTest : `release.yml` le lance sur l'installeur construit par CPack, qu'il installe sans un mot pour l'utilisateur, dont il lance NebulaStudio jusqu'à sa fenêtre puis le ferme, et qu'il désinstalle (voir [Installeur](#installeur)) |
 
 Les tests et leurs plugins ne sont ni installés ni copiés dans le paquet.
 

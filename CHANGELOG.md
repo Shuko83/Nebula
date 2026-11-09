@@ -58,6 +58,12 @@ to it.
   names, or nothing when one of them cannot be placed (#136).
 - `Nebula::WholeFile::write()` (#152), which writes a file whole or not at all, its directory created when needed,
   attempting again a replacement Windows refuses, as Nebula writes its settings files and NebulaStudio its projects.
+- An installer of NebulaStudio for Windows (#140), published with each release next to its zip and named as it is,
+  `NebulaStudio_2.2.0_win-x64_msvc2022_Qt6.12_setup.exe`. It installs NebulaStudio with what it needs to start, the
+  DLLs of Nebula, of Qt and of the compiler, the plugins of its galaxy and its galaxy, for the user who runs it, without
+  asking to be an administrator, or for all the users; it adds NebulaStudio to the Start menu and to **Settings** >
+  **Apps**, where it is uninstalled, and installing another version replaces the one installed. `cpack -C Release`
+  builds it from a build, with Inno Setup 6.
 - Finding the instances of the galaxies in NebulaStudio (#144): the field above the edition zone finds the instances
   of the galaxies placed in the application too, at any depth, each named after the galaxies it is in
   (`Clock1.Greeter1`), after those of the application; choosing one, or pressing Enter, opens the galaxy it is in and
