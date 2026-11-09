@@ -1,0 +1,85 @@
+# Publishes docs/wiki/ to the GitHub wiki of the repository (#160): its pages are written in the repository, reviewed
+# in pull requests like the code, and copied to the wiki once on main. A page removed from docs/wiki/ is removed from
+# the wiki. On a pull request that changes them, the links between pages are checked, and nothing is published.
+# The wiki has to exist: its first page is created once on GitHub, which creates its repository.
+name: Wiki
+
+on:
+  push:
+    branches: [ "main" ]
+    paths: [ "docs/wiki/**", ".github/workflows/wiki.yml" ]
+  pull_request:
+    branches: [ "main" ]
+    paths: [ "docs/wiki/**", ".github/workflows/wiki.yml" ]
+  # Publishes the pages of the branch the run is started from again, the wiki having been edited on GitHub say.
+  workflow_dispatch:
+
+# One publication at a time, the last one winning.
+concurrency:
+  group: wiki-${{ github.ref }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v4
+
+    # A link to another page is written Page.md, which leads to it in the repository as in the wiki, once published.
+    - name: Check the links between pages
+      run: |
+        status=0
+        for page in docs/wiki/*.md; do
+          for target in $(grep -oE '\]\([A-Za-z0-9_-]+\.md(#[^)]*)?\)' "$page" | sed -E 's/^\]\(([^)#]+).*$/\1/' | sort -u); do
+            if [ ! -f "docs/wiki/$target" ]; then
+              echo "::error file=$page::$target, which it links to, is not a page of docs/wiki"
+              status=1
+            fi
+          done
+        done
+        exit $status
+
+  publish:
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Check that the wiki exists
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        if ! git ls-remote "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" > /dev/null; then
+          echo "::error::The wiki of ${GITHUB_REPOSITORY} has no page yet: create its first page on GitHub, then run this workflow again"
+          exit 1
+        fi
+
+    - name: Check out the wiki
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ github.repository }}.wiki
+        path: wiki
+
+    # The wiki names a page without its extension: Page.md becomes Page in the links between pages.
+    - name: Copy the pages
+      run: |
+        find wiki -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+        cp -r docs/wiki/. wiki/
+        find wiki -name '*.md' -exec sed -i -E 's/\]\(([A-Za-z0-9_-]+)\.md(#[^)]*)?\)/](\1\2)/g' {} +
+
+    - name: Publish
+      working-directory: wiki
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add --all
+        if git diff --cached --quiet; then
+          echo "The wiki already has these pages"
+          exit 0
+        fi
+        git commit -m "Pages of docs/wiki at ${GITHUB_SHA::7}"
+        git push
