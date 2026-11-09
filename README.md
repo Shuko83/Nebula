@@ -9,6 +9,8 @@
 
 It enables developers to construct software systems by combining reusable building blocks (*components*) provided by extensible plugins. Each component exposes configurable properties and communicates with others through explicit connections.
 
+New to Nebula? The [wiki](https://github.com/Shuko83/Nebula/wiki) walks you through it step by step: getting started, a first plugin, assembling in NebulaStudio, running and shipping an application. This README is the reference it relies on.
+
 ---
 
 ## ✨ Features

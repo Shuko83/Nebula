@@ -28,6 +28,7 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `docs/glossary.md` | — | Glossaire Nebula (Nebula, Univers, Galaxy, Astre, Comet, Stargate), en anglais puis en français, référencé par le README : le vocabulaire à employer pour nommer code, documentation et interface ; Nebula et Univers (la classe `Universe`) sont déjà employés, Galaxy pour un fichier de projet (`GalaxyInfo`, onglet **Galaxies**), et Stargate pour ce qu'une galaxy expose (`Stargate`) |
 | `tests/` | `Test<Classe>` dans `<build>/tests/bin[/<config>]` | Tests Qt Test, pilotés par les données : `nebula_add_test()` dans `tests/CMakeLists.txt`, `Application/` (`TestNebulaApplication`, `QTEST_APPLESS_MAIN` : chaque test construit sa `NebulaApplication`, l'une après l'autre, avec sa ligne de commande), `Core/` (une par classe, `TestUniverse` avec les morceaux de projet copiés et collés, `TestGalaxy` pour les galaxies posées, leurs interfaces, leurs propriétés exposées, leur édition, leur relecture et leur copier-coller, `TestStargate` pour la Stargate dans l'application qui l'édite, `TestWholeFile` pour `Nebula::WholeFile::write()`) et `NebulaStudio/` (Colors, Theme avec les bords de son style et le schéma choisi, PluginModel, ComponentModel, EditionView, SceneOverview, DragAside, EditionScene pour ses liens et son copier-coller, SceneCommand pour les étapes de son historique, ComponentFinder, PropertyEditor pour ses groupes et son édition et la page d'un fichier de réglages, SettingsDialog, SettingsValueEditor et SettingsTextDialog pour les valeurs et le texte d'un fichier de réglages, suivi sur le disque, GalaxyModel, Preferences, chacun liant `NebulaStudioClasses`), `StudioPlugin/` (`TestStudioPlugin` : ses composants chargés depuis le plugin, la galaxy de NebulaStudio ouverte, lancée et relue), `StandardPlugin/` (`TestLogComponent` : le `LogComponent` chargé depuis le plugin, consommé par les interfaces de `Nebula::Standard`, et le niveau du processus vu d'une catégorie du test ; `TestHistoryComponent` : ses commandes faites, défaites et refaites, sa taille, ses options et les commandes composées), `exemple/` (`TestWidgetsPlugin` : ses composants chargés depuis le plugin et assemblés), `Package/` (issue #139, pas des exécutables Qt Test : `TestPackageName`, `cmake -P` de `cmake/PackageName.cmake` et des noms du paquet et de l'installeur de ce build, et sous Windows `TestVersionDetails<Cible>`, un script PowerShell qui lit la ressource de version de `NebulaStudio`, `Core` et `StandardPlugin`, et `TestInstallerContent`, issue #140, `cmake -P` qui installe le composant `NebulaStudio` dans `<build>/tests/Package/installer/<config>` et vérifie ce qui y est ; `TestInstaller.ps1`, que `release.yml` lance sur l'installeur, n'est pas un test de CTest), et `Components/`, bibliothèque statique `TestComponents` (`Probe`, `Source`, `Sink`, `Panel`, `Outlets` : autant d'interfaces et d'objets que son `count`) enregistrée dans le processus du test par `registerTestComponents()` sous l'id de plugin `Test`, et `Plugins/`, les plugins de test construits par `nebula_add_test_plugin()` (`nebula_add_plugin()`, puis retirés du paquet) : `FirstPlugin` (`Alpha`) et `ThirdPlugin` (`Gamma`, `Delta`) dans `test-plugins/`, `SecondPlugin` (`Beta`) dans `other-test-plugins/`, à côté des tests mais pas dans leur `plugins/` (`NEBULA_TEST_PLUGINS_DIR`, `NEBULA_OTHER_TEST_PLUGINS_DIR`). `PluginManager`, les plugins d'un projet ou d'une galaxy et `PluginModel` se testent sur eux : seul `TestWidgetsPlugin` dépend d'un exemple, celui qu'il teste (issue #83). Rien n'est installé |
 | `docs/testing.md` | — | Lancer, déboguer et écrire les tests, et mesurer ce qu'ils couvrent, en français |
+| `docs/wiki/` | — | Issue #160 : le wiki, en anglais, guide pas à pas de ceux qui écrivent des plugins, assemblent dans NebulaStudio ou livrent une application (`Home.md`, `_Sidebar.md`, `_Footer.md`, une page par fichier, nommée `Mots-Avec-Tirets.md`) ; le README reste la référence, vers laquelle il renvoie par des URL absolues (`blob/main/README.md#…`). Un lien vers une autre page s'écrit `Page.md`. `wiki.yml` le publie dans le wiki GitHub (voir Build) |
 | `sonar-project.properties` | — | Issue #147 : ce qu'analyse SonarQube Cloud, que la CI complète de ce que donne le build (voir Build) |
 | `CFmake/` | non suivi, dépôt à part | Ne fait pas partie du build : ne pas y toucher |
 
@@ -122,6 +123,12 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   `QT_MESSAGE_PATTERN` qui écrit le type de chaque message, aucun `critical`, fermé par `CloseMainWindow()` avec le
   code 0, puis désinstallé : dossier, raccourci et entrée partis), et le publie avec le zip. La CI des PR ne le
   construit pas (issue #146) : elle n'en vérifie que le contenu, par `TestInstallerContent`.
+  `wiki.yml` (issue #160), sur une PR qui change `docs/wiki/` ou lui-même : vérifie que chaque lien `Page.md` d'une page
+  mène à une page du dossier (pas les ancres) ; sur `main` et à la main (`workflow_dispatch`) : le même contrôle, puis
+  copie `docs/wiki/` dans le dépôt du wiki (`<dépôt>.wiki`, extrait par `actions/checkout` avec le token du workflow,
+  `contents: write`), en retirant ce qui n'y est plus et en écrivant `Page` à la place de `Page.md` dans les liens, et
+  pousse s'il y a un changement. Le dépôt du wiki n'existe qu'une fois sa première page créée sur GitHub : sans elle,
+  l'étape le dit et échoue. Une page éditée sur GitHub est écrasée à la publication suivante.
 - C++ récent requis (concepts, `std::ranges`, initialiseurs désignés, `std::type_identity_t`).
 - Paquet : CMakeUtils installe chaque target dans `<préfixe>/<target>/` (mode `TARGET`) et copie le résultat dans
   `<build>/package` après chaque build. `cmu_add_cmake_files(TARGET Core …)` y livre `NebulaPlugin.cmake`,
@@ -847,6 +854,12 @@ ini, celui des formats qui n'ont pas le leur).
   son analyseur ni le profil qualité n'ont changé depuis la dernière. `/MP` ne vaut que pour un générateur Visual
   Studio ; un build local par `cmake --build` sans `--parallel` ni `CMAKE_BUILD_PARALLEL_LEVEL` construit encore un
   projet après l'autre.
+- Wiki (#160) : en anglais seulement. Il décrit `main`, comme le README : ce qui n'est pas encore publié l'est déjà,
+  ce que sa page d'accueil dit. Le code de ses tutoriels (`TimePlugin`, `Clock`, l'installation du dossier à livrer) a
+  été compilé et lancé à la main contre `<build>/package`, une fois : rien ne le recompile, ni ne vérifie ce qu'il dit
+  de NebulaStudio, et son contrôle ne regarde que les liens entre pages, pas leurs ancres ni les URL vers le dépôt.
+  Il ne parle pas aux contributeurs (architecture, tests, CI), que `CLAUDE.md`, `CONVENTIONS.md` et
+  `docs/testing.md` servent. Pas d'image de NebulaStudio, et Windows seulement, comme la CI.
 
 ## Pièges
 
@@ -1030,7 +1043,8 @@ règle change. L'essentiel :
   ligne vide.
 - Commentaires en anglais, au-dessus de la déclaration, qui disent le pourquoi ou le contrat.
 - Commits en français, préfixés : `feat(NebulaStudio): …`, `fix(NebulaStudio): …`, `refactor: …`.
-- Toute nouvelle fonctionnalité visible est décrite dans le README (sections Plugin, Component, NebulaStudio).
+- Toute nouvelle fonctionnalité visible est décrite dans le README (sections Plugin, Component, NebulaStudio), et dans
+  la page de `docs/wiki/` qui en parle quand elle change ce qu'elle dit (un raccourci, une étape d'un tutoriel).
 
 ## Process
 
@@ -1056,8 +1070,8 @@ issue, un commit ou un push sur `main`, une fusion sans PR, ou une demande sans 
 
 **Livraison d'une version** : le même cycle, puis un tag.
 
-1. Une PR passe `project(Nebula VERSION x.y.z)` et les `find_package(Nebula x.y …)` du README à la nouvelle
-   version, ajoute `docs/release-notes/<x.y.z>.md`, en anglais puis en français, et la section de la version en tête
+1. Une PR passe `project(Nebula VERSION x.y.z)` et les `find_package(Nebula x.y …)` du README et de `docs/wiki/` à la
+   nouvelle version, ajoute `docs/release-notes/<x.y.z>.md`, en anglais puis en français, et la section de la version en tête
    de `CHANGELOG.md`, avec son lien.
 2. Une fois la PR fusionnée, le tag `<x.y.z>`, les trois nombres de la version sans préfixe `v`, est posé sur ce
    commit de `main` et poussé, à la demande de l'utilisateur. `release.yml` compile alors en Release, refuse un tag
