@@ -37,6 +37,12 @@ if(NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 endif()
 
+# Visual Studio compiles the files of a project one after the other, unless MSVC is given /MP: it then compiles them in
+# parallel, in the IDE as with cmake --build (#146). Ninja already runs one compiler per file.
+if(CMAKE_GENERATOR MATCHES "^Visual Studio")
+    add_compile_options($<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/MP>)
+endif()
+
 add_subdirectory(Core)
 # The QApplication of an executable whose content is a galaxy, which it loads and runs.
 add_subdirectory(Application)

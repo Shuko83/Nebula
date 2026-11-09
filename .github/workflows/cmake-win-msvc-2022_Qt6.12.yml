@@ -123,10 +123,11 @@ jobs:
       uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v7
 
     - name: Build
-      # Under the build wrapper, which records the compiler commands for the analysis.
+      # Under the build wrapper, which records the compiler commands for the analysis. --parallel builds several
+      # projects at once (MSBuild /m), each compiling its files in parallel (/MP, set by CMakeLists.txt): #146.
       run: >
         build-wrapper-win-x86-64.exe --out-dir ${{env.BUILD_WRAPPER_OUT_DIR}}
-        cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+        cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --parallel
 
     - name: Test
       # The QTest executables of tests/, see docs/testing.md: a failing test fails the pull request.

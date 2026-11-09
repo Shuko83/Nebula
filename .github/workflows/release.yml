@@ -85,7 +85,8 @@ jobs:
         "PACKAGE=$(Read-Cache 'NEBULA_PACKAGE_NAME')" >> $env:GITHUB_ENV
 
     - name: Build
-      run: cmake --build ${{ github.workspace }}/build --config ${{ env.BUILD_TYPE }}
+      # Several projects at once, each compiling its files in parallel, as in cmake-win-msvc-2022_Qt6.12.yml.
+      run: cmake --build ${{ github.workspace }}/build --config ${{ env.BUILD_TYPE }} --parallel
 
     - name: Install the package
       shell: pwsh
