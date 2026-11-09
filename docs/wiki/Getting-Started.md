@@ -6,14 +6,14 @@ with, run it, save it, and run it again outside the editor. No code is written: 
 
 ## Get Nebula
 
-Nebula is built for 64-bit Windows with Visual Studio 2022 and Qt 6.12: that is what its CI checks, and what its
-releases hold. There are three ways to get it.
+Nebula is built for 64-bit Windows with Visual Studio and Qt 6.12: that is what its CI checks, and what its releases
+hold, 3.0.0 built with Visual Studio 2026. There are three ways to get it.
 
 ### The zip of a release
 
 Each [release](https://github.com/Shuko83/Nebula/releases) has a zip named after what its binaries are built for and
-with, `Nebula_<version>_<platform>_<compiler>_Qt<major>.<minor>.zip`: `Nebula_3.0.0_win-x64_msvc2022_Qt6.12.zip` is
-built for 64-bit Windows with Visual Studio 2022 and Qt 6.12. Unzip it anywhere. It holds everything: NebulaStudio and
+with, `Nebula_<version>_<platform>_<compiler>_Qt<major>.<minor>.zip`: `Nebula_3.0.0_win-x64_msvc2026_Qt6.12.zip` is
+built for 64-bit Windows with Visual Studio 2026 and Qt 6.12. Unzip it anywhere. It holds everything: NebulaStudio and
 the example applications, ready to run, and the libraries, headers and CMake files to build plugins and applications.
 
 ```text
@@ -118,5 +118,6 @@ for them among those it found first. Your own application runs a project the sam
 ## Where to go next
 
 - [Concepts](Concepts.md), for the words used above, and those to come.
+- [The course](Course.md), to practise, exercise by exercise, up to a plugin of your own.
 - [Your first plugin](Your-First-Plugin.md), to make components of your own.
 - [Assembling an application](Assembling-an-Application.md), for all that the edition zone does.
