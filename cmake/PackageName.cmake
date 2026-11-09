@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MPL-2.0
 
 # The name of the package of Nebula, Nebula_<version>_<platform>_<compiler>_Qt<major>.<minor>, which its zip and the
-# folder in it take: what its binaries are built for and with (#139). Its parts are split by '_', which none holds.
+# folder in it take: what its binaries are built for and with (#139). Its parts are split by '_', which none holds. And
+# the name of the installer of NebulaStudio, made from it (#140).
 # Only functions of their arguments, so that tests/Package/TestPackageName.cmake runs them in script mode.
 
 include_guard(GLOBAL)
@@ -53,4 +54,25 @@ endfunction()
 function(nebula_package_name result version platform compiler qt_version)
     string(REGEX MATCH "^[0-9]+\\.[0-9]+" _qt "${qt_version}")
     set(${result} "Nebula_${version}_${platform}_${compiler}_Qt${_qt}" PARENT_SCOPE)
+endfunction()
+
+# Sets <result> to the name of the installer of NebulaStudio built with the package <package>, without its extension
+# (#140): NebulaStudio in place of Nebula, then setup, NebulaStudio_2.2.0_win-x64_msvc2022_Qt6.12_setup. What it is
+# built for and with is what a plugin opened in it should be built for and with.
+function(nebula_installer_name result package)
+    string(REGEX REPLACE "^Nebula_(.+)$" "NebulaStudio_\\1_setup" _name "${package}")
+    set(${result} "${_name}" PARENT_SCOPE)
+endfunction()
+
+# Sets <result> to the four numbers of <version>, the numbers of a version of project() (2.2.0), 0 for those it does not
+# give (2.2.0.0): those a Windows binary has in its details.
+function(nebula_version_numbers result version)
+    string(REPLACE "." ";" _numbers "${version}")
+    list(LENGTH _numbers _count)
+    while(_count LESS 4)
+        list(APPEND _numbers 0)
+        math(EXPR _count "${_count} + 1")
+    endwhile()
+    list(JOIN _numbers "." _joined)
+    set(${result} "${_joined}" PARENT_SCOPE)
 endfunction()
