@@ -1,6 +1,7 @@
 # Builds Nebula in Release and publishes the GitHub release of a version tag, the three numbers of the version alone
-# (0.2.0): its package as a zip, with the notes of docs/release-notes/<tag>.md. On a pull request that changes this
-# file, nothing is published: the zip is an artifact of the run.
+# (0.2.0): its package as a zip, and the installer of NebulaStudio (#140), with the notes of
+# docs/release-notes/<tag>.md. On a pull request that changes this file, nothing is published: the zip and the
+# installer are an artifact of the run.
 name: Release
 
 on:
@@ -83,6 +84,10 @@ jobs:
         }
         # Named by CMake from what the binaries are built for and with (#139): Nebula_2.2.0_win-x64_msvc2022_Qt6.12.
         "PACKAGE=$(Read-Cache 'NEBULA_PACKAGE_NAME')" >> $env:GITHUB_ENV
+        # And the installer of NebulaStudio, made from it (#140): NebulaStudio_2.2.0_win-x64_msvc2022_Qt6.12_setup.
+        "INSTALLER=$(Read-Cache 'NEBULA_INSTALLER_NAME')" >> $env:GITHUB_ENV
+        # The cpack of the CMake that configured the build: in PATH, cpack can be the one of Chocolatey.
+        "CPACK=$(Read-Cache 'CMAKE_CPACK_COMMAND')" >> $env:GITHUB_ENV
 
     - name: Build
       # Several projects at once, each compiling its files in parallel, as in cmake-win-msvc-2022_Qt6.12.yml.
@@ -113,12 +118,28 @@ jobs:
       working-directory: dist
       run: cmake -E tar cf "${{ env.PACKAGE }}.zip" --format=zip "${{ env.PACKAGE }}"
 
-    - name: Upload the package (pull request)
+    # Inno Setup is installed on the runner, in C:\Program Files (x86)\Inno Setup 6, where CPack finds it: nothing to
+    # download. CPack installs the component NebulaStudio of the build in build/installer, then compiles the installer.
+    - name: Build the installer of NebulaStudio
+      shell: pwsh
+      run: |
+        & $env:CPACK --config build/CPackConfig.cmake -C $env:BUILD_TYPE -B build/installer
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        Copy-Item "build/installer/$env:INSTALLER.exe" -Destination dist
+
+    # As a user runs it: installed, NebulaStudio started from it and closed, then uninstalled.
+    - name: Check the installer
+      shell: pwsh
+      run: ./tests/Package/TestInstaller.ps1 -Installer "dist/$env:INSTALLER.exe" -Folder "$env:RUNNER_TEMP/NebulaStudio"
+
+    - name: Upload the package and the installer (pull request)
       if: env.TAG == ''
       uses: actions/upload-artifact@v4
       with:
         name: ${{ env.PACKAGE }}
-        path: dist/${{ env.PACKAGE }}.zip
+        path: |
+          dist/${{ env.PACKAGE }}.zip
+          dist/${{ env.INSTALLER }}.exe
 
     - name: Publish the release
       if: env.TAG != ''
@@ -126,13 +147,13 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        $zip = "dist/$($env:PACKAGE).zip"
+        $files = "dist/$($env:PACKAGE).zip", "dist/$($env:INSTALLER).exe"
         gh release view $env:TAG *> $null
         if ($LASTEXITCODE -eq 0) {
-          # Published already, by hand or by an earlier run: only its package is replaced.
-          gh release upload $env:TAG $zip --clobber
+          # Published already, by hand or by an earlier run: only its package and its installer are replaced.
+          gh release upload $env:TAG @files --clobber
         } else {
           $notes = "docs/release-notes/$($env:TAG).md"
           if (Test-Path $notes) { $notesArguments = '--notes-file', $notes } else { $notesArguments = '--generate-notes' }
-          gh release create $env:TAG $zip --verify-tag --title "Nebula $env:TAG" @notesArguments
+          gh release create $env:TAG @files --verify-tag --title "Nebula $env:TAG" @notesArguments
         }
