@@ -58,6 +58,38 @@ jobs:
           exit 1
         }
 
+    # OpenCppCoverage runs the tests and measures their coverage. Its installer is downloaded from its GitHub release
+    # with the token of the workflow: GitHub can refuse the anonymous download the package of Chocolatey made, as it
+    # did under load (#154). That of 0.9.9.0, the latest release, checked by its SHA-256 (the file whose SHA-512 the
+    # package of Chocolatey checked). Installed before Qt and the build, which a failure here would otherwise waste.
+    - name: Install OpenCppCoverage
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        INSTALLER: OpenCppCoverageSetup-x64-0.9.9.0.exe
+        INSTALLER_SHA256: 2295a733da39412c61e4f478677519dd0bb1893d88313ce56b468c9e50517888
+      run: |
+        gh release download release-0.9.9.0 --repo OpenCppCoverage/OpenCppCoverage --pattern $env:INSTALLER --dir $env:RUNNER_TEMP
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        $installer = Join-Path $env:RUNNER_TEMP $env:INSTALLER
+        $hash = (Get-FileHash $installer -Algorithm SHA256).Hash
+        if ($hash -ne $env:INSTALLER_SHA256) {
+          Write-Error "$env:INSTALLER has the SHA-256 $hash, not $env:INSTALLER_SHA256"
+          exit 1
+        }
+        # Inno Setup, run silently, waited for until it ends.
+        $setup = Start-Process $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-' -Wait -PassThru
+        if ($setup.ExitCode -ne 0) {
+          Write-Error "The installer of OpenCppCoverage ended with the code $($setup.ExitCode)"
+          exit 1
+        }
+        $directory = "C:\Program Files\OpenCppCoverage"
+        if (-not (Test-Path "$directory\OpenCppCoverage.exe")) {
+          Write-Error "The installer of OpenCppCoverage did not put OpenCppCoverage.exe in $directory"
+          exit 1
+        }
+        $directory >> $env:GITHUB_PATH
+
     - name: Install Qt6
       uses: jurplel/install-qt-action@v4
       with:
@@ -95,13 +127,6 @@ jobs:
       run: >
         build-wrapper-win-x86-64.exe --out-dir ${{env.BUILD_WRAPPER_OUT_DIR}}
         cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-
-    - name: Install OpenCppCoverage
-      shell: pwsh
-      run: |
-        choco install opencppcoverage --no-progress -y
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        "C:\Program Files\OpenCppCoverage" >> $env:GITHUB_PATH
 
     - name: Test
       # The QTest executables of tests/, see docs/testing.md: a failing test fails the pull request.
