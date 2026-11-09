@@ -14,7 +14,7 @@ The interfaces are declared in `Nebula::Standard`, a library of headers only. As
 plugin:
 
 ```cmake
-find_package(Nebula 2.1 REQUIRED COMPONENTS Core Standard)
+find_package(Nebula 3.0 REQUIRED COMPONENTS Core Standard)
 ```
 
 ```cmake

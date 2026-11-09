@@ -8,7 +8,7 @@ and run them. The code below is complete: copy it as it is.
 
 - **A Nebula to build against**: the unzipped zip of a [release](https://github.com/Shuko83/Nebula/releases), or
   `<build>/package`, which a build of Nebula stages. See [getting started](Getting-Started.md).
-- **The same Qt and compiler as that Nebula**, whose name tells them: `Nebula_2.2.0_win-x64_msvc2022_Qt6.12` is built
+- **The same Qt and compiler as that Nebula**, whose name tells them: `Nebula_3.0.0_win-x64_msvc2022_Qt6.12` is built
   with Visual Studio 2022 and Qt 6.12. A plugin built with another Qt, or another compiler, is not one that Nebula can
   load.
 - **CMake 3.21** or later.
@@ -35,7 +35,7 @@ project(Acme VERSION 1.0.0 LANGUAGES CXX)
 
 set(cmu_organization "AcmeCorp") # First part of the plugin ids: AcmeCorp.Acme.TimePlugin
 
-find_package(Nebula 2.1 REQUIRED COMPONENTS Core)
+find_package(Nebula 3.0 REQUIRED COMPONENTS Core)
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
 # Executables and plugins side by side: <build>/bin, and <build>/bin/plugins.
@@ -286,7 +286,7 @@ What to notice:
 From the folder that holds `Acme`, with the paths of your Nebula and of your Qt:
 
 ```bash
-cmake -S Acme -B Acme/build "-DCMAKE_PREFIX_PATH=C:/Nebula_2.2.0_win-x64_msvc2022_Qt6.12;C:/Qt/6.12.0/msvc2022_64"
+cmake -S Acme -B Acme/build "-DCMAKE_PREFIX_PATH=C:/Nebula_3.0.0_win-x64_msvc2022_Qt6.12;C:/Qt/6.12.0/msvc2022_64"
 ```
 
 ```bash

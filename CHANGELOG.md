@@ -7,6 +7,13 @@ to it.
 
 ## [Unreleased]
 
+### Added
+
+- The [wiki](https://github.com/Shuko83/Nebula/wiki) (#160), which walks through Nebula step by step: getting started,
+  a first plugin built outside Nebula, writing components, the standard plugins, NebulaStudio, galaxies and settings
+  files, running and deploying an application, and troubleshooting. Its pages are written in `docs/wiki/` and copied
+  to the wiki of the repository by a workflow each time they change on `main`.
+
 ## [3.0.0] - 2026-11-09
 
 ### Added
@@ -70,10 +77,6 @@ to it.
   of the galaxies placed in the application too, at any depth, each named after the galaxies it is in
   (`Clock1.Greeter1`), after those of the application; choosing one, or pressing Enter, opens the galaxy it is in and
   shows it in the middle of the edition zone.
-- The [wiki](https://github.com/Shuko83/Nebula/wiki) (#160), which walks through Nebula step by step: getting started,
-  a first plugin built outside Nebula, writing components, the standard plugins, NebulaStudio, galaxies and settings
-  files, running and deploying an application, and troubleshooting. Its pages are written in `docs/wiki/` and copied
-  to the wiki of the repository by a workflow each time they change on `main`.
 
 ### Changed
 
