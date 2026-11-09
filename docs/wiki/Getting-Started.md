@@ -12,7 +12,7 @@ releases hold. There are three ways to get it.
 ### The zip of a release
 
 Each [release](https://github.com/Shuko83/Nebula/releases) has a zip named after what its binaries are built for and
-with, `Nebula_<version>_<platform>_<compiler>_Qt<major>.<minor>.zip`: `Nebula_2.2.0_win-x64_msvc2022_Qt6.12.zip` is
+with, `Nebula_<version>_<platform>_<compiler>_Qt<major>.<minor>.zip`: `Nebula_3.0.0_win-x64_msvc2022_Qt6.12.zip` is
 built for 64-bit Windows with Visual Studio 2022 and Qt 6.12. Unzip it anywhere. It holds everything: NebulaStudio and
 the example applications, ready to run, and the libraries, headers and CMake files to build plugins and applications.
 

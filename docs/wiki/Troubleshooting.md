@@ -10,7 +10,7 @@ skip, with a warning, those they cannot load:
 
 | Warning | Means | Fix |
 | --- | --- | --- |
-| `Built against Core 3.0.0 instead of 2.1.0` | The plugin was built against another major version of Nebula, or a newer one | Build the plugin against the Nebula that runs it |
+| `Built against Core 2.1.0 instead of 3.0.0` | The plugin was built against another major version of Nebula, or a newer one: a plugin built for 2.x, say | Build the plugin against the Nebula that runs it |
 | `Built against another plugin interface` | Not a plugin of this Nebula | Build it with `nebula_add_plugin()` of this Nebula |
 | `No id or name in its metadata` | Its metadata was not written by `nebula_add_plugin()` | Build it with `nebula_add_plugin()` |
 | A message of Qt | The file is not a plugin Qt can load: a library of another compiler, or not a library | Build it with the compiler and the Qt of the Nebula that runs it |

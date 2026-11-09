@@ -45,7 +45,7 @@ Acme/
 In `Acme/CMakeLists.txt`, ask for `Application` too, and add the folder:
 
 ```cmake
-find_package(Nebula 2.1 REQUIRED COMPONENTS Core Application)
+find_package(Nebula 3.0 REQUIRED COMPONENTS Core Application)
 # ...
 add_subdirectory(TimePlugin)
 add_subdirectory(Clock)
