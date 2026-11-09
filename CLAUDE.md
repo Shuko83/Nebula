@@ -67,14 +67,18 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   `Shuko83_Nebula`, `sonar.sources` = `Core`, `Application`, `Plugins`, `NebulaStudio`, `StudioPlugin`, `exemple`,
   `sonar.tests` = `tests`) ; Release compilé avec les PDB (`/Zi`, `/DEBUG /OPT:REF /OPT:ICF`, sur la ligne de
   `cmake`, pas dans les `CMakeLists.txt` : le paquet de `release.yml` n'en a pas), build sous le build-wrapper de
-  SonarQube (`compile_commands.json` dans `build-wrapper/`), puis `ctest` lancé par OpenCppCoverage (`choco`,
-  `--cover_children`, qui rend le code de sortie des tests), qui écrit `coverage.xml` en Cobertura
+  SonarQube (`compile_commands.json` dans `build-wrapper/`), puis `ctest` lancé par OpenCppCoverage
+  (`--cover_children`, qui rend le code de sortie des tests), qui écrit `coverage.xml` en Cobertura
   (`sonar.cfamily.cobertura.reportPaths`) sans les tests, `build/` ni CMakeUtils ; `sonar.projectVersion` =
   `CMAKE_PROJECT_VERSION` du cache, d'où part le nouveau code de `main`. `sonar.qualitygate.wait=true` : l'étape, donc
   la CI, échoue quand le nouveau code ne passe pas la quality gate, Sonar way, la seule du plan Free (notes A en
   sécurité, fiabilité et maintenabilité, 80 % couvert, 3 % dupliqué au plus, hotspots revus). Le token est le secret
   `SONAR_TOKEN`, vérifié avant le build ; l'analyse automatique de SonarQube Cloud est désactivée (elle ferait échouer
-  celle de la CI).
+  celle de la CI). OpenCppCoverage est installé avant Qt (issue #154) : son installateur 0.9.9.0 est téléchargé de sa
+  release GitHub par `gh release download`, avec le token du workflow (`GH_TOKEN`), pas par `choco`, dont le
+  téléchargement anonyme, que GitHub refuse sous la charge, a fait échouer une PR après le build ; son SHA-256 est
+  vérifié (le fichier dont le paquet choco vérifiait le SHA-512), puis il est installé en silence (Inno Setup) et son
+  dossier, `C:\Program Files\OpenCppCoverage`, ajouté à `GITHUB_PATH`.
   `release.yml` fait la même compilation sur un tag de version (`0.2.0`) et publie la release (voir Process) ; sur une PR qui le modifie, il s'exécute sans rien publier et dépose le zip
   en artefact. Il ajoute au paquet la licence de Space Grotesk à côté de chaque application (NebulaStudio.exe et
   `StudioPlugin.nbdl` la contiennent) et la galaxy de NebulaStudio dans `scene/` de NebulaStudio et d'ExampleUniverseApp.
