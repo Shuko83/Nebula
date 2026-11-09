@@ -157,7 +157,11 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   - `bindInterface(nom, fournisseur, nomFourni)` / `unbindInterface(nom)` (publics) : même type exigé, un consommateur
     n'a qu'un fournisseur, un fournisseur peut avoir plusieurs consommateurs ; une liste ajoute la liaison après les
     autres et refuse une liaison qu'elle a déjà, `unbindInterface(nom)` les défait toutes (la dernière d'abord) et
-    `unbindInterface(nom, fournisseur, nomFourni)` une seule.
+    `unbindInterface(nom, fournisseur, nomFourni)` une seule. Issue #137 : tous trois renvoient `false` sans rien
+    changer quand le consommateur, le fournisseur ou ce à quoi l'interface est liée tourne (`ComponentState::Running`,
+    `runsWith()`) ; les deux `unbindInterface()` renvoient `true` sinon, même sans rien à délier. Ce que Core délie
+    lui-même passe par `removeBindings()` / `removeBinding()` (privés, non gardés) : `releaseInterfaces()`,
+    `removeConsumedInterface()`, `interfaceRemoved`, la destruction d'un fournisseur, et la liaison qui en remplace une.
   - `providedInterfaces()` / `consumedInterfaces()` renvoient des `InterfaceInfo {name, type, available, requirement,
     list}` (`available` : au moins un pointeur pour une liste) ; `interfacesChanged()` est émis à chaque déclaration,
     liaison, déliaison ou changement de disponibilité.
@@ -171,7 +175,8 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
     et `Stargate`) : ce qu'un composant ne fournit ou ne consomme plus quand une de ses propriétés change (ses widgets,
     autant que son `count`). Une fournie est rendue indisponible (ses consommateurs la lâchent pendant que le pointeur
     vaut encore), oubliée, puis `interfaceRemoved(nom)` délie ses consommateurs (une liste garde ses autres liaisons) ;
-    une consommée est déliée (`onUnavailable`) puis oubliée. Rien pour un nom inconnu de ce côté.
+    une consommée est déliée (`onUnavailable`) puis oubliée, pendant l'exécution aussi (un fichier de réglages qui
+    change le `count`). Rien pour un nom inconnu de ce côté.
   - Privés, pour `Galaxy` et `Stargate` (amies) : `provide()` / `consume()` d'un type connu à l'exécution seulement,
     `renameProvidedInterface()` / `renameConsumedInterface()`, et `releaseInterfaces()`. Signal
     `interfaceRenamed(nom, nouveau)` (une fournie : ses consommateurs suivent son nom, `followProvider()`). Un lien
@@ -302,15 +307,22 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   revient à l'édition. Rappelé pendant l'exécution, il ne fait rien. `stop()` arrête dans l'ordre inverse, puis
   `returnToEdition()` arrête les fichiers de réglages et réécrit toutes les valeurs d'édition (`writeProperty()`).
   Pendant l'exécution, `save()` écrit ces valeurs-là (`savedValues()`), et `instantiate()` / `rename()` / `remove()`
-  refusent ; les liens et les fichiers de réglages ne sont verrouillés que par NebulaStudio. `isRunning()` /
-  `runningChanged`. `clear()`, `load()` et le destructeur arrêtent d'abord.
+  refusent, comme les liens (`Component::bindInterface()`, `unbindInterface()`) et les fichiers de réglages
+  (`addSettingsFile()` renvoie `nullptr`, `removeSettingsFile()` `false`, et les changements d'un `SettingsFile`) depuis
+  l'issue #137 : `save()` écrit donc aussi les liens de l'édition, sauf ceux qu'une propriété a retirés entre-temps.
+  `isRunning()` / `runningChanged`. `clear()`, `load()` et le destructeur arrêtent d'abord.
 - Déchargement : `componentsOf(pluginId)` liste les instances d'un plugin, et les galaxies qui en contiennent une (même
   plus bas) ; `unloadPlugin(pluginId)` les supprime puis
   appelle `PluginManager::unload()`, et refuse (`errorString()`) pendant l'exécution.
 - Fichiers de réglages (module `Settings` : `include/Nebula/Settings/SettingsFile.h`, `src/Settings/`) : ce que
   l'utilisateur de l'application change et retrouve au lancement suivant. `addSettingsFile()` / `removeSettingsFile()`
   / `settingsFiles()`, possédés par l'application (constructeur privé), écrits dans le projet (`settings`, seulement
-  s'il y en a). Un `SettingsFile` a `fileName`, unique dans l'application sans tenir compte de la casse ni du dossier
+  s'il y en a). Issue #137 : `addSettingsFile()` renvoie un pointeur, `nullptr` pendant l'exécution comme
+  `addSettingsFile(Galaxy&)`, et `removeSettingsFile()` un `bool`, `false` pendant l'exécution ou pour un fichier qui
+  n'est pas des siens ; le chargement passe par `newSettingsFile()` (privé, non gardé). `setFileName()`, `setName()`
+  (par `rename()`), `setDirectory()`, `add()` et `remove()` d'un `SettingsFile` renvoient `false` sans rien changer
+  pendant qu'il tourne (`m_running`), `errorString()` disant pourquoi (`canChange()`, `%1 cannot be renamed while the
+  application runs`) ; `setDirectory()` et `remove()` renvoient `true` sinon, même sans rien changer. Un `SettingsFile` a `fileName`, unique dans l'application sans tenir compte de la casse ni du dossier
   (`settingsFile(nom)`, `setFileName()` renvoie `false` sur un nom pris ; `addSettingsFile()` donne `settings.json`,
   puis `settings2.json`…, et `load()` signale un doublon, qui garde ce nom-là), `directory` (vide = `AppConfigLocation`
   de l'exécutable qui tourne, relatif = depuis son dossier)
@@ -337,7 +349,7 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   0, qu'il écrit `""` (`jsonOf()`) ; `fromJson(json, type)` relit `""` comme 0 pour une énumération ou des drapeaux,
   et `writeJson()` écrit une propriété par lui : toute valeur relue d'un projet, d'une galaxy ou d'un fichier de
   réglages passe par l'un ou l'autre, jamais par `QJsonValue::toVariant()` seul. Le destructeur d'un `SettingsFile` l'arrête
-  s'il tourne encore (retiré pendant l'exécution).
+  s'il tourne encore (détruit pendant l'exécution, ce que `removeSettingsFile()` ne fait plus).
 - Messages d'erreur de Core en anglais, non traduits (`QStringLiteral`), comme ceux de `PluginManager`.
 - Écriture d'un fichier (issue #152, `include/Nebula/Application/WholeFile.h`, public) : `Nebula::WholeFile::write(chemin,
   données, erreur)`, en entier ou pas du tout (`QSaveFile`), dossier créé (`Its directory cannot be created` sinon) ;
@@ -655,8 +667,10 @@ ini, celui des formats qui n'ont pas le leur).
   NebulaStudio n'est vérifié qu'à la main.
 - Aucun composant d'exemple ne refuse de démarrer : le chemin d'erreur de `start()` n'est exercé que par les tests
   (`Probe`), pas dans NebulaStudio.
-- Le verrouillage pendant l'exécution n'est complet que dans NebulaStudio : Core refuse `instantiate()`, `rename()` et
-  `remove()`, mais pas `Component::bindInterface()` ni les changements de fichiers de réglages.
+- Verrouillage pendant l'exécution (#137) : aucun moyen pour un composant de changer ses liens pendant qu'il tourne
+  (hors périmètre). Le refus suit l'état des composants, pas celui de l'application : un composant démarré seul
+  (`Component::start()`) verrouille aussi les liens de ceux qui lui sont liés. `setFilePath()`, `setDescription()` et
+  `setPluginRoot()` de l'application, et le chargement d'un plugin, restent permis.
 - Tests : rien pour le `main.cpp` de NebulaStudio (ni pour `EditionZone`, `Project` et les panneaux, que `TestStudioPlugin` n'exerce
   qu'à travers la galaxy de NebulaStudio), la scène et ses items hors de ses liens (`TestEditionScene`), les fenêtres
   (`SettingsDialog` hors de son nom, de ses cases, de son filtre et de ce qu'elle applique, `TestSettingsDialog`,
@@ -711,7 +725,8 @@ ini, celui des formats qui n'ont pas le leur).
   peut avoir parmi d'autres. Une même liste ne se lie pas deux fois à la même interface fournie.
 - Interfaces et objets qui suivent une propriété (#86) : `stop()` ne refait que les valeurs. Quand la propriété change
   pendant l'exécution (un fichier de réglages qui la tient, ou le composant lui-même), ce qu'elle retire perd ses
-  liens, et ce qu'elle remet à l'arrêt est neuf : les valeurs d'édition de ses objets (mémorisées par `QPointer`) sont
+  liens, que `save()` n'écrit plus dès lors (les seuls liens que Core change pendant l'exécution, #137), et ce qu'elle
+  remet à l'arrêt est neuf : les valeurs d'édition de ses objets (mémorisées par `QPointer`) sont
   perdues, et le projet est alors « modifié ». Le README conseille de ne pas mettre une telle propriété dans un fichier
   de réglages ; rien ne l'empêche. Une interface ajoutée ou retirée refait tous les `InterfaceItem` de son composant
   (`clearIfChanged()`), ses liens redessinés par `refreshLinks()`.

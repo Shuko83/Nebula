@@ -74,6 +74,17 @@ to it.
   followed by its platform, its compiler and its Qt, `NebulaStudio (win-x64, MSVC 19.44.35211.0, Qt 6.12.0)`, which
   Windows shows as the name of an executable in the Task Manager as well; its numeric version has the four numbers of
   the version. The binaries keep their names.
+- While an application runs, Core refuses to change its bindings and its settings files (#137), as it refused to
+  instantiate, rename or remove its components: `Component::bindInterface()` returns `false` while the consumer, the
+  provider or what the interface is bound to runs, and the two `Component::unbindInterface()` return `false`, changing
+  nothing, formerly `void`; `SettingsFile::setFileName()`, `setName()` and `add()` return `false`, and
+  `SettingsFile::remove()` and `setDirectory()` return `false`, changing nothing, formerly `void`, with
+  `SettingsFile::errorString()` telling why; `Universe::addSettingsFile()` returns `nullptr`, formerly a reference to
+  the file, as `addSettingsFile(Galaxy&)` does now, and `Universe::removeSettingsFile()` returns `false`, formerly
+  `void`. `save()` thus writes the bindings of the edition while the application runs, as it writes the values of its
+  properties. What Core does itself still unbinds meanwhile: an interface that a property removes, as a settings file
+  changes it, and a component destroyed. Code that keeps the reference `addSettingsFile()` returned is to keep the
+  pointer instead; `Component.h` changes, so every plugin is to be built again.
 
 ### Fixed
 
