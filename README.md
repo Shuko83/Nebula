@@ -105,7 +105,7 @@ project(Acme VERSION 1.0.0 LANGUAGES CXX)
 
 set(cmu_organization "AcmeCorp")   # first part of the plugin ids: AcmeCorp.Acme.Network
 
-find_package(Nebula 2.1 REQUIRED COMPONENTS Core)
+find_package(Nebula 3.0 REQUIRED COMPONENTS Core)
 
 add_subdirectory(Network)          # nebula_add_plugin(NAME Network), its sources in Network/src
 ```
@@ -114,9 +114,9 @@ Point `CMAKE_PREFIX_PATH` at the package: `<build>/package`, staged after each b
 
 The plugin is written to `<build>/bin/plugins` (`<build>/bin/<config>/plugins` with Visual Studio): copy it to `plugins/` next to an application, or open it from NebulaStudio with **Open plugin...**. Its `coreVersion` is the version of the installed `Core`, whatever the version of its project. Build it in a configuration Nebula was installed in: Qt does not load a `Debug` plugin into a `Release` application, nor the other way round.
 
-Installed with `-Dcmu_install_mode=PACKAGE`, Nebula is a single prefix whose package has no components: `find_package(Nebula 2.1 REQUIRED)`.
+Installed with `-Dcmu_install_mode=PACKAGE`, Nebula is a single prefix whose package has no components: `find_package(Nebula 3.0 REQUIRED)`.
 
-The zip of a release, and the folder in it, are named after what its binaries are built for and with, `Nebula_<version>_<platform>_<compiler>_Qt<major>.<minor>`: `Nebula_2.2.0_win-x64_msvc2022_Qt6.12.zip` is built for 64-bit Windows with Visual Studio 2022 and Qt 6.12, as a plugin built against it should be. The binaries keep their own names (`NebulaStudio.exe`, `Core.dll`, `<NAME>.nbdl`); on Windows, the **Details** tab of their properties tells the rest: their description is their name followed by their platform, their compiler and their Qt, `NebulaStudio (win-x64, MSVC 19.44.35211.0, Qt 6.12.0)`, which Windows shows as the name of NebulaStudio in the Task Manager as well, and their version is the one of the project. `-DNEBULA_VERSION_SUFFIX=-rc0`, a dash then letters or digits, builds a `2.2.0-rc0`: the suffix follows the numbers of `project()` in the details of each binary, in the version NebulaStudio tells and in the names of the package and of the installer of NebulaStudio, see [NebulaStudio](#-nebulastudio).
+The zip of a release, and the folder in it, are named after what its binaries are built for and with, `Nebula_<version>_<platform>_<compiler>_Qt<major>.<minor>`: `Nebula_3.0.0_win-x64_msvc2022_Qt6.12.zip` is built for 64-bit Windows with Visual Studio 2022 and Qt 6.12, as a plugin built against it should be. The binaries keep their own names (`NebulaStudio.exe`, `Core.dll`, `<NAME>.nbdl`); on Windows, the **Details** tab of their properties tells the rest: their description is their name followed by their platform, their compiler and their Qt, `NebulaStudio (win-x64, MSVC 19.44.35211.0, Qt 6.12.0)`, which Windows shows as the name of NebulaStudio in the Task Manager as well, and their version is the one of the project. `-DNEBULA_VERSION_SUFFIX=-rc0`, a dash then letters or digits, builds a `3.0.0-rc0`: the suffix follows the numbers of `project()` in the details of each binary, in the version NebulaStudio tells and in the names of the package and of the installer of NebulaStudio, see [NebulaStudio](#-nebulastudio).
 
 ---
 
@@ -290,7 +290,7 @@ Nebula ships plugins whose components serve any application. `StandardPlugin` (`
 The interfaces its components provide are in `Nebula::Standard`, a library of headers only, in `Plugins/Standard/include/Nebula/Standard/`. A plugin links it to consume them, since a plugin, a `MODULE`, cannot be linked itself. Outside Nebula:
 
 ```cmake
-find_package(Nebula 2.1 REQUIRED COMPONENTS Core Standard)
+find_package(Nebula 3.0 REQUIRED COMPONENTS Core Standard)
 
 nebula_add_plugin(
     NAME Network
@@ -387,7 +387,7 @@ NebulaStudio keeps what is edited in it in a `HistoryComponent`, see Undo and re
 
 `NebulaStudio` is the application that assembles applications from the components of the plugins, live.
 
-Each [release](https://github.com/Shuko83/Nebula/releases) has an installer of NebulaStudio for Windows, next to its zip, named as the zip is after what it is built for and with: `NebulaStudio_2.2.0_win-x64_msvc2022_Qt6.12_setup.exe`. It installs NebulaStudio with what it needs to start, and nothing else: the DLLs of Nebula, of Qt and of the compiler, the plugins of its galaxy, `StudioPlugin` and `StandardPlugin`, in `plugins/`, and its galaxy in `scene/`. It installs it for the user who runs it, without asking to be an administrator, in `%LOCALAPPDATA%\Programs\NebulaStudio`, unless its first page, or `/ALLUSERS`, asks for all the users, in `Program Files`: NebulaStudio cannot write there, and its dialogs, which start from `scene/` next to it, have to be pointed somewhere else. It adds NebulaStudio to the Start menu and to **Settings** > **Apps**, where it is uninstalled; projects saved next to it stay. Installing another version replaces the one installed, in its folder. Plugins built against the zip of the same release are opened in it with **Open plugin...**, or copied to its `plugins/`. From a build, `cpack -C Release` builds it, with [Inno Setup](https://jrsoftware.org/isinfo.php) 6.
+Each [release](https://github.com/Shuko83/Nebula/releases) has an installer of NebulaStudio for Windows, next to its zip, named as the zip is after what it is built for and with: `NebulaStudio_3.0.0_win-x64_msvc2022_Qt6.12_setup.exe`. It installs NebulaStudio with what it needs to start, and nothing else: the DLLs of Nebula, of Qt and of the compiler, the plugins of its galaxy, `StudioPlugin` and `StandardPlugin`, in `plugins/`, and its galaxy in `scene/`. It installs it for the user who runs it, without asking to be an administrator, in `%LOCALAPPDATA%\Programs\NebulaStudio`, unless its first page, or `/ALLUSERS`, asks for all the users, in `Program Files`: NebulaStudio cannot write there, and its dialogs, which start from `scene/` next to it, have to be pointed somewhere else. It adds NebulaStudio to the Start menu and to **Settings** > **Apps**, where it is uninstalled; projects saved next to it stay. Installing another version replaces the one installed, in its folder. Plugins built against the zip of the same release are opened in it with **Open plugin...**, or copied to its `plugins/`. From a build, `cpack -C Release` builds it, with [Inno Setup](https://jrsoftware.org/isinfo.php) 6.
 
 It is a `NebulaApplication`, see Running an Application below, that runs its own galaxy, `scene/NebulaStudio.nbp` next to it, see [NebulaStudio, a galaxy](#nebulastudio-a-galaxy) below: it takes the options of any, `--plugin-dir`, `--plugin-root`, `--galaxy-dir`, `--log-level`, `--log-file`, `--console`, `--help` and `--version`, then the project file to open. When its galaxy cannot be found or loaded, a box tells why, and NebulaStudio ends.
 
@@ -607,7 +607,7 @@ Nebula::NebulaApplication app(argc, argv, parser, QStringLiteral("Clock.nbp"),
                                .logLevel = QtInfoMsg});
 ```
 
-It links to `Nebula::Application`, which links to `Nebula::Core` and Qt Widgets: outside Nebula, `find_package(Nebula 2.1 REQUIRED COMPONENTS Application)` defines both. The plugins of the galaxy are loaded as it is opened, found by their id among those listed, or from the file the project gives them, relative to the plugin root.
+It links to `Nebula::Application`, which links to `Nebula::Core` and Qt Widgets: outside Nebula, `find_package(Nebula 3.0 REQUIRED COMPONENTS Application)` defines both. The plugins of the galaxy are loaded as it is opened, found by their id among those listed, or from the file the project gives them, relative to the plugin root.
 
 ### The Universe of an application
 
