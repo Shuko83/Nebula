@@ -8,14 +8,16 @@
 **The course**
 
 - [Overview](Course.md)
-- [1. Assemble without code](Course-1-Assemble-Without-Code.md)
-- [2. Keep what the user chooses](Course-2-Keep-What-the-User-Chooses.md)
-- [3. Reuse a part](Course-3-Reuse-a-Part.md)
-- [4. Properties and modes](Course-4-Properties-and-Modes.md)
-- [5. Interfaces of your own](Course-5-Interfaces-of-Your-Own.md)
-- [6. Log and history](Course-6-Log-and-History.md)
-- [7. Ship an application](Course-7-Ship-an-Application.md)
-- [8. Your own plugin](Course-8-Your-Own-Plugin.md)
+- [1. Get ready](Course-1-Get-Ready.md)
+- [2. Assemble without code](Course-2-Assemble-Without-Code.md)
+- [3. Keep what the user chooses](Course-3-Keep-What-the-User-Chooses.md)
+- [4. Reuse a part](Course-4-Reuse-a-Part.md)
+- [5. Your first component](Course-5-Your-First-Component.md)
+- [6. Properties and modes](Course-6-Properties-and-Modes.md)
+- [7. Interfaces of your own](Course-7-Interfaces-of-Your-Own.md)
+- [8. Log and history](Course-8-Log-and-History.md)
+- [9. Ship an application](Course-9-Ship-an-Application.md)
+- [10. Your own plugin](Course-10-Your-Own-Plugin.md)
 
 **Writing plugins**
 
