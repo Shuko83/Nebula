@@ -330,8 +330,8 @@ plugin built against the former ones then crashes as soon as one of its componen
 
 ## Where to go next
 
-- [The course](Course.md), from [lesson 4](Course-4-Properties-and-Modes.md): exercises that grow this plugin into an
-  alarm clock you ship.
+- [The course](Course.md) writes this same plugin one explicit step at a time, tools included, from
+  [lesson 5](Course-5-Your-First-Component.md), then grows it into an alarm clock you ship.
 - [Writing components](Writing-Components.md): lists of interfaces, the properties of the objects a component is made
   of, the types a property can have, and the pitfalls.
 - [Using the standard plugins](Using-the-Standard-Plugins.md): write to the log of the application from the clock.

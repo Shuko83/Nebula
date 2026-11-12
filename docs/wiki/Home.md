@@ -14,8 +14,8 @@ file is detailed there, and the wiki links to it rather than repeating it.
   writing code.
 - [Concepts](Concepts.md): plugins, components, interfaces, bindings, projects, galaxies, stargates and settings files,
   and how they fit together.
-- [The course](Course.md): eight lessons with exercises and their solutions, from assembling without code to a plugin
-  of your own.
+- [The course](Course.md): ten lessons that start from nothing, one explicit step at a time, from installing Nebula
+  to a plugin of your own. New to Nebula? Start there.
 
 ## I write plugins
 
