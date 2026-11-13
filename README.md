@@ -31,7 +31,7 @@ New to Nebula? The [wiki](https://github.com/Shuko83/Nebula/wiki) walks you thro
   Save and load full application state using `.nbp` files.
 
 - ▶️ **Applications of a galaxy**  
-  `NebulaApplication` loads a project file and runs it: the `main` of an application is three lines.
+  `NebulaApplication` loads a project file and runs it: the `main` of an application is two lines.
 
 - 🗂️ **User settings**  
   Keep the values the user of an application gives some properties, from one run to the next, in settings files.
@@ -391,7 +391,7 @@ NebulaStudio keeps what is edited in it in a `HistoryComponent`, see Undo and re
 
 Each [release](https://github.com/Shuko83/Nebula/releases) has an installer of NebulaStudio for Windows, next to its zip, named as the zip is after what it is built for and with: `NebulaStudio_3.0.0_win-x64_msvc2022_Qt6.12_setup.exe`. It installs NebulaStudio with what it needs to start, and nothing else: the DLLs of Nebula, of Qt and of the compiler, the plugins of its galaxy, `StudioPlugin` and `StandardPlugin`, in `plugins/`, and its galaxy in `scene/`. It installs it for the user who runs it, without asking to be an administrator, in `%LOCALAPPDATA%\Programs\NebulaStudio`, unless its first page, or `/ALLUSERS`, asks for all the users, in `Program Files`: NebulaStudio cannot write there, and its dialogs, which start from `scene/` next to it, have to be pointed somewhere else. It adds NebulaStudio to the Start menu and to **Settings** > **Apps**, where it is uninstalled; projects saved next to it stay. Installing another version replaces the one installed, in its folder. Plugins built against the zip of the same release are opened in it with **Open plugin...**, or copied to its `plugins/`. From a build, `cpack -C Release` builds it, with [Inno Setup](https://jrsoftware.org/isinfo.php) 6.
 
-It is a `NebulaApplication`, see Running an Application below, that runs its own galaxy, `scene/NebulaStudio.nbp` next to it, see [NebulaStudio, a galaxy](#nebulastudio-a-galaxy) below: it takes the options of any, `--plugin-dir`, `--plugin-root`, `--galaxy-dir`, `--log-level`, `--log-file`, `--console`, `--help` and `--version`, then the project file to open. When its galaxy cannot be found or loaded, a box tells why, and NebulaStudio ends.
+It is a `NebulaApplication`, see Running an Application below, that runs its own galaxy, `scene/NebulaStudio.nbp` next to it, see [NebulaStudio, a galaxy](#nebulastudio-a-galaxy) below: it takes the options of any, `--plugin-dir`, `--plugin-root`, `--galaxy-dir`, `--log-level`, `--log-file`, `--console`, `--help` and `--version`, then the project file to open, which it gives to the instance `Project` of its galaxy. When its galaxy cannot be found, loaded or given that project, a box tells why, and NebulaStudio ends.
 
 It starts with a splash screen, in the colors of its theme: the version of Nebula, the Qt and the compiler NebulaStudio was built with and when, its copyright and its license. It stays over its main window for two seconds, or until it is clicked.
 
@@ -570,43 +570,64 @@ Opening a project tells what could not be restored, a plugin that is no longer w
 A project is an application: a galaxy, whose components run. `Nebula::NebulaApplication`, of the `Nebula::Application` library, is the `QApplication` of an executable whose content is a galaxy: it loads it as it is built, and runs it with `exec()`. This is all the `main` of an application has to do:
 
 ```cpp
-#include <QCommandLineParser>
-
 #include "Nebula/Application/NebulaApplication.h"
 
 int main(int argc, char* argv[])
 {
-    QCommandLineParser parser; // With the options and the arguments of the application, if it has some
-    Nebula::NebulaApplication app(argc, argv, parser, QStringLiteral("Clock.nbp"));
+    Nebula::NebulaApplication app(argc, argv, QStringLiteral("Clock.nbp"));
     return app.exec();
 }
 ```
 
-Built, it gives `QCoreApplication` what the executable tells of itself, writes the messages as it is asked to, lists the plugins of `plugins/` next to the executable and of the directories it is given, then opens the galaxy, the name of its file or its path, looked for in `scene/` next to the executable unless other directories are given: its plugins are loaded, its components instantiated, set and bound, as `Universe::open()` does below. `exec()` starts it, processes the events until the application quits, once its last window is closed say, stops it, which has its settings files written, and returns the code the application quit with. When the galaxy cannot be found or loaded, all of it, `exec()` returns `NebulaApplication::LoadFailed` at once, and `StartFailed` when one of its components refuses to start: why is logged as a critical message, and told by `errorString()`. `isLoaded()`, `galaxyFile()` and `universe()`, the `Nebula::Universe` it runs, tell the rest: `app.universe().component(QStringLiteral("Clock1"))` reaches one of its components, before `exec()` say. There is one at a time, as there is one `QApplication`.
+Built, it gives `QCoreApplication` what the executable tells of itself, reads its command line, writes the messages as it is asked to, lists the plugins of `plugins/` next to the executable and of the directories it is given, then opens the galaxy, the name of its file or its path, looked for in `scene/` next to the executable unless other directories are given: its plugins are loaded, its components instantiated, set and bound, as `Universe::open()` does below. `exec()` starts it, processes the events until the application quits, once its last window is closed say, stops it, which has its settings files written, and returns the code the application quit with. When the galaxy cannot be found or loaded, all of it, `exec()` returns `NebulaApplication::LoadFailed` at once, and `StartFailed` when one of its components refuses to start: why is logged as a critical message, told by `errorString()` and by the signal `failed()`, and shown in a box when `failureBox` asks for one. `isLoaded()`, `galaxyFile()` and `universe()`, the `Nebula::Universe` it runs, tell the rest: `app.universe().component(QStringLiteral("Clock1"))` reaches one of its components, before `exec()` say. There is one at a time, as there is one `QApplication`.
 
-Its options are given by the code, a `Nebula::ApplicationOptions`, and by the command line when it is given a `QCommandLineParser`: it adds its own options after those the `main` declared, then processes the command line, whose options and arguments the `main` reads from the same parser afterwards. `--help` and `--version` are among them, which the `main` does not add. Without a parser, the command line is not read.
+Its options are given by the code, a `Nebula::ApplicationOptions`, and by the command line, which it processes itself: `--help` and `--version` are among its options, and an option nobody declared is refused. `commandLine = false` leaves the command line to a `main` that reads it all by itself.
 
 | Option | On the command line | What it is |
 | --- | --- | --- |
 | `pluginDirectories` | `--plugin-dir <directory>`, as many times as needed | Directories of plugins, scanned after `plugins/` next to the executable, those of the code first: a plugin found again is skipped, and a directory that does not exist is skipped with a warning |
 | `pluginRoot` | `--plugin-root <directory>`, which replaces it | The directory the files of the plugins are relative to in a project file: the directory of the executable when it is empty |
 | `galaxyDirectories` | `--galaxy-dir <directory>`, as many times as needed | Where the galaxy is looked for, those of the command line first: the first one that has it is the one. `scene` until it is given others |
-| `executable` | | What the executable tells of itself, given to `QCoreApplication`: its `name`, its `version`, which `--version` shows, its `organization`, part of the directory settings files are written to by default, and its `organizationDomain`. Those left empty stay as Qt has them |
+| `executable` | | What the executable tells of itself, given to `QCoreApplication`: its `name`, its `version`, which `--version` shows, its `organization`, part of the directory settings files are written to by default, and its `organizationDomain`. Then its `description`, which `--help` shows, and its `icon`, the file of the icon of its windows, a resource say. Those left empty stay as Qt has them |
+| `commandLine` | | Whether the command line is read: `true` until it is told otherwise |
+| `arguments` | `[name]`, in their order | The arguments of the command line, each one given to a property of an instance of the galaxy once it is loaded, see below |
 | `logLevel` | `--log-level <level>`, `debug`, `info`, `warning`, `critical` or `fatal`, which replaces it | The least severe messages written: `QtDebugMsg`, all those Qt writes, until it is given another one. The rules of `QT_LOGGING_RULES` take precedence over it, and an unknown level is refused as a galaxy not found is. A running [log](#the-log) of the galaxy disables more of them, never fewer |
 | `console` | `--console` | Whether the messages are written to the error output, rather than where Qt writes them: an application without a console of its own on Windows writes them to the console of the terminal it is started from |
 | `logFile` | `--log-file <file>`, which replaces it | A file the messages are added to as well, its directory created: one that cannot be opened is refused |
 | `logger` | | A function the messages are given to as well, as a `QtMessageHandler` is, one at a time, in the thread that logs them, to show them in a window, say: one it logs itself is written by Qt to the error output, not given to it again |
+| `failureBox` | | Whether `exec()` tells in a box why the galaxy does not run, for an application with windows, whose messages nobody reads: `false` until it is asked for |
 
 A relative directory or file is read from the directory of the executable in the code, and from the current directory on the command line. Once the application is destroyed, Qt writes the messages as it did before.
 
 ```cpp
 #include "Clock_info.h" // Generated by CMakeUtils for the executable Clock
 
-Nebula::NebulaApplication app(argc, argv, parser, QStringLiteral("Clock.nbp"),
+Nebula::NebulaApplication app(argc, argv, QStringLiteral("Clock.nbp"),
                               {.pluginDirectories = {QStringLiteral("extensions")},
                                .executable = {.name = QString::fromUtf8(ClockInfo::name),
                                               .version = QString::fromUtf8(ClockInfo::version)},
-                               .logLevel = QtInfoMsg});
+                               .logLevel = QtInfoMsg,
+                               .failureBox = true});
+```
+
+An argument of the command line is a `Nebula::CommandLineArgument`: its `name` and its `description`, which `--help` shows, and the `instance` of the galaxy, by its name, whose `property` it is given to, converted to the type of that property, once the galaxy is loaded and before it starts. `path` tells it is a file or a directory, given absolute then, read from the current directory. None has to be given, and the first one given is the first one declared. One that cannot be given, to an instance the galaxy does not have or a property that does not take it, is refused as a galaxy that cannot be loaded is. `Viewer picture.png` has the instance `Picture1` show that file:
+
+```cpp
+Nebula::NebulaApplication app(argc, argv, QStringLiteral("Viewer.nbp"),
+                              {.arguments = {{.name = QStringLiteral("picture"),
+                                              .description = QStringLiteral("Picture to show."),
+                                              .instance = QStringLiteral("Picture1"),
+                                              .property = QStringLiteral("file"),
+                                              .path = true}}});
+```
+
+A `main` that has options of its own declares them in a `QCommandLineParser` and gives it to the application, before the galaxy: the application adds its options and its arguments after them, then processes the command line, whose options the `main` reads from the same parser afterwards.
+
+```cpp
+QCommandLineParser parser;
+parser.addOption({QStringLiteral("city"), QStringLiteral("City whose time is shown."), QStringLiteral("name")});
+Nebula::NebulaApplication app(argc, argv, parser, QStringLiteral("Clock.nbp"));
+const QString city = parser.value(QStringLiteral("city"));
 ```
 
 It links to `Nebula::Application`, which links to `Nebula::Core` and Qt Widgets: outside Nebula, `find_package(Nebula 3.0 REQUIRED COMPONENTS Application)` defines both. The plugins of the galaxy are loaded as it is opened, found by their id among those listed, or from the file the project gives them, relative to the plugin root.

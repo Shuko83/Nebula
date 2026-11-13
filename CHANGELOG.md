@@ -14,6 +14,22 @@ to it.
   files, running and deploying an application, and troubleshooting, and a course of ten lessons (#163), written one
   explicit step at a time for who knows nothing of Nebula yet, from installing it to a plugin of one's own. Its pages are written in `docs/wiki/` and
   copied to the wiki of the repository by a workflow each time they change on `main`.
+- What the `main` of an application with windows wrote by hand is declared in its `ApplicationOptions` (#165):
+  `executable.description`, which `--help` shows, `executable.icon`, the file of the icon of its windows, `arguments`,
+  the arguments of the command line (`Nebula::CommandLineArgument`), each one given to a property of an instance of
+  the galaxy once it is loaded, and refused as a galaxy that cannot be loaded when it cannot be, and `failureBox`,
+  which has `exec()` tell in a box why the galaxy does not run. `NebulaApplication::failed()` is emitted with the
+  reason before that box.
+
+### Changed
+
+- `NebulaApplication` reads its command line without a `QCommandLineParser` (#165): the `main` of an application is
+  `Nebula::NebulaApplication app(argc, argv, QStringLiteral("Clock.nbp")); return app.exec();`. The constructor that
+  takes no parser, which did not read the command line, now processes it, `--help` and `--version` included, and
+  refuses an option it does not know; `commandLine = false`, in its options, leaves it unread as before. The
+  constructor that takes the parser of the `main` stays, for a `main` with options of its own.
+- The `main` of NebulaStudio is its options and four lines (#165). A project given on its command line while its
+  galaxy has no instance `Project` to open it is told in a box, where it was left unopened without a word.
 
 ## [3.0.0] - 2026-11-09
 
