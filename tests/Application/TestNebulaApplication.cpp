@@ -5,11 +5,14 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLoggingCategory>
+#include <QMessageBox>
 #include <QRegularExpression>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
@@ -96,6 +99,30 @@ QString writeGalaxy(const QString& filePath, const QJsonArray& components = {}, 
     return filePath;
 }
 
+// An argument of the command line given to the property named property of Probe1.
+Nebula::CommandLineArgument toProbe(const QString& property)
+{
+    return {.name = property,
+            .description = u"The %1 of Probe1."_s.arg(property),
+            .instance = u"Probe1"_s,
+            .property = property};
+}
+
+// Closes the message box shown, if any: its title, its text, then count, read while it is shown; empty without one.
+QStringList closeBox(qsizetype count)
+{
+    for(QWidget* widget : QApplication::topLevelWidgets())
+    {
+        if(auto* box = qobject_cast<QMessageBox*>(widget))
+        {
+            const QStringList shown = {box->windowTitle(), box->text(), QString::number(count)};
+            box->close();
+            return shown;
+        }
+    }
+    return {};
+}
+
 // A logger that counts in calls the messages of the test given to it.
 Nebula::Logger counting(int& calls)
 {
@@ -133,8 +160,20 @@ class TestNebulaApplication : public QObject
     void pluginRoot_data();
     void pluginRoot();
     void commandLineOfTheMain();
+    void commandLineNotRead();
+    void description_data();
+    void description();
+    void icon();
+    void arguments_data();
+    void arguments();
+    void pathArgument_data();
+    void pathArgument();
+    void argumentRefused_data();
+    void argumentRefused();
     void runs();
     void refusesToStart();
+    void failureBox_data();
+    void failureBox();
     void logLevel_data();
     void logLevel();
     void unknownLogLevel();
@@ -248,8 +287,7 @@ void TestNebulaApplication::galaxyDirectories()
     }
 
     CommandLine line(arguments);
-    QCommandLineParser parser;
-    const NebulaApplication app(line.count(), line.values(), parser, GalaxyName, {.galaxyDirectories = directories});
+    const NebulaApplication app(line.count(), line.values(), GalaxyName, {.galaxyDirectories = directories});
     QVERIFY2(app.isLoaded(), qPrintable(app.errorString()));
     QCOMPARE(app.galaxyFile(), path(found + u'/' + GalaxyName));
     QVERIFY(app.universe().component(u"Probe1"_s) != nullptr);
@@ -281,7 +319,10 @@ void TestNebulaApplication::galaxyNotFound()
     QVERIFY(!app.isLoaded());
     QVERIFY(app.galaxyFile().isEmpty());
     QVERIFY2(app.errorString().contains(QDir::toNativeSeparators(path(u"a"_s))), qPrintable(app.errorString()));
+    const QSignalSpy failed(&app, &NebulaApplication::failed);
     QCOMPARE(app.exec(), NebulaApplication::LoadFailed); // At once
+    QCOMPARE(failed.count(), 1);
+    QCOMPARE(failed.constFirst().constFirst().toString(), app.errorString());
 }
 
 void TestNebulaApplication::galaxyNotLoaded()
@@ -302,10 +343,8 @@ void TestNebulaApplication::pluginDirectories()
     const QJsonObject alpha = {{u"name"_s, u"Alpha1"_s}, {u"type"_s, FirstPluginId + u".Alpha"_s}};
     const QString galaxy = writeGalaxy(path(GalaxyName), {alpha}, {FirstPluginId});
     CommandLine line({u"--plugin-dir"_s, QStringLiteral(NEBULA_OTHER_TEST_PLUGINS_DIR)});
-    QCommandLineParser parser;
     // test-plugins/ is next to the executable of the test, which the directories of the code are relative to.
-    const NebulaApplication app(line.count(), line.values(), parser, galaxy,
-                                {.pluginDirectories = {u"test-plugins"_s}});
+    const NebulaApplication app(line.count(), line.values(), galaxy, {.pluginDirectories = {u"test-plugins"_s}});
     QVERIFY2(app.isLoaded(), qPrintable(app.errorString()));
     QVERIFY(app.universe().plugins().isLoaded(FirstPluginId)); // By its galaxy
     QVERIFY(app.universe().plugins().plugin(SecondPluginId).has_value());
@@ -331,9 +370,7 @@ void TestNebulaApplication::pluginRoot()
     QFETCH(QString, root);
 
     CommandLine line(arguments);
-    QCommandLineParser parser;
-    const NebulaApplication app(line.count(), line.values(), parser, writeGalaxy(path(GalaxyName)),
-                                {.pluginRoot = code});
+    const NebulaApplication app(line.count(), line.values(), writeGalaxy(path(GalaxyName)), {.pluginRoot = code});
     const QDir executable(QCoreApplication::applicationDirPath());
     QCOMPARE(app.universe().pluginRoot(), QDir::cleanPath(executable.absoluteFilePath(root)));
 }
@@ -352,10 +389,154 @@ void TestNebulaApplication::commandLineOfTheMain()
     QCOMPARE(parser.value(u"log-level"_s), u"info"_s);
 }
 
+void TestNebulaApplication::commandLineNotRead()
+{
+    // Neither the options of the application nor one nobody declared, which it would refuse: all left to the main.
+    CommandLine line({u"--log-level"_s, u"warning"_s, u"--mine"_s, u"hello"_s});
+    const NebulaApplication app(line.count(), line.values(), writeGalaxy(path(GalaxyName), {probe(u"Probe1"_s)}),
+                                {.commandLine = false, .arguments = {toProbe(u"text"_s)}});
+    QVERIFY2(app.isLoaded(), qPrintable(app.errorString()));
+    QVERIFY(lcTest().isDebugEnabled());
+    QCOMPARE(app.universe().component(u"Probe1"_s)->property("text"), Probe().property("text"));
+    QCOMPARE(QCoreApplication::arguments().size(), 5);
+}
+
+void TestNebulaApplication::description_data()
+{
+    QTest::addColumn<QString>("ofTheMain");
+    QTest::addColumn<QString>("ofTheOptions");
+    QTest::addColumn<QString>("shown");
+
+    QTest::newRow("the one of the options") << QString() << u"Tells the time."_s << u"Tells the time."_s;
+    QTest::newRow("in place of the one of the main") << u"A clock."_s << u"Tells the time."_s << u"Tells the time."_s;
+    QTest::newRow("none: the one of the main") << u"A clock."_s << QString() << u"A clock."_s;
+}
+
+void TestNebulaApplication::description()
+{
+    QFETCH(QString, ofTheMain);
+    QFETCH(QString, ofTheOptions);
+    QFETCH(QString, shown);
+
+    CommandLine line;
+    QCommandLineParser parser; // The one of a main, to read what --help shows from
+    parser.setApplicationDescription(ofTheMain);
+    const NebulaApplication app(line.count(), line.values(), parser, writeGalaxy(path(GalaxyName)),
+                                {.executable = {.description = ofTheOptions}});
+    QCOMPARE(parser.applicationDescription(), shown);
+    QVERIFY2(parser.helpText().contains(shown), qPrintable(parser.helpText()));
+}
+
+void TestNebulaApplication::icon()
+{
+    const QString file = path(u"clock.png"_s);
+    {
+        CommandLine line;
+        const NebulaApplication app(line.count(), line.values(), writeGalaxy(path(GalaxyName)));
+        QVERIFY(QApplication::windowIcon().isNull()); // None until it is given one
+        QImage image(16, 16, QImage::Format_ARGB32);
+        image.fill(Qt::red);
+        QVERIFY(image.save(file));
+    }
+    CommandLine line;
+    const NebulaApplication app(line.count(), line.values(), path(GalaxyName), {.executable = {.icon = file}});
+    QCOMPARE(QApplication::windowIcon().availableSizes(), QList<QSize>{QSize(16, 16)});
+}
+
+void TestNebulaApplication::arguments_data()
+{
+    QTest::addColumn<QStringList>("given");
+    QTest::addColumn<QString>("text");
+    QTest::addColumn<int>("count");
+
+    QTest::newRow("none given: the values of the galaxy") << QStringList() << u"of the galaxy"_s << 3;
+    QTest::newRow("the first one only") << QStringList{u"hello"_s} << u"hello"_s << 3;
+    QTest::newRow("each one, converted to the type of its property")
+        << QStringList{u"hello"_s, u"12"_s} << u"hello"_s << 12;
+    QTest::newRow("more than declared: the others are left")
+        << QStringList{u"hello"_s, u"12"_s, u"more"_s} << u"hello"_s << 12;
+}
+
+void TestNebulaApplication::arguments()
+{
+    QFETCH(QStringList, given);
+    QFETCH(QString, text);
+    QFETCH(int, count);
+
+    QJsonObject probe1 = probe(u"Probe1"_s);
+    probe1[u"properties"_s] = QJsonObject{{u"text"_s, u"of the galaxy"_s}, {u"count"_s, 3}};
+    CommandLine line(given);
+    QCommandLineParser parser; // The one of a main, to read what --help shows from
+    const NebulaApplication app(line.count(), line.values(), parser, writeGalaxy(path(GalaxyName), {probe1}),
+                                {.arguments = {toProbe(u"text"_s), toProbe(u"count"_s)}});
+    QVERIFY2(app.isLoaded(), qPrintable(app.errorString()));
+    const Nebula::Component* instance = app.universe().component(u"Probe1"_s);
+    QCOMPARE(instance->property("text").toString(), text);
+    QCOMPARE(instance->property("count").toInt(), count);
+    // Each one optional, with what it is.
+    QVERIFY2(parser.helpText().contains(u"[text] [count]"_s), qPrintable(parser.helpText()));
+    QVERIFY2(parser.helpText().contains(u"The text of Probe1."_s), qPrintable(parser.helpText()));
+}
+
+void TestNebulaApplication::pathArgument_data()
+{
+    QTest::addColumn<QString>("given");
+    QTest::addColumn<QString>("text");
+
+    const QString absolute = QDir::cleanPath(QDir::temp().absoluteFilePath(u"projects/first.nbp"_s));
+    QTest::newRow("relative: from the current directory")
+        << u"projects/../first.nbp"_s << QDir::cleanPath(QDir::current().absoluteFilePath(u"first.nbp"_s));
+    QTest::newRow("absolute: as it is") << absolute << absolute;
+}
+
+void TestNebulaApplication::pathArgument()
+{
+    QFETCH(QString, given);
+    QFETCH(QString, text);
+
+    Nebula::CommandLineArgument argument = toProbe(u"text"_s);
+    argument.path = true;
+    CommandLine line({given});
+    const NebulaApplication app(line.count(), line.values(), writeGalaxy(path(GalaxyName), {probe(u"Probe1"_s)}),
+                                {.arguments = {argument}});
+    QVERIFY2(app.isLoaded(), qPrintable(app.errorString()));
+    QCOMPARE(app.universe().component(u"Probe1"_s)->property("text").toString(), text);
+}
+
+void TestNebulaApplication::argumentRefused_data()
+{
+    QTest::addColumn<QString>("instance");
+    QTest::addColumn<QString>("property");
+    QTest::addColumn<QString>("why");
+
+    QTest::newRow("no such instance") << u"Nothing1"_s << u"text"_s << u"the galaxy has no instance Nothing1"_s;
+    QTest::newRow("no such property") << u"Probe1"_s << u"nothing"_s << u"does not take twelve"_s;
+    QTest::newRow("a property that is only read") << u"Probe1"_s << u"starts"_s << u"does not take twelve"_s;
+    QTest::newRow("a value that is not of its type") << u"Probe1"_s << u"count"_s << u"does not take twelve"_s;
+}
+
+void TestNebulaApplication::argumentRefused()
+{
+    QFETCH(QString, instance);
+    QFETCH(QString, property);
+    QFETCH(QString, why);
+
+    const QString told = u"The argument value cannot be given to %1.%2: "_s.arg(instance, property);
+    CommandLine line({u"twelve"_s});
+    QTest::ignoreMessage(QtCriticalMsg, QRegularExpression(u'^' + QRegularExpression::escape(told)));
+    NebulaApplication app(line.count(), line.values(), writeGalaxy(path(GalaxyName), {probe(u"Probe1"_s)}),
+                          {.arguments = {{.name = u"value"_s, .instance = instance, .property = property}}});
+    QVERIFY(!app.isLoaded());
+    QVERIFY2(app.errorString().startsWith(told) && app.errorString().endsWith(why), qPrintable(app.errorString()));
+    QVERIFY(!app.universe().component(u"Probe1"_s)->dynamicPropertyNames().contains(property.toUtf8()));
+    QCOMPARE(app.exec(), NebulaApplication::LoadFailed);
+}
+
 void TestNebulaApplication::runs()
 {
     CommandLine line;
     NebulaApplication app(line.count(), line.values(), writeGalaxy(path(GalaxyName), {probe(u"Probe1"_s)}));
+    const QSignalSpy failed(&app, &NebulaApplication::failed);
     auto* probe = qobject_cast<Probe*>(app.universe().component(u"Probe1"_s));
     QVERIFY(probe != nullptr);
     QVERIFY(!app.universe().isRunning()); // Not before exec()
@@ -372,17 +553,51 @@ void TestNebulaApplication::runs()
     QVERIFY(!app.universe().isRunning()); // Stopped once it quit
     QCOMPARE(probe->starts(), 1);
     QVERIFY(app.errorString().isEmpty());
+    QVERIFY(failed.isEmpty());
 }
 
 void TestNebulaApplication::refusesToStart()
 {
     CommandLine line;
     NebulaApplication app(line.count(), line.values(), writeGalaxy(path(GalaxyName), {probe(u"Probe1"_s, true)}));
+    const QSignalSpy failed(&app, &NebulaApplication::failed);
     QVERIFY(app.isLoaded());
     QTest::ignoreMessage(QtCriticalMsg, QRegularExpression(u"^The galaxy .* refused to start: "_s));
     QCOMPARE(app.exec(), NebulaApplication::StartFailed);
     QVERIFY(!app.universe().isRunning());
     QVERIFY(!app.errorString().isEmpty());
+    QCOMPARE(failed.count(), 1); // Told once, with no box
+    QCOMPARE(failed.constFirst().constFirst().toString(), app.errorString());
+}
+
+void TestNebulaApplication::failureBox_data()
+{
+    QTest::addColumn<bool>("loaded");
+    QTest::addColumn<int>("code");
+
+    QTest::newRow("a galaxy that is not loaded") << false << NebulaApplication::LoadFailed;
+    QTest::newRow("a galaxy that refuses to start") << true << NebulaApplication::StartFailed;
+}
+
+void TestNebulaApplication::failureBox()
+{
+    QFETCH(bool, loaded);
+    QFETCH(int, code);
+
+    const QString galaxy = loaded ? writeGalaxy(path(GalaxyName), {probe(u"Probe1"_s, true)}) : path(GalaxyName);
+    CommandLine line;
+    // Its messages to the console, which QTest does not see: why it fails, and what the platform of the tests warns
+    // of when a box is shown, that it has no fonts and does not follow the size the box asks for.
+    NebulaApplication app(line.count(), line.values(), galaxy,
+                          {.executable = {.name = u"Clock"_s}, .console = true, .failureBox = true});
+    const QSignalSpy failed(&app, &NebulaApplication::failed);
+    QCOMPARE(app.isLoaded(), loaded);
+
+    // The box blocks exec() until it is closed: what it shows is read from its event loop.
+    QStringList shown;
+    QTimer::singleShot(0, &app, [&shown, &failed] { shown = closeBox(failed.count()); });
+    QCOMPARE(app.exec(), code);
+    QCOMPARE(shown, (QStringList{u"Clock"_s, app.errorString(), u"1"_s})); // Once failed() told it
 }
 
 void TestNebulaApplication::logLevel_data()
@@ -412,8 +627,7 @@ void TestNebulaApplication::logLevel()
         }
     };
     CommandLine line({u"--log-level"_s, level});
-    QCommandLineParser parser;
-    const NebulaApplication app(line.count(), line.values(), parser, writeGalaxy(path(GalaxyName)), {.logger = logger});
+    const NebulaApplication app(line.count(), line.values(), writeGalaxy(path(GalaxyName)), {.logger = logger});
     for(const int type : written)
     {
         QTest::ignoreMessage(static_cast<QtMsgType>(type), "logged"); // Where Qt writes them, as well
@@ -428,9 +642,8 @@ void TestNebulaApplication::logLevel()
 void TestNebulaApplication::unknownLogLevel()
 {
     CommandLine line({u"--log-level"_s, u"verbose"_s});
-    QCommandLineParser parser;
     QTest::ignoreMessage(QtCriticalMsg, "Unknown log level verbose: debug, info, warning, critical, fatal");
-    NebulaApplication app(line.count(), line.values(), parser, writeGalaxy(path(GalaxyName)));
+    NebulaApplication app(line.count(), line.values(), writeGalaxy(path(GalaxyName)));
     QVERIFY(!app.isLoaded());
     QCOMPARE(app.exec(), NebulaApplication::LoadFailed);
 }
@@ -442,8 +655,7 @@ void TestNebulaApplication::logFile()
     for(const QString& message : {u"first"_s, u"second"_s})
     {
         CommandLine line({u"--log-file"_s, logFile});
-        QCommandLineParser parser;
-        const NebulaApplication app(line.count(), line.values(), parser, path(GalaxyName));
+        const NebulaApplication app(line.count(), line.values(), path(GalaxyName));
         QVERIFY2(app.isLoaded(), qPrintable(app.errorString()));
         QTest::ignoreMessage(QtInfoMsg, qPrintable(message)); // Where Qt writes them, as well
         qCInfo(lcTest).noquote() << message;
@@ -458,9 +670,8 @@ void TestNebulaApplication::logFile()
 void TestNebulaApplication::logFileRefused()
 {
     CommandLine line({u"--log-file"_s, m_directory->path()}); // A directory
-    QCommandLineParser parser;
     QTest::ignoreMessage(QtCriticalMsg, QRegularExpression(u"^Cannot open the log file "_s));
-    NebulaApplication app(line.count(), line.values(), parser, writeGalaxy(path(GalaxyName)));
+    NebulaApplication app(line.count(), line.values(), writeGalaxy(path(GalaxyName)));
     QVERIFY(!app.isLoaded());
     QCOMPARE(app.exec(), NebulaApplication::LoadFailed);
 }
@@ -500,8 +711,7 @@ void TestNebulaApplication::messagesBackToQt()
     int calls = 0;
     {
         CommandLine line({u"--log-level"_s, u"warning"_s});
-        QCommandLineParser parser;
-        const NebulaApplication app(line.count(), line.values(), parser, writeGalaxy(path(GalaxyName)),
+        const NebulaApplication app(line.count(), line.values(), writeGalaxy(path(GalaxyName)),
                                     {.logger = counting(calls)});
         QVERIFY(!lcTest().isDebugEnabled());
     }

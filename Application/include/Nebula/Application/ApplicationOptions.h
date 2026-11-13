@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <QList>
 #include <QString>
 #include <QStringList>
 #include <QtGlobal>
@@ -20,6 +21,20 @@ struct ExecutableInfo
     QString version;
     QString organization; // Part of the paths of QStandardPaths::AppConfigLocation, where settings files are written
     QString organizationDomain;
+    QString description; // What it is for, which --help shows
+    QString icon;        // The file of the icon of its windows, a resource say; relative, from its directory
+};
+
+// An argument of the command line of an application, which a NebulaApplication gives to a property of an instance of
+// its galaxy once it is loaded: the file a window opens as it starts, say. --help shows it as [name], with its
+// description: none has to be given, and the first argument given is the first one declared.
+struct CommandLineArgument
+{
+    QString name;
+    QString description;
+    QString instance;  // The instance of the galaxy it is given to, by its name
+    QString property;  // The property of that instance it is given to, converted to its type
+    bool path = false; // Whether it is a file or a directory: given absolute then, read from the current directory
 };
 
 // What a message of the application is given to, as a QtMessageHandler is: its type, where it comes from, its category
@@ -27,10 +42,10 @@ struct ExecutableInfo
 // for another thread that logs. A message it logs itself is written by Qt to the error output, not given to it again.
 using Logger = std::function<void(QtMsgType type, const QMessageLogContext& context, const QString& message)>;
 
-// How a NebulaApplication finds its galaxy and its plugins, and writes its messages, as its code tells it. Its command
-// line, when it reads one, adds to them or replaces them: see NebulaApplication::addCommandLineOptions(). A relative
-// directory or file is read from the directory of the executable here, and from the current directory on the command
-// line.
+// How a NebulaApplication finds its galaxy and its plugins, reads its command line, writes its messages and tells what
+// fails, as its code tells it. Its command line adds to them or replaces them: see
+// NebulaApplication::addCommandLineOptions(). A relative directory or file is read from the directory of the
+// executable here, and from the current directory on the command line.
 struct ApplicationOptions
 {
     // Scanned for plugins after plugins/ next to the executable, in their order, then those of --plugin-dir: a plugin
@@ -43,6 +58,12 @@ struct ApplicationOptions
     // is the one.
     QStringList galaxyDirectories = {QStringLiteral("scene")};
     ExecutableInfo executable;
+    // Whether the command line is read, with the options of the application and its arguments: an option none
+    // declared is refused then. An application that reads its command line all by itself sets it to false; one that
+    // only adds options of its own gives its QCommandLineParser to the application instead.
+    bool commandLine = true;
+    // What the command line gives the instances of the galaxy, in the order they are given in.
+    QList<CommandLineArgument> arguments;
     // The least severe messages written: QtDebugMsg writes all those Qt writes, QtInfoMsg leaves the debug ones out,
     // QtWarningMsg the information too, then QtCriticalMsg the warnings and QtFatalMsg the critical ones. The rules of
     // QT_LOGGING_RULES take precedence over it. --log-level replaces it.
@@ -55,6 +76,9 @@ struct ApplicationOptions
     QString logFile;
     // What the messages are given to as well, to be shown in a window, say; none when it is empty.
     Logger logger;
+    // Whether exec() tells in a box why the galaxy does not run, which is only logged otherwise: for an application
+    // with windows, whose messages nobody reads.
+    bool failureBox = false;
 };
 
 } // namespace Nebula
