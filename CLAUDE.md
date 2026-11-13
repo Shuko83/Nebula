@@ -407,24 +407,33 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 catégorie `nebula.application`).
 
 - `NebulaApplication` (`QApplication`, `Q_OBJECT`) : la `QApplication` d'un exécutable dont le contenu est une galaxy.
-  Deux constructeurs, `(argc, argv, galaxy, options)` sans ligne de commande, et `(argc, argv, parser, galaxy,
-  options)` : `setExecutableInfo()` (avant que `--version` lise la version), `processCommandLine()`
-  (`addCommandLineOptions()` puis `parser.process()`, après les options déclarées par le `main`, qui relit ensuite le
-  même parser), `readCommandLine()` (les `--galaxy-dir` en tête, depuis le dossier courant ; `--log-level`,
-  `--log-file`, `--console`), puis `load()` : `startLog()` (le `MessageLog`), l'`Universe` (`m_universe`, construite
-  après le journal, qui voit donc ses avertissements de scan ; toujours là, même sans galaxy), puis, si rien n'est
-  refusé, `addPlugins()` (dossiers du code par `scanPluginDirectory()`, racine, puis `Universe::applyCommandLine()`) et
-  `openGalaxy()` : `findGalaxy()` (chemin absolu tel quel, sinon le premier des dossiers qui l'a), `Universe::open()`
-  strict. `refuse()` écrit `errorString()` et le journalise en critique ; `isLoaded()`, `galaxyFile()`, `universe()`.
-  `exec()` (cache `QCoreApplication::exec()`, statique) : `LoadFailed` (1) aussitôt si rien n'est chargé,
-  `StartFailed` (2) si `start()` refuse, sinon `QApplication::exec()` puis `stop()` (fichiers de réglages écrits pendant
-  que l'application existe encore) et le code de sortie. Destructeur par défaut : `m_log` est déclaré avant
-  `m_universe`, détruite d'abord.
+  Deux constructeurs (issue #165), `(argc, argv, galaxy, options)`, qui lit la ligne de commande avec un parser à lui,
+  local (rien n'en est lu après), sauf `commandLine = false`, et `(argc, argv, parser, galaxy, options)`, avec celui
+  d'un `main` qui a ses propres options ; tous deux par `build()` : `setExecutableInfo()` (avant que `--version` lise
+  la version ; l'icône des fenêtres par `setIconFile()`), `processCommandLine()` (`describe()` : la description et les
+  arguments des options, chacun `[nom]`, puis `addCommandLineOptions()` et `parser.process()`, après les options
+  déclarées par le `main`, qui relit ensuite le même parser), `readCommandLine()` (les `--galaxy-dir` en tête, depuis
+  le dossier courant ; `--log-level`, `--log-file`, `--console`), puis `load()` : `startLog()` (le `MessageLog`),
+  l'`Universe` (`m_universe`, construite après le journal, qui voit donc ses avertissements de scan ; toujours là, même
+  sans galaxy), puis, si rien n'est refusé, `addPlugins()` (dossiers du code par `scanPluginDirectory()`, racine, puis
+  `Universe::applyCommandLine()`), `openGalaxy()` : `findGalaxy()` (chemin absolu tel quel, sinon le premier des
+  dossiers qui l'a), `Universe::open()` strict, et `giveArguments()` : chaque argument donné sur la ligne de commande,
+  dans l'ordre des `arguments`, écrit par `giveArgument()` dans la propriété de son instance (`Universe::component()`,
+  `writeProperty()` : `QMetaProperty::write()`, qui convertit le texte, jamais une propriété dynamique), absolu depuis
+  le dossier courant s'il est `path` ; une instance absente ou une propriété qui ne le prend pas refuse le chargement
+  (`cannotGive()`), ceux donnés en plus sont laissés. `refuse()` écrit `errorString()` et le journalise en critique ;
+  `isLoaded()`, `galaxyFile()`, `universe()`. `exec()` (cache `QCoreApplication::exec()`, statique) : `LoadFailed` (1)
+  aussitôt si rien n'est chargé, `StartFailed` (2) si `start()` refuse, tous deux par `tellFailure()` (signal
+  `failed(why)`, puis une `QMessageBox` au titre de l'application si `failureBox`), sinon `QApplication::exec()` puis
+  `stop()` (fichiers de réglages écrits pendant que l'application existe encore) et le code de sortie. Destructeur par
+  défaut : `m_log` est déclaré avant `m_universe`, détruite d'abord.
 - `ApplicationOptions` (en-tête seul) : `pluginDirectories`, `pluginRoot`, `galaxyDirectories` (`scene` par défaut),
-  `executable` (`ExecutableInfo {name, version, organization, organizationDomain}`, chaque partie vide laissée à Qt),
-  `logLevel` (`QtMsgType`, `QtDebugMsg` = rien de filtré), `console`, `logFile`, `logger` (`Logger`, un
-  `std::function` de la forme d'un `QtMessageHandler`). Chemins relatifs : depuis le dossier de l'exécutable dans le
-  code (`executableDirectory()`), depuis le dossier courant sur la ligne de commande (rendus absolus à la lecture).
+  `executable` (`ExecutableInfo {name, version, organization, organizationDomain, description, icon}`, chaque partie
+  vide laissée à Qt ; `description` pour `--help`, `icon` le fichier de l'icône des fenêtres), `commandLine` (vrai),
+  `arguments` (`CommandLineArgument {name, description, instance, property, path}`), `logLevel` (`QtMsgType`,
+  `QtDebugMsg` = rien de filtré), `console`, `logFile`, `logger` (`Logger`, un `std::function` de la forme d'un
+  `QtMessageHandler`), `failureBox` (faux). Chemins relatifs : depuis le dossier de l'exécutable dans le code
+  (`executableDirectory()`), depuis le dossier courant sur la ligne de commande (rendus absolus à la lecture).
 - `MessageLog` (privé, `src/`) : filtre par `QLoggingCategory::setFilterRules()` (`*.debug=false`… sous le niveau ; noms
   des niveaux dans `Levels`, du moins grave au plus grave, `levelNamed()` sans casse), puis, s'il y a console, fichier
   ou logger, installe `handle()` par `qInstallMessageHandler()` : sous un `QMutex` (statiques `current`, `previous`),
@@ -467,11 +476,12 @@ binaire, le même par son nom, ce que `TestLogComponent` vérifie. Messages en a
 
 ## NebulaStudio
 
-`main.cpp` (issue #73) : une `NebulaApplication` de `NebulaStudio.nbp` (`scene/` à côté de l'exécutable), avec le nom
-et la version de `NebulaStudio_info.h` mais pas son organisation (voir Pièges), le projet passé en argument (`[project]`,
-après les options de `NebulaApplication`) donné, absolu, à la propriété `file` de l'instance `Project` (`openFirst()`),
-puis `runWithSplash()` : le `SplashScreen` montré, fermé sur `read()`, pendant `exec()` ; `tellFailure()` dit dans une
-`QMessageBox` pourquoi la galaxy ne tourne pas (`errorString()`). Le thème vient du `StudioComponent` de la galaxy.
+`main.cpp` (issues #73 et #165) : une `NebulaApplication` de `NebulaStudio.nbp` (`scene/` à côté de l'exécutable), ses
+`options()` et un `main` de quatre lignes : le nom et la version de `NebulaStudio_info.h` mais pas son organisation
+(voir Pièges), sa description, son icône (`logoPath()`), l'argument `[project]`, un chemin, donné à la propriété `file`
+de l'instance `Project`, et `failureBox`, qui dit dans une boîte pourquoi la galaxy ne tourne pas ; puis
+`showUntilRead()` : le `SplashScreen` montré si la galaxy est chargée, fermé sur `read()` ou sur `failed()` de
+l'application (avant la boîte), pendant `exec()`. Le thème vient du `StudioComponent` de la galaxy.
 La galaxy (`StudioPlugin/`, issue #103) assemble les parties de NebulaStudio (`Studio`, `EditionZone`, `Project`,
 `PluginPanel`, `GalaxyPanel`, `ComponentPanel`, `PropertyEditor`, `ProblemList`) par des composants : deux colonnes
 dans un splitter horizontal (issue #104), à gauche la zone d'édition au-dessus de `ProblemList` (splitter vertical),
@@ -793,11 +803,20 @@ ini, celui des formats qui n'ont pas le leur).
   des autres. Lancé par **Start** dans NebulaStudio, il filtre aussi les messages de NebulaStudio, le même processus.
 - Galaxy de NebulaStudio (#103, #73) : le splash ne se montre qu'une fois la galaxy chargée (`NebulaApplication` charge
   dans son constructeur, et n'offre aucun crochet avant), et `main.cpp` trouve le `Project` par le nom de son instance :
-  une galaxy enregistrée sans lui n'ouvre pas le projet passé en argument, sans rien en dire. Sa fenêtre
+  une galaxy enregistrée sans lui refuse le projet passé en argument, dans une boîte, et NebulaStudio ne s'ouvre pas
+  (#165) ; sans projet en argument, elle tourne. Sa fenêtre
   ne demande d'enregistrer qu'à sa fermeture : arrêtée (**Stop**) ou détruite avec l'application qui la fait tourner,
   elle perd ce qui n'est pas enregistré. Une partie qui perd puis retrouve son `studio` est refaite à neuf : l'état de
   ses listes (sélection, recherche) est perdu. Dans le paquet, la galaxy et la licence de la police ne sont ajoutées
   que par `release.yml`, que rien d'autre ne vérifie.
+- Arguments d'une `NebulaApplication` (#165) : des arguments seulement, pas d'options nommées (`--nom valeur`, pour
+  lesquelles le `main` passe son parser), tous facultatifs, donnés à une propriété d'une instance de l'application
+  elle-même : ni à une instance d'une galaxy posée, ni à un objet d'un composant (`propertyObjects()`), ni à une
+  propriété exposée. Ceux donnés en plus de ceux déclarés sont ignorés sans un mot. La boîte de `failureBox` n'est
+  montrée que par `exec()`, et `failed()` n'est émis que par lui : un `main` qui n'appelle pas `exec()` ne dit rien.
+  `--help`, `--version` et le refus d'une option inconnue quittent le processus (`QCommandLineParser::process()`) : les
+  tests lisent `helpText()` du parser d'un `main`, le reste n'est vérifié qu'à la main, comme le `main` de NebulaStudio.
+  La leçon 9 du wiki garde le constructeur avec parser, le seul qui lit la ligne de commande avec la 3.0.0 publiée.
 - Nom du paquet et détails des binaires (#139) : `release.yml` ne publie que sur un tag `X.Y.Z` égal à la version de
   `project()` : un `-rc0` se construit, mais ne se publie pas. Seule la CI Windows construit le paquet : les noms des
   autres plateformes et compilateurs (`linux`, `gcc14`) ne sont vérifiés que par `TestPackageName`, sur des valeurs
