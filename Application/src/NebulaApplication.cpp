@@ -6,12 +6,17 @@
 #include <QCommandLineParser>
 #include <QDir>
 #include <QFileInfo>
+#include <QIcon>
 #include <QLoggingCategory>
+#include <QMessageBox>
+#include <QMetaProperty>
 #include <algorithm>
 #include <iterator>
 #include <optional>
+#include <ranges>
 
 #include "MessageLog.h"
+#include "Nebula/Component/Component.h"
 
 namespace Nebula
 {
@@ -99,6 +104,43 @@ void setUnlessEmpty(const QString& value, void (*set)(const QString&))
     }
 }
 
+// Gives the windows of the application the icon of the file filePath, read from the directory of the executable when
+// it is relative.
+void setIconFile(const QString& filePath)
+{
+    QApplication::setWindowIcon(QIcon(absolutePath(executableDirectory(), filePath)));
+}
+
+// Adds to parser what options tell of the command line: what the application is for, when they tell it, and its
+// arguments, each one optional.
+void describe(QCommandLineParser& parser, const ApplicationOptions& options)
+{
+    if(!options.executable.description.isEmpty())
+    {
+        parser.setApplicationDescription(options.executable.description);
+    }
+    for(const CommandLineArgument& argument : options.arguments)
+    {
+        parser.addPositionalArgument(argument.name, argument.description, QStringLiteral("[%1]").arg(argument.name));
+    }
+}
+
+// Writes value to the property of instance named name, converted to its type; false when it has none, or one that
+// does not take it.
+bool writeProperty(Component& instance, const QString& name, const QString& value)
+{
+    const QMetaObject* metaObject = instance.metaObject();
+    const int index = metaObject->indexOfProperty(name.toUtf8().constData());
+    return index >= 0 && metaObject->property(index).write(&instance, value);
+}
+
+// Why argument cannot be given to the property of the instance it tells: why.
+QString cannotGive(const CommandLineArgument& argument, const QString& why)
+{
+    return QStringLiteral("The argument %1 cannot be given to %2.%3: %4")
+        .arg(argument.name, argument.instance, argument.property, why);
+}
+
 // Adds to parser the options of the messages: their level, their file and the console.
 void addLogOptions(QCommandLineParser& parser)
 {
@@ -115,17 +157,14 @@ void addLogOptions(QCommandLineParser& parser)
 NebulaApplication::NebulaApplication(int& argc, char** argv, const QString& galaxy, const ApplicationOptions& options)
     : QApplication(argc, argv)
 {
-    setExecutableInfo(options.executable);
-    load(galaxy, options, nullptr);
+    QCommandLineParser parser; // All that is read from it is read here
+    load(galaxy, options, options.commandLine ? &parser : nullptr);
 }
 
 NebulaApplication::NebulaApplication(int& argc, char** argv, QCommandLineParser& parser, const QString& galaxy,
-                                     ApplicationOptions options)
+                                     const ApplicationOptions& options)
     : QApplication(argc, argv)
 {
-    setExecutableInfo(options.executable); // Before the command line is processed: --version tells it
-    processCommandLine(parser);
-    readCommandLine(parser, options);
     load(galaxy, options, &parser);
 }
 
@@ -172,7 +211,7 @@ int NebulaApplication::exec()
 {
     if(!m_loaded || !startGalaxy())
     {
-        return m_loaded ? StartFailed : LoadFailed;
+        return tellFailure(m_loaded ? StartFailed : LoadFailed);
     }
     const int code = QApplication::exec();
     m_universe->stop(); // While the application is whole: its settings files are written
@@ -185,12 +224,18 @@ void NebulaApplication::setExecutableInfo(const ExecutableInfo& info)
     setUnlessEmpty(info.version, &QCoreApplication::setApplicationVersion);
     setUnlessEmpty(info.organization, &QCoreApplication::setOrganizationName);
     setUnlessEmpty(info.organizationDomain, &QCoreApplication::setOrganizationDomain);
+    setUnlessEmpty(info.icon, &setIconFile);
 }
 
-void NebulaApplication::processCommandLine(QCommandLineParser& parser)
+void NebulaApplication::processCommandLine(QCommandLineParser* parser, ApplicationOptions& options)
 {
-    addCommandLineOptions(parser);
-    parser.process(*this);
+    if(parser != nullptr) // Not read otherwise: options tell it all
+    {
+        describe(*parser, options);
+        addCommandLineOptions(*parser);
+        parser->process(*this);
+        readCommandLine(*parser, options);
+    }
 }
 
 void NebulaApplication::readCommandLine(const QCommandLineParser& parser, ApplicationOptions& options)
@@ -225,15 +270,17 @@ void NebulaApplication::readLogLevel(const QString& name, ApplicationOptions& op
     options.logLevel = *level;
 }
 
-void NebulaApplication::load(const QString& galaxy, const ApplicationOptions& options,
-                             const QCommandLineParser* commandLine)
+void NebulaApplication::load(const QString& galaxy, ApplicationOptions options, QCommandLineParser* commandLine)
 {
+    setExecutableInfo(options.executable); // Before the command line is processed: --version tells it
+    processCommandLine(commandLine, options);
+    m_failureBox = options.failureBox;
     startLog(options);
     m_universe = std::make_unique<Universe>(); // Once the messages are written as asked: it tells the plugins it skips
     if(m_errorString.isEmpty())
     {
         addPlugins(options, commandLine);
-        m_loaded = openGalaxy(galaxy, options.galaxyDirectories);
+        m_loaded = openGalaxy(galaxy, options.galaxyDirectories) && giveArguments(options.arguments, commandLine);
     }
 }
 
@@ -275,6 +322,27 @@ bool NebulaApplication::openGalaxy(const QString& galaxy, const QStringList& dir
     return m_universe->open(m_galaxyFile) || refuse(cannotLoad(m_galaxyFile, m_universe->errorString()));
 }
 
+bool NebulaApplication::giveArguments(const QList<CommandLineArgument>& arguments,
+                                      const QCommandLineParser* commandLine)
+{
+    const QStringList values = commandLine != nullptr ? commandLine->positionalArguments() : QStringList();
+    const qsizetype given = std::min(values.size(), arguments.size());
+    return std::ranges::all_of(std::views::iota(qsizetype{0}, given), [this, &arguments, &values](qsizetype index)
+                               { return giveArgument(arguments.at(index), values.at(index)); });
+}
+
+bool NebulaApplication::giveArgument(const CommandLineArgument& argument, const QString& value)
+{
+    Component* instance = m_universe->component(argument.instance);
+    if(instance == nullptr)
+    {
+        return refuse(cannotGive(argument, QStringLiteral("the galaxy has no instance %1").arg(argument.instance)));
+    }
+    const QString given = argument.path ? absolutePath(QDir::current(), value) : value;
+    return writeProperty(*instance, argument.property, given) ||
+           refuse(cannotGive(argument, QStringLiteral("this property does not exist, or does not take %1").arg(given)));
+}
+
 bool NebulaApplication::startGalaxy()
 {
     if(m_universe->start())
@@ -283,6 +351,16 @@ bool NebulaApplication::startGalaxy()
     }
     return refuse(QStringLiteral("The galaxy %1 refused to start: %2")
                       .arg(QDir::toNativeSeparators(m_galaxyFile), m_universe->errorString()));
+}
+
+int NebulaApplication::tellFailure(int code)
+{
+    emit failed(m_errorString);
+    if(m_failureBox)
+    {
+        QMessageBox::critical(nullptr, applicationDisplayName(), m_errorString);
+    }
+    return code;
 }
 
 bool NebulaApplication::refuse(const QString& why)
