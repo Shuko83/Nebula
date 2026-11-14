@@ -409,12 +409,12 @@ catégorie `nebula.application`).
 - `NebulaApplication` (`QApplication`, `Q_OBJECT`) : la `QApplication` d'un exécutable dont le contenu est une galaxy.
   Deux constructeurs (issue #165), `(argc, argv, galaxy, options)`, qui lit la ligne de commande avec un parser à lui,
   local (rien n'en est lu après), sauf `commandLine = false`, et `(argc, argv, parser, galaxy, options)`, avec celui
-  d'un `main` qui a ses propres options ; tous deux par `build()` : `setExecutableInfo()` (avant que `--version` lise
-  la version ; l'icône des fenêtres par `setIconFile()`), `processCommandLine()` (`describe()` : la description et les
-  arguments des options, chacun `[nom]`, puis `addCommandLineOptions()` et `parser.process()`, après les options
-  déclarées par le `main`, qui relit ensuite le même parser), `readCommandLine()` (les `--galaxy-dir` en tête, depuis
-  le dossier courant ; `--log-level`, `--log-file`, `--console`), puis `load()` : `startLog()` (le `MessageLog`),
-  l'`Universe` (`m_universe`, construite après le journal, qui voit donc ses avertissements de scan ; toujours là, même
+  d'un `main` qui a ses propres options ; tous deux par `load()` (voir Pièges) : `setExecutableInfo()` (avant que
+  `--version` lise la version ; l'icône des fenêtres par `setIconFile()`), `processCommandLine()`, rien sans parser
+  (`describe()` : la description et les arguments des options, chacun `[nom]`, puis `addCommandLineOptions()` et
+  `parser.process()`, après les options déclarées par le `main`, qui relit ensuite le même parser, puis
+  `readCommandLine()` : les `--galaxy-dir` en tête, depuis le dossier courant ; `--log-level`, `--log-file`,
+  `--console`), `startLog()` (le `MessageLog`), l'`Universe` (`m_universe`, construite après le journal, qui voit donc ses avertissements de scan ; toujours là, même
   sans galaxy), puis, si rien n'est refusé, `addPlugins()` (dossiers du code par `scanPluginDirectory()`, racine, puis
   `Universe::applyCommandLine()`), `openGalaxy()` : `findGalaxy()` (chemin absolu tel quel, sinon le premier des
   dossiers qui l'a), `Universe::open()` strict, et `giveArguments()` : chaque argument donné sur la ligne de commande,
@@ -1015,6 +1015,13 @@ ini, celui des formats qui n'ont pas le leur).
   ce qu'on y enregistre se perd au build suivant, mais c'est elle que `NebulaStudio.exe` fait tourner d'ici là : une
   galaxy cassée là donne un NebulaStudio cassé, ou une boîte d'erreur, jusqu'au build suivant (dans le paquet, rien ne
   la refait). Ses composants sont placés vers le milieu de la scène (4000×3000), là où la vue s'ouvre.
+- Une méthode d'une classe exportée (`CORE_EXPORT`, `APPLICATION_EXPORT`) garde son corps dans la DLL même quand le
+  compilateur l'inline à tous ses appels : ce corps n'est alors jamais appelé, et la couverture de la CI (Release
+  optimisé) compte ses lignes comme non couvertes, quoi que fassent les tests. Une petite méthode privée qui ne fait
+  qu'en appeler d'autres y est exposée : `build()` de `NebulaApplication`, commune à ses deux constructeurs, a fait
+  échouer la quality gate de la PR de l'issue #165, et son contenu est passé dans `load()`. Une fonction de l'espace
+  de noms anonyme inlinée, elle, n'a plus de lignes du tout. Cela se voit en local sans OpenCppCoverage :
+  `dumpbin -exports` donne l'adresse de la méthode, `dumpbin -disasm` montre si un `call` y mène.
 - `NebulaApplication::exec()` cache `QCoreApplication::exec()`, statique : un appel par la classe de base
   (`QApplication::exec()`) fait tourner la boucle sans démarrer la galaxy. Ce qu'une `NebulaApplication` donne à
   `QCoreApplication` (nom, version, organisation) et le gestionnaire de messages sont globaux au processus : ils

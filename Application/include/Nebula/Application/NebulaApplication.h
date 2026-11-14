@@ -82,22 +82,21 @@ class APPLICATION_EXPORT NebulaApplication : public QApplication
     void failed(const QString& why);
 
   private:
-    // What both constructors do: loads galaxy as options tell, and as commandLine tells when there is one.
-    void build(const QString& galaxy, ApplicationOptions options, QCommandLineParser* commandLine);
     // Gives QCoreApplication what info tells of the executable, each part that is not empty.
     static void setExecutableInfo(const ExecutableInfo& info);
-    // Adds to parser what options tell of the command line, then the options of the application, and processes the
-    // command line with it.
-    void processCommandLine(QCommandLineParser& parser, const ApplicationOptions& options);
+    // Adds to parser what options tell of the command line, then the options of the application, processes the
+    // command line with it, and has options tell what it tells, see readCommandLine(). Nothing without a parser.
+    void processCommandLine(QCommandLineParser* parser, ApplicationOptions& options);
     // Adds to options what the command line, processed by parser, adds to them, or replaces what they tell with it.
     void readCommandLine(const QCommandLineParser& parser, ApplicationOptions& options);
     // readCommandLine() of the options of the messages.
     void readLogOptions(const QCommandLineParser& parser, ApplicationOptions& options);
     // Sets the log level of options to the one named name; refuses a name it does not know.
     void readLogLevel(const QString& name, ApplicationOptions& options);
-    // Writes the messages as options tell, then, unless something is refused already, loads galaxy as they tell, the
-    // plugin directories of commandLine, when there is one, scanned after theirs.
-    void load(const QString& galaxy, const ApplicationOptions& options, const QCommandLineParser* commandLine);
+    // What both constructors do: tells what the executable is, has commandLine, when there is one, add to options
+    // or replace them, writes the messages as they tell, then, unless something is refused already, loads galaxy as
+    // they tell, the plugin directories of commandLine scanned after theirs.
+    void load(const QString& galaxy, ApplicationOptions options, QCommandLineParser* commandLine);
     // Writes the messages as options tell from now on; refuses a log file that cannot be opened.
     void startLog(ApplicationOptions options);
     // Lists the plugins of the directories of options, then of those of commandLine, and sets the plugin root.

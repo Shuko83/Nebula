@@ -158,14 +158,14 @@ NebulaApplication::NebulaApplication(int& argc, char** argv, const QString& gala
     : QApplication(argc, argv)
 {
     QCommandLineParser parser; // All that is read from it is read here
-    build(galaxy, options, options.commandLine ? &parser : nullptr);
+    load(galaxy, options, options.commandLine ? &parser : nullptr);
 }
 
 NebulaApplication::NebulaApplication(int& argc, char** argv, QCommandLineParser& parser, const QString& galaxy,
                                      const ApplicationOptions& options)
     : QApplication(argc, argv)
 {
-    build(galaxy, options, &parser);
+    load(galaxy, options, &parser);
 }
 
 NebulaApplication::~NebulaApplication() = default;
@@ -218,18 +218,6 @@ int NebulaApplication::exec()
     return code;
 }
 
-void NebulaApplication::build(const QString& galaxy, ApplicationOptions options, QCommandLineParser* commandLine)
-{
-    setExecutableInfo(options.executable); // Before the command line is processed: --version tells it
-    if(commandLine != nullptr)
-    {
-        processCommandLine(*commandLine, options);
-        readCommandLine(*commandLine, options);
-    }
-    m_failureBox = options.failureBox;
-    load(galaxy, options, commandLine);
-}
-
 void NebulaApplication::setExecutableInfo(const ExecutableInfo& info)
 {
     setUnlessEmpty(info.name, &QCoreApplication::setApplicationName);
@@ -239,11 +227,15 @@ void NebulaApplication::setExecutableInfo(const ExecutableInfo& info)
     setUnlessEmpty(info.icon, &setIconFile);
 }
 
-void NebulaApplication::processCommandLine(QCommandLineParser& parser, const ApplicationOptions& options)
+void NebulaApplication::processCommandLine(QCommandLineParser* parser, ApplicationOptions& options)
 {
-    describe(parser, options);
-    addCommandLineOptions(parser);
-    parser.process(*this);
+    if(parser != nullptr) // Not read otherwise: options tell it all
+    {
+        describe(*parser, options);
+        addCommandLineOptions(*parser);
+        parser->process(*this);
+        readCommandLine(*parser, options);
+    }
 }
 
 void NebulaApplication::readCommandLine(const QCommandLineParser& parser, ApplicationOptions& options)
@@ -278,9 +270,11 @@ void NebulaApplication::readLogLevel(const QString& name, ApplicationOptions& op
     options.logLevel = *level;
 }
 
-void NebulaApplication::load(const QString& galaxy, const ApplicationOptions& options,
-                             const QCommandLineParser* commandLine)
+void NebulaApplication::load(const QString& galaxy, ApplicationOptions options, QCommandLineParser* commandLine)
 {
+    setExecutableInfo(options.executable); // Before the command line is processed: --version tells it
+    processCommandLine(commandLine, options);
+    m_failureBox = options.failureBox;
     startLog(options);
     m_universe = std::make_unique<Universe>(); // Once the messages are written as asked: it tells the plugins it skips
     if(m_errorString.isEmpty())
