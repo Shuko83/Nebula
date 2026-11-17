@@ -74,7 +74,12 @@ const QJsonObject& Galaxy::project() const
     return m_project;
 }
 
-const QStringList& Galaxy::problems() const
+QStringList Galaxy::problems() const
+{
+    return m_problems + problemsIn(componentsOfType<const Galaxy>(m_components));
+}
+
+const QStringList& Galaxy::ownProblems() const
 {
     return m_problems;
 }

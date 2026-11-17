@@ -65,6 +65,38 @@ const QByteArray ThreeOutlets = R"({"version": 1,
                     "exposed": [{"name": "size", "component": "Outlets", "property": "count"},
                                 {"name": "third", "component": "Outlets", "object": "object3", "property": "level"}]}]})";
 
+// A galaxy of a plugin the application does not know, Other.Plugin, whose Ticker its stargate binds to, and of a
+// Source a Sink is bound to: its stargate exposes "out", what the Ticker provides, the label of the Source, as "label",
+// and the speed of the Ticker, as "speed".
+const QByteArray Partial = R"({"version": 1,
+    "plugins": [{"id": "Other.Plugin", "file": "other.nbdl"}, {"id": "Other.Plugin", "file": "other.nbdl"}],
+    "components": [{"name": "Source", "type": "Test.Source", "properties": {"label": "tick"}},
+                   {"name": "Ticker", "type": "Other.Plugin.Ticker"},
+                   {"name": "Sink", "type": "Test.Sink"},
+                   {"name": "Gate", "type": "Nebula.Stargate",
+                    "provided": [{"name": "out", "type": "QObject*"}],
+                    "exposed": [{"name": "label", "component": "Source", "property": "label"},
+                                {"name": "speed", "component": "Ticker", "property": "speed"}]}],
+    "bindings": [{"consumer": "Sink", "consumed": "object", "provider": "Source", "provided": "object"},
+                 {"consumer": "Gate", "consumed": "out", "provider": "Ticker", "provided": "display"}]})";
+
+// What a galaxy of the file Partial holds misses, in that order.
+const QStringList PartialProblems{u"The plugin Other.Plugin is not loaded: the application does not know it"_s,
+                                  u"Ticker is missing: no loaded plugin provides Other.Plugin.Ticker"_s,
+                                  u"out of Gate could not be bound to display of Ticker"_s,
+                                  u"The property speed of Ticker is not exposed by Gate as speed"_s};
+
+// problems, each said to be in the galaxy named name.
+QStringList in(const QString& name, const QStringList& problems)
+{
+    QStringList said;
+    for(const QString& problem : problems)
+    {
+        said.append(u"In "_s + name + u": "_s + problem);
+    }
+    return said;
+}
+
 // A project that places the galaxy of the file path, relative to it, as name.
 QByteArray placing(const QString& path, const QString& name = u"Clock1"_s)
 {
@@ -163,8 +195,12 @@ class TestGalaxy : public QObject
     void refused_data();
     void refused();
     void loadsItsPlugins();
+    void withoutUnknownPlugins();
+    void inProjectWithoutUnknownPlugins();
     void nested();
     void problems();
+    void problemsOfGalaxiesReadAgain();
+    void problemsChanged();
     void saveAndLoad_data();
     void saveAndLoad();
     void loadReportsMissingGalaxies();
@@ -203,7 +239,9 @@ class TestGalaxy : public QObject
     void reloadRefused_data();
     void reloadRefused();
     void reloadLeftEmpty();
+    void reloadWithoutUnknownPlugins();
     void restoreGalaxy();
+    void restoreWithoutUnknownPlugins();
     void restoreRefused_data();
     void restoreRefused();
 };
@@ -299,8 +337,6 @@ void TestGalaxy::refused_data()
 
     QTest::newRow("missing file") << "Missing.nbp" << "" << false << "Missing.nbp cannot be read";
     QTest::newRow("not a project") << "Broken.nbp" << "" << false << "Broken.nbp cannot be read";
-    QTest::newRow("unknown plugin") << "Unknown.nbp" << "" << false
-                                    << "Unknown.nbp needs plugins the application does not know: Other.Plugin";
     QTest::newRow("holds itself") << "Self.nbp" << "" << false << "Self.nbp would hold itself, directly or not";
     QTest::newRow("holds itself, not directly") << "A.nbp" << "" << false << "A.nbp would hold itself, directly or not";
     QTest::newRow("is the application") << "App.nbp" << "App.nbp" << false
@@ -321,9 +357,6 @@ void TestGalaxy::refused()
     const QTemporaryDir directory;
     QVERIFY(!write(directory, u"Clock.nbp"_s, Clock).isEmpty());
     QVERIFY(!write(directory, u"Broken.nbp"_s, "{ version").isEmpty());
-    QVERIFY(!write(directory, u"Unknown.nbp"_s,
-                   R"({"version": 1, "plugins": [{"id": "Other.Plugin", "file": "other.nbdl"}]})")
-                 .isEmpty());
     QVERIFY(!write(directory, u"Self.nbp"_s, placing(u"Self.nbp"_s, u"Me"_s)).isEmpty());
     QVERIFY(!write(directory, u"A.nbp"_s, placing(u"B.nbp"_s, u"B1"_s)).isEmpty());
     QVERIFY(!write(directory, u"B.nbp"_s, placing(u"A.nbp"_s, u"A1"_s)).isEmpty());
@@ -367,6 +400,55 @@ void TestGalaxy::loadsItsPlugins()
     QCOMPARE(plugins.first().toObject().value(u"id").toString(), FirstPluginId);
 }
 
+// A galaxy one of whose plugins the application does not know is placed all the same, with what its file holds that
+// can be.
+void TestGalaxy::withoutUnknownPlugins()
+{
+    const QTemporaryDir directory;
+    const QString filePath = write(directory, u"Partial.nbp"_s, Partial);
+    Universe universe;
+    const Galaxy* galaxy = universe.instantiateGalaxy(filePath);
+    QVERIFY2(galaxy != nullptr, qPrintable(universe.errorString()));
+    QVERIFY(universe.errorString().isEmpty());
+
+    // Without the Ticker, nor what was bound to it, nor what was exposed of it; the rest as its file holds it.
+    QCOMPARE(namesOf(galaxy->components()), (QStringList{"Source", "Sink", "Gate"}));
+    QCOMPARE(galaxy->component(u"Source"_s)->property("label").toString(), u"tick"_s);
+    QCOMPARE(galaxy->component(u"Sink"_s)->binding(u"object"_s).provider, galaxy->component(u"Source"_s));
+    QCOMPARE(interfaceNames(galaxy->providedInterfaces()), QStringList{"out"});
+    QCOMPARE(exposedValue(*galaxy, u"label"_s).toString(), u"tick"_s);
+    QVERIFY(!galaxy->exposedProperty(u"speed"_s).has_value());
+    // Told, the plugin first, once, then what is missing without it: all of it is its own.
+    QCOMPARE(galaxy->problems(), PartialProblems);
+    QCOMPARE(galaxy->ownProblems(), PartialProblems);
+}
+
+// In a project, such a galaxy is placed too, bound to the rest of the application and given the values the project
+// gives it: what it misses is told after what the project misses itself, and the project is not opened whole.
+void TestGalaxy::inProjectWithoutUnknownPlugins()
+{
+    const QTemporaryDir directory;
+    QVERIFY(!write(directory, u"Partial.nbp"_s, Partial).isEmpty());
+    const QString filePath = write(directory, u"App.nbp"_s, R"({"version": 1,
+        "components": [{"name": "Part1", "type": "Nebula.Galaxy", "galaxy": "Partial.nbp",
+                        "properties": {"label": "tock", "speed": 3}},
+                       {"name": "Sink1", "type": "Test.Sink"},
+                       {"name": "X", "type": "Test.Unknown"}],
+        "bindings": [{"consumer": "Sink1", "consumed": "object", "provider": "Part1", "provided": "out"}]})");
+
+    Universe universe;
+    QVERIFY(!universe.open(filePath));
+    QCOMPARE(namesOf(universe.components()), (QStringList{"Part1", "Sink1"}));
+    const auto* part = qobject_cast<const Galaxy*>(universe.component(u"Part1"_s));
+    QVERIFY(part != nullptr);
+    QCOMPARE(universe.component(u"Sink1"_s)->binding(u"object"_s).provider, part);
+    QCOMPARE(exposedValue(*part, u"label"_s).toString(), u"tock"_s);
+    QCOMPARE(universe.errorString().split(u'\n'),
+             QStringList({u"The property speed of Part1 could not be set"_s,
+                          u"X is missing: no loaded plugin provides Test.Unknown"_s}) +
+                 in(u"Part1"_s, PartialProblems));
+}
+
 void TestGalaxy::nested()
 {
     const QTemporaryDir directory;
@@ -396,17 +478,90 @@ void TestGalaxy::problems()
                                        {"name": "Part1", "type": "Nebula.Galaxy", "galaxy": "Partial.nbp"},
                                        {"name": "Gone1", "type": "Nebula.Galaxy", "galaxy": "Gone.nbp"}]})");
 
-    // Placed all the same, telling what it misses.
+    // Placed all the same, telling what it misses: what its file does first, then what the galaxies it holds do.
     Universe universe;
     const Galaxy* home = universe.instantiateGalaxy(filePath);
     QVERIFY(home != nullptr);
     QCOMPARE(namesOf(home->components()), QStringList{"Part1"});
     const QStringList problems = home->problems();
     QCOMPARE(problems.size(), 3);
-    QCOMPARE(problems.at(0), u"In Part1: The property nope of P could not be set"_s);
-    QCOMPARE(problems.at(1), u"In Part1: X is missing: no loaded plugin provides Test.Unknown"_s);
-    QVERIFY2(problems.at(2).startsWith(u"Gone1 is missing: "_s) && problems.at(2).contains(u"cannot be read"_s),
-             qPrintable(problems.at(2)));
+    QVERIFY2(problems.at(0).startsWith(u"Gone1 is missing: "_s) && problems.at(0).contains(u"cannot be read"_s),
+             qPrintable(problems.at(0)));
+    QCOMPARE(problems.at(1), u"In Part1: The property nope of P could not be set"_s);
+    QCOMPARE(problems.at(2), u"In Part1: X is missing: no loaded plugin provides Test.Unknown"_s);
+    QCOMPARE(home->ownProblems(), problems.first(1));
+}
+
+// What the galaxies a galaxy holds miss is told among its problems as they miss it now: once one of them is read again
+// from its file mended, it misses nothing, nor does the galaxy that holds it.
+void TestGalaxy::problemsOfGalaxiesReadAgain()
+{
+    const QTemporaryDir directory;
+    const QString partialPath = write(directory, u"Partial.nbp"_s, Partial);
+    Universe universe;
+    const Galaxy* home =
+        universe.instantiateGalaxy(write(directory, u"Home.nbp"_s, placing(u"Partial.nbp"_s, u"Part1"_s)));
+    QVERIFY(home != nullptr);
+    auto* part = qobject_cast<Galaxy*>(home->component(u"Part1"_s));
+    QVERIFY(part != nullptr);
+    QCOMPARE(home->ownProblems(), QStringList());
+    QCOMPARE(home->problems(), in(u"Part1"_s, PartialProblems));
+
+    // Its file written as it is placed, as saving it writes it: without what it missed.
+    QVERIFY(rewrite(partialPath, universe.saveGalaxy(*part)));
+    QCOMPARE(universe.reloadGalaxy(*part), QStringList());
+    QCOMPARE(namesOf(part->components()), (QStringList{"Source", "Sink", "Gate"}));
+    QCOMPARE(part->problems(), QStringList());
+    QCOMPARE(home->problems(), QStringList());
+}
+
+// problemsChanged() tells that what the galaxies miss may have changed while the components of the application did
+// not: a galaxy that misses something placed, renamed, pasted or removed in a galaxy, or a galaxy read again.
+void TestGalaxy::problemsChanged()
+{
+    const QTemporaryDir directory;
+    const QString partialPath = write(directory, u"Partial.nbp"_s, Partial);
+    const QString clockPath = write(directory, u"Clock.nbp"_s, Clock);
+    Universe universe;
+    const QSignalSpy problemsChanged(&universe, &Universe::problemsChanged);
+    // In the application, which componentsChanged() tells.
+    Galaxy* part = universe.instantiateGalaxy(partialPath);
+    Galaxy* home = universe.instantiateGalaxy(write(directory, u"Home.nbp"_s, R"({"version": 1})"));
+    QVERIFY(part != nullptr && home != nullptr);
+    QVERIFY(universe.rename(*part, u"Part"_s));
+    QCOMPARE(problemsChanged.count(), 0);
+
+    // In a galaxy, one that misses nothing.
+    Galaxy* clock = universe.instantiateGalaxy(clockPath, {}, home);
+    QVERIFY(clock != nullptr);
+    QVERIFY(universe.rename(*clock, u"Clock"_s));
+    QVERIFY(universe.remove(*clock));
+    QCOMPARE(problemsChanged.count(), 0);
+
+    // One that misses something: placed, renamed, pasted, removed.
+    Galaxy* inner = universe.instantiateGalaxy(partialPath, {}, home);
+    QVERIFY(inner != nullptr);
+    QCOMPARE(problemsChanged.count(), 1);
+    QCOMPARE(home->problems(), in(u"Partial1"_s, PartialProblems));
+    QVERIFY(universe.rename(*inner, u"Inner"_s));
+    QCOMPARE(problemsChanged.count(), 2);
+    QCOMPARE(home->problems(), in(u"Inner"_s, PartialProblems));
+    QStringList problems;
+    QCOMPARE(universe.insertInstances(universe.saveInstances({part}), home, problems).size(), 1);
+    QCOMPARE(problemsChanged.count(), 3);
+    QCOMPARE(problems, in(u"Part"_s, PartialProblems));
+    QVERIFY(universe.remove(*inner));
+    QCOMPARE(problemsChanged.count(), 4);
+    QCOMPARE(home->problems(), in(u"Part"_s, PartialProblems));
+
+    // Read again, or restored, whatever it misses.
+    QCOMPARE(universe.reloadGalaxy(*home), QStringList());
+    QCOMPARE(problemsChanged.count(), 5);
+    QCOMPARE(universe.restoreGalaxy(*home, QJsonDocument::fromJson(R"({"version": 1})").object()), QStringList());
+    QCOMPARE(problemsChanged.count(), 6);
+    // Not when one of the application is removed, which its components tell.
+    QVERIFY(universe.remove(*part));
+    QCOMPARE(problemsChanged.count(), 6);
 }
 
 void TestGalaxy::saveAndLoad_data()
@@ -1424,8 +1579,6 @@ void TestGalaxy::reloadRefused_data()
 
     QTest::newRow("file removed") << "" << false << false << "Gated1 is not read again: ";
     QTest::newRow("not a project") << "{ version" << false << false << "Gated1 is not read again: ";
-    QTest::newRow("unknown plugin") << R"({"version": 1, "plugins": [{"id": "Other.Plugin", "file": "o.nbdl"}]})"
-                                    << false << false << "Gated1 is not read again: ";
     QTest::newRow("while running") << "" << true << false << "Gated1 is not read again while the application runs";
     QTest::newRow("of another application")
         << "" << false << true << "Gated1 is not read again: it is not a galaxy of the application";
@@ -1489,6 +1642,25 @@ void TestGalaxy::reloadLeftEmpty()
     QCOMPARE(universe.component(u"Gated1"_s), galaxy);
 }
 
+// A file that needs a plugin the application does not know is read again all the same, without its components.
+void TestGalaxy::reloadWithoutUnknownPlugins()
+{
+    const QTemporaryDir directory;
+    Universe universe;
+    Galaxy* galaxy = universe.instantiateGalaxy(write(directory, u"Gated.nbp"_s, Gated));
+    QVERIFY(galaxy != nullptr);
+    QVERIFY(!write(directory, u"Gated.nbp"_s, Partial).isEmpty());
+
+    const QSignalSpy reloaded(galaxy, &Galaxy::reloaded);
+    const QStringList problems = universe.reloadGalaxy(*galaxy);
+    QCOMPARE(reloaded.count(), 1);
+    QCOMPARE(namesOf(galaxy->components()), (QStringList{"Source", "Sink", "Gate"}));
+    QCOMPARE(galaxy->problems(), PartialProblems);
+    // What it misses, then what it lost: the value of what it no longer exposes.
+    QCOMPARE(problems, in(u"Gated1"_s, PartialProblems) +
+                           QStringList{u"Gated1 no longer exposes rate: the value it had is lost"_s});
+}
+
 void TestGalaxy::restoreGalaxy()
 {
     const QTemporaryDir directory;
@@ -1535,25 +1707,39 @@ void TestGalaxy::restoreGalaxy()
     QCOMPARE(readJson(filePath), QJsonDocument::fromJson(Gated).object());
 }
 
+// A project that needs a plugin the application does not know is given all the same, without its components.
+void TestGalaxy::restoreWithoutUnknownPlugins()
+{
+    const QTemporaryDir directory;
+    Universe universe;
+    Galaxy* galaxy = universe.instantiateGalaxy(write(directory, u"Gated.nbp"_s, Gated));
+    QVERIFY(galaxy != nullptr);
+
+    const QJsonObject project = QJsonDocument::fromJson(Partial).object();
+    QCOMPARE(universe.restoreGalaxy(*galaxy, project), in(u"Gated1"_s, PartialProblems));
+    QCOMPARE(namesOf(galaxy->components()), (QStringList{"Source", "Sink", "Gate"}));
+    QCOMPARE(galaxy->problems(), PartialProblems);
+    QCOMPARE(galaxy->project(), project);
+}
+
 void TestGalaxy::restoreRefused_data()
 {
-    QTest::addColumn<QByteArray>("project");
     QTest::addColumn<bool>("running");
-    QTest::addColumn<bool>("ofAnother");  // Whether another application is asked
-    QTest::addColumn<QString>("problem"); // How it starts
+    QTest::addColumn<bool>("ofAnother");       // Whether another application is asked
+    QTest::addColumn<bool>("applicationFile"); // Whether the application has the file of the galaxy since
+    QTest::addColumn<QString>("problem");      // How it starts
 
-    QTest::newRow("unknown plugin") << QByteArray(R"({"version": 1, "plugins": [{"id": "Other.Plugin"}]})") << false
-                                    << false << "Gated1 is not restored: ";
-    QTest::newRow("while running") << Clock << true << false << "Gated1 is not read again while the application runs";
+    QTest::newRow("would hold itself") << false << false << true << "Gated1 is not restored: ";
+    QTest::newRow("while running") << true << false << false << "Gated1 is not read again while the application runs";
     QTest::newRow("of another application")
-        << Clock << false << true << "Gated1 is not read again: it is not a galaxy of the application";
+        << false << true << false << "Gated1 is not read again: it is not a galaxy of the application";
 }
 
 void TestGalaxy::restoreRefused()
 {
-    QFETCH(QByteArray, project);
     QFETCH(bool, running);
     QFETCH(bool, ofAnother);
+    QFETCH(bool, applicationFile);
     QFETCH(QString, problem);
 
     const QTemporaryDir directory;
@@ -1565,10 +1751,14 @@ void TestGalaxy::restoreRefused()
     {
         QVERIFY(universe.start());
     }
+    if(applicationFile)
+    {
+        universe.setFilePath(filePath); // Saved there since, say: the galaxy would hold the application
+    }
     const QSignalSpy aboutToBeReloaded(galaxy, &Galaxy::aboutToBeReloaded);
 
     Universe other;
-    const QJsonObject json = QJsonDocument::fromJson(project).object();
+    const QJsonObject json = QJsonDocument::fromJson(Clock).object();
     const QStringList problems = ofAnother ? other.restoreGalaxy(*galaxy, json) : universe.restoreGalaxy(*galaxy, json);
     QCOMPARE(problems.size(), 1);
     QVERIFY2(problems.first().startsWith(problem), qPrintable(problems.first()));

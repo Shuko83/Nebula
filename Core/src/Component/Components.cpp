@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <ranges>
 
+#include "Nebula/Galaxy/Galaxy.h"
+
 namespace Nebula
 {
 
@@ -34,6 +36,19 @@ void stopInReverse(ComponentSpan components)
     {
         component->stop(); // Does nothing to one that does not run
     }
+}
+
+QStringList problemsIn(const QList<const Galaxy*>& galaxies)
+{
+    QStringList problems;
+    for(const Galaxy* galaxy : galaxies)
+    {
+        for(const QString& problem : galaxy->problems())
+        {
+            problems.append(QStringLiteral("In %1: %2").arg(galaxy->objectName(), problem));
+        }
+    }
+    return problems;
 }
 
 } // namespace Nebula

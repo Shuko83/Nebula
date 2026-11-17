@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QList>
+#include <QStringList>
 #include <memory>
 #include <span>
 #include <vector>
@@ -12,6 +13,8 @@
 
 namespace Nebula
 {
+
+class Galaxy;
 
 // The components an application or a galaxy owns, in their order.
 using ComponentSpan = std::span<const std::unique_ptr<Component>>;
@@ -38,5 +41,9 @@ template <typename T> [[nodiscard]] QList<T*> componentsOfType(ComponentSpan com
 Component* startInOrder(ComponentSpan components);
 // Stops components from the last one; one that does not run is left as it is.
 void stopInReverse(ComponentSpan components);
+
+// What galaxies miss, see Galaxy::problems(), in their order, each problem saying which galaxy it is in: "In Clock1:
+// ...".
+[[nodiscard]] QStringList problemsIn(const QList<const Galaxy*>& galaxies);
 
 } // namespace Nebula
