@@ -26,6 +26,12 @@ QMessageBox::StandardButton askToSave(QWidget* parent, const QString& text)
                                 QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
 }
 
+bool confirmSaving(QWidget* parent, const QString& title, const QString& text)
+{
+    return QMessageBox::warning(parent, title, text, QMessageBox::Save | QMessageBox::Cancel, QMessageBox::Cancel) ==
+           QMessageBox::Save;
+}
+
 QLabel* createPluginDirectoryLabel()
 {
     return new QLabel(QCoreApplication::translate("Messages", "Plugins of %1")

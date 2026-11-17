@@ -20,7 +20,7 @@ namespace
 // The project files, as NebulaStudio saves them.
 const QString GalaxyFilter = QStringLiteral("*.nbp");
 
-// What state tells of galaxy: whether it can be loaded, and why not.
+// What state tells of galaxy: whether it can be loaded whole, and why not.
 QString stateText(const GalaxyModel::Galaxy& galaxy)
 {
     if(!galaxy.info)
@@ -30,7 +30,7 @@ QString stateText(const GalaxyModel::Galaxy& galaxy)
     return galaxy.missingPlugins.isEmpty() ? GalaxyModel::tr("Loadable") : GalaxyModel::tr("Missing plugins");
 }
 
-// What the tool tip of its state tells of galaxy: why it cannot be loaded.
+// What the tool tip of its state tells of galaxy: why it cannot be loaded whole.
 QVariant stateToolTip(const GalaxyModel::Galaxy& galaxy)
 {
     if(!galaxy.info)
@@ -80,7 +80,12 @@ void watchAll(QFileSystemWatcher& watcher, const QStringList& paths)
 
 bool ListedGalaxy::isLoadable() const
 {
-    return info && missingPlugins.isEmpty();
+    return info.has_value();
+}
+
+bool ListedGalaxy::isWhole() const
+{
+    return isLoadable() && missingPlugins.isEmpty();
 }
 
 GalaxyModel::GalaxyModel(const Nebula::Universe& application, QObject* parent)
@@ -174,7 +179,7 @@ QVariant GalaxyModel::rowData(const Galaxy& galaxy, int role)
     {
         return galaxy.filePath;
     }
-    // Dimmed when it cannot be loaded, in the color of the hints: it is still read.
+    // Dimmed when it cannot be loaded at all, in the color of the hints: it is still read.
     return galaxy.isLoadable() ? QVariant() : QVariant(QBrush(currentThemeColors().mutedText));
 }
 
@@ -200,7 +205,7 @@ QVariant GalaxyModel::stateData(const Galaxy& galaxy, int role) const
     }
     if(role == Qt::DecorationRole)
     {
-        return galaxy.isLoadable() ? QVariant() : QVariant(m_warningIcon); // Told without color too
+        return galaxy.isWhole() ? QVariant() : QVariant(m_warningIcon); // Told without color too
     }
     return role == Qt::ToolTipRole ? stateToolTip(galaxy) : QVariant();
 }

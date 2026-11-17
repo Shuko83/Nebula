@@ -14,16 +14,17 @@
 namespace
 {
 
-// Why a galaxy cannot be loaded when the application does not know missing, its plugins, and what to do about it.
+// What is left out of a galaxy when the application does not know missing, its plugins, and what to do about it.
 QString missingPluginsText(const QStringList& missing)
 {
-    return GalaxyViewer::tr("This galaxy cannot be loaded: NebulaStudio does not know these plugins of it.\n%1\n"
+    return GalaxyViewer::tr("NebulaStudio does not know these plugins of this galaxy: their components are left out "
+                            "when it is opened or placed.\n%1\n"
                             "Open them with Open plugin... in the Plugins tab, or give their directory to "
                             "NebulaStudio with --plugin-dir.")
         .arg(missing.join(u'\n'));
 }
 
-// Why galaxy cannot be loaded, and what to do about it; empty when it can be.
+// Why galaxy cannot be loaded whole, and what to do about it; empty when it can be.
 QString errorText(const GalaxyModel::Galaxy& galaxy)
 {
     if(!galaxy.info)

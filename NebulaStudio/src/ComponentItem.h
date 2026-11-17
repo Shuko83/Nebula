@@ -32,9 +32,10 @@ class ComponentFactory;
 // right edge, each until it is put on the other one or its row swapped with another, and rows of text under them when
 // it is given some. A triangle in
 // its top right corner tells that it runs. An exclamation mark in its top left corner tells that it does not work: an
-// interface it cannot do without is bound to nothing, see Component::unboundMandatoryInterfaces(); its tooltip names
-// them and tells how to bind them. It can be selected, and, while it is editable, moved, and its name edited in place
-// by double-clicking its names. It can be given a color, which its names are written over.
+// interface it cannot do without is bound to nothing, see Component::unboundMandatoryInterfaces(), or it misses what
+// it is given, a galaxy placed without what could not be restored of its file say, see setProblems(); its tooltip
+// tells which, and how to bind what is not. It can be selected, and, while it is editable, moved, and its name edited
+// in place by double-clicking its names. It can be given a color, which its names are written over.
 class ComponentItem : public QGraphicsObject
 {
     Q_OBJECT
@@ -88,6 +89,13 @@ class ComponentItem : public QGraphicsObject
     void setOpenable(const QString& about, const QString& howToOpen);
     // The rows under its interfaces, as a stargate lists the properties it exposes; none until it is given some.
     void setRows(const QList<Row>& rows);
+    // What keeps it from working beyond the interfaces it misses, a sentence each, as Nebula::Galaxy::problems() tells
+    // what a galaxy misses: marked with them as without one of those, and its tooltip tells them. None until it is
+    // given some.
+    void setProblems(const QStringList& problems);
+    [[nodiscard]] const QStringList& problems() const;
+    // Whether it does not work, which its mark tells: it misses an interface, or has problems.
+    [[nodiscard]] bool isMarked() const;
     // Whether the names of its interfaces are edited in place by double-clicking them, as those of a stargate are, see
     // interfaceNameEdited(): they are not until told otherwise.
     void setInterfacesRenamable(bool renamable);
@@ -154,8 +162,8 @@ class ComponentItem : public QGraphicsObject
     void forgetLost();
     // Whether it works: what it misses is drawn in the warning color, and told by its mark and its tooltip.
     void refreshUnbound();
-    // What it is, how it opens, and what it misses, unbound, when it does not work.
-    [[nodiscard]] QString toolTipText(const QStringList& unbound) const;
+    // What it is, how it opens, and what keeps it from working: the interfaces it misses, then its problems.
+    [[nodiscard]] QString toolTipText() const;
     // Where its rows start: under its interfaces.
     [[nodiscard]] qreal rowsTop() const;
     // The editor of the names of interfaces, created when first asked for.
@@ -193,7 +201,8 @@ class ComponentItem : public QGraphicsObject
 
     Nebula::Component& m_component;
     QString m_componentName;
-    QStringList m_unbound; // Component::unboundMandatoryInterfaces(), as refreshInterfaces() last read them
+    QStringList m_unbound;  // Component::unboundMandatoryInterfaces(), as refreshInterfaces() last read them
+    QStringList m_problems; // See setProblems()
     QColor m_color;
     bool m_editable = true;
     QIcon m_icon; // Before the name of its component

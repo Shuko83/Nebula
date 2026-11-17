@@ -38,13 +38,14 @@ class SettingsFile;
 // a scene of its own, where it is edited as the application is, under a path back to the application, each level a
 // button that shows it again once those further down are left: leaving a galaxy changed since it was shown asks
 // whether to save it, see leaveGalaxies(). Save Galaxy writes the galaxy shown to its file, then reads every instance
-// of that file again from it. On the right of the path, a field finds the instances of the application, and of its
-// galaxies at any depth, by their name or the one of their component, see ComponentFinder, and shows the one found in
-// the middle of the view, once the galaxy it is in is shown there, see showGalaxy(). Its View menu gives the keys
-// to that field, zooms the view and chooses how the links of every scene are drawn, as its studio keeps it; its Run
-// menu starts the application, which is not edited while it runs, and stops it. What its scenes and its field refuse
-// or tell, it tells through its studio, as the plugins a galaxy placed loaded. An overview of the whole scene shown,
-// beside it, follows its view, see createOverview().
+// of that file again from it; a galaxy placed without what could not be restored of its file is only saved once
+// confirmed, as saving it leaves that out. On the right of the path, a field finds the instances of the application,
+// and of its galaxies at any depth, by their name or the one of their component, see ComponentFinder, and shows the one
+// found in the middle of the view, once the galaxy it is in is shown there, see showGalaxy(). Its View menu gives the
+// keys to that field, zooms the view and chooses how the links of every scene are drawn, as its studio keeps it; its
+// Run menu starts the application, which is not edited while it runs, and stops it. What its scenes and its field
+// refuse or tell, it tells through its studio, as the plugins a galaxy placed loaded. An overview of the whole scene
+// shown, beside it, follows its view, see createOverview().
 // What is edited in its scenes, and through edit(), is kept in the history it is given, step by step: its Edit menu
 // undoes the last step (Ctrl+Z) and does again the last one undone (Ctrl+Shift+Z), in whichever scene it was done,
 // unless what is typed, in a field or a name edited in place, takes the keys. Nothing is undone while the application
@@ -219,8 +220,13 @@ class EditionZone : public QWidget
     void readGalaxyAgain(Nebula::Galaxy& galaxy);
     // Saves the galaxy shown to its file, then reads every instance of that file again from it.
     void saveGalaxy();
-    // Writes the galaxy scene shows to its file; tells why and returns false when it cannot be written.
+    // Writes the galaxy scene shows to its file, once confirmed, see confirmLosing(); tells why and returns false when
+    // it cannot be written, and when it is not confirmed.
     bool writeGalaxy(const EditionScene& scene);
+    // Asks, when galaxy was placed without what could not be restored of its file, see Nebula::Galaxy::ownProblems(),
+    // whether to save it all the same, which leaves that out of its file. Returns whether to save it: true at once
+    // when it misses nothing.
+    bool confirmLosing(const Nebula::Galaxy& galaxy);
     // Reads every instance of the galaxy file filePath again from it, and tells what they could not keep.
     void readInstancesAgain(const QString& filePath);
     // Reads every instance of the galaxy file filePath again from it, and returns what they could not keep.

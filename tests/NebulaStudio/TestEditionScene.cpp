@@ -717,6 +717,7 @@ class TestEditionScene : public QObject
     void copyMenu();
     void pasteInGalaxy();
     void clipboardWhileRunning();
+    void galaxyMarkedWithWhatItMisses();
 
   private:
     // Shows in the scene a settings file of the application, written to directory, at SettingsAt; returns its item.
@@ -2552,6 +2553,47 @@ void TestEditionScene::clipboardWhileRunning()
     QCOMPARE(namesInClipboard(), QStringList{"Source1"});
     QCOMPARE(names(*m_application), (QStringList{"Source1", "Sink1"}));
     m_application->stop();
+}
+
+// A galaxy placed without what could not be restored of its file, here of the file of a galaxy it holds, is marked as
+// an instance that does not work, its tooltip telling what it misses; no longer once that galaxy is read again from
+// its file mended.
+void TestEditionScene::galaxyMarkedWithWhatItMisses()
+{
+    const QTemporaryDir directory;
+    const QString partPath = directory.filePath(QStringLiteral("Part.nbp"));
+    QFile part(partPath);
+    QVERIFY(part.open(QIODevice::WriteOnly) &&
+            part.write(R"({"version": 1, "components": [{"name": "X", "type": "Test.Unknown"}]})") > 0);
+    part.close();
+    QFile home(directory.filePath(QStringLiteral("Home.nbp")));
+    QVERIFY(home.open(QIODevice::WriteOnly) && home.write(R"({"version": 1, "components": [
+        {"name": "Part1", "type": "Nebula.Galaxy", "galaxy": "Part.nbp"}]})") > 0);
+    home.close();
+    QVERIFY(m_application->instantiateGalaxy(home.fileName(), QStringLiteral("Home1")) != nullptr);
+    QJsonObject project = m_scene->save();
+    place(project, QStringLiteral("Home1"), OtherSourceAt);
+    const QString missing = QStringLiteral("In Part1: X is missing: no loaded plugin provides Test.Unknown");
+    QCOMPARE(m_scene->load(project), QStringList{QStringLiteral("In Home1: ") + missing});
+
+    const ComponentItem* item = componentItem(*m_scene, QStringLiteral("Home1"));
+    QVERIFY(item != nullptr);
+    QVERIFY(item->isMarked());
+    QCOMPARE(item->problems(), QStringList{missing});
+    QVERIFY2(item->toolTip().endsWith(QStringLiteral("Misses what could not be restored:\n") + missing),
+             qPrintable(item->toolTip()));
+    // The others work.
+    QVERIFY(!componentItem(*m_scene, QStringLiteral("Sink1"))->isMarked());
+
+    QVERIFY(part.open(QIODevice::WriteOnly | QIODevice::Truncate) && part.write(R"({"version": 1})") > 0);
+    part.close();
+    auto* galaxy = qobject_cast<Nebula::Galaxy*>(m_application->component(QStringLiteral("Home1")));
+    auto* inner = qobject_cast<Nebula::Galaxy*>(galaxy->component(QStringLiteral("Part1")));
+    QVERIFY(inner != nullptr);
+    QCOMPARE(m_application->reloadGalaxy(*inner), QStringList());
+    QVERIFY(!item->isMarked());
+    QCOMPARE(item->problems(), QStringList());
+    QVERIFY(!item->toolTip().contains(QStringLiteral("could not be restored")));
 }
 
 QTEST_MAIN(TestEditionScene)

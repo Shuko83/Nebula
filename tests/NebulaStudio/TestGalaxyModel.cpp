@@ -143,17 +143,20 @@ void TestGalaxyModel::loadable_data()
 {
     QTest::addColumn<int>("row");
     QTest::addColumn<bool>("loadable");
+    QTest::addColumn<bool>("whole");
     QTest::addColumn<QStringList>("missingPlugins");
 
-    QTest::newRow("known plugins") << 0 << true << QStringList{};
-    QTest::newRow("unknown plugins") << 1 << false << QStringList{SecondPluginId, u"Other.Plugin"_s};
-    QTest::newRow("unreadable file") << 2 << false << QStringList{};
+    QTest::newRow("known plugins") << 0 << true << true << QStringList{};
+    // Loaded all the same, without the components of those plugins.
+    QTest::newRow("unknown plugins") << 1 << true << false << QStringList{SecondPluginId, u"Other.Plugin"_s};
+    QTest::newRow("unreadable file") << 2 << false << false << QStringList{};
 }
 
 void TestGalaxyModel::loadable()
 {
     QFETCH(int, row);
     QFETCH(bool, loadable);
+    QFETCH(bool, whole);
     QFETCH(QStringList, missingPlugins);
 
     const QString filePath = m_model->index(row, GalaxyModel::State).data(GalaxyModel::FilePathRole).toString();
@@ -161,9 +164,10 @@ void TestGalaxyModel::loadable()
     const std::optional<GalaxyModel::Galaxy> galaxy = m_model->galaxy(filePath);
     QVERIFY(galaxy.has_value());
     QCOMPARE(galaxy->isLoadable(), loadable);
+    QCOMPARE(galaxy->isWhole(), whole);
     QCOMPARE(galaxy->missingPlugins, missingPlugins);
     QCOMPARE(galaxy->error.isEmpty(), galaxy->info.has_value());
-    // Dimmed in every column when it cannot be loaded.
+    // Dimmed in every column when it cannot be loaded at all.
     for(int column = 0; column < GalaxyModel::ColumnCount; ++column)
     {
         const QVariant foreground = m_model->index(row, column).data(Qt::ForegroundRole);
@@ -181,7 +185,7 @@ void TestGalaxyModel::decoration()
     {
         QVERIFY(!m_model->index(row, GalaxyModel::Name).data(Qt::DecorationRole).value<QIcon>().isNull());
     }
-    // The state tells it without color too, with a mark.
+    // The state of one that cannot be loaded whole tells it without color too, with a mark.
     QVERIFY(!m_model->index(0, GalaxyModel::State).data(Qt::DecorationRole).isValid());
     QVERIFY(!m_model->index(1, GalaxyModel::State).data(Qt::DecorationRole).value<QIcon>().isNull());
     QVERIFY(!m_model->index(2, GalaxyModel::State).data(Qt::DecorationRole).value<QIcon>().isNull());
@@ -189,11 +193,11 @@ void TestGalaxyModel::decoration()
 
 void TestGalaxyModel::drag()
 {
-    // Only a galaxy that can be loaded, to be placed in the edition zone.
+    // A galaxy that can be loaded, whole or not, to be placed in the edition zone; not one that cannot be read.
     for(int column = 0; column < GalaxyModel::ColumnCount; ++column)
     {
         QVERIFY(m_model->flags(m_model->index(0, column)).testFlag(Qt::ItemIsDragEnabled));
-        QVERIFY(!m_model->flags(m_model->index(1, column)).testFlag(Qt::ItemIsDragEnabled));
+        QVERIFY(m_model->flags(m_model->index(1, column)).testFlag(Qt::ItemIsDragEnabled));
         QVERIFY(!m_model->flags(m_model->index(2, column)).testFlag(Qt::ItemIsDragEnabled));
     }
     QVERIFY(!m_model->flags({}).testFlag(Qt::ItemIsDragEnabled));

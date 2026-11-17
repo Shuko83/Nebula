@@ -21,5 +21,8 @@ void tell(QStatusBar& bar, const QString& message);
 void warn(QWidget* parent, const QString& title, const QString& text);
 // Asks, with text, over parent, whether to save what changed: Save, Discard, or Cancel to do neither.
 [[nodiscard]] QMessageBox::StandardButton askToSave(QWidget* parent, const QString& text);
+// Asks, in a box titled title, with text, over parent, whether to save all the same what text warns about: true for
+// Save, false for Cancel, which it offers first.
+[[nodiscard]] bool confirmSaving(QWidget* parent, const QString& title, const QString& text);
 // A label of the status bar that tells where the plugins are: plugins/ next to the application.
 [[nodiscard]] QLabel* createPluginDirectoryLabel();
