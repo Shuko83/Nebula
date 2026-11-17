@@ -35,8 +35,9 @@ namespace Nebula
 // each named, as its objectName, after its component and a number, e.g. Greeter1. It is read from a project file, as
 // NebulaStudio writes them, see README.md, or assembled with instantiate() and Component::bindInterface().
 // A project file is a galaxy, named after its file: readGalaxy() tells what it is without loading it, and
-// missingPlugins() whether it can be loaded. instantiateGalaxy() places it in the application, as one component, a
-// Galaxy, as many times as wanted. What its stargates expose, see addStargate(), is what the galaxy has once placed.
+// missingPlugins() whether it can be loaded whole. instantiateGalaxy() places it in the application, as one component,
+// a Galaxy, as many times as wanted, with what of its file can be: what cannot is told by Galaxy::problems(). What its
+// stargates expose, see addStargate(), is what the galaxy has once placed.
 // A galaxy placed is assembled as the application is, through an instance of it, which saveGalaxy() writes as its file
 // holds it: once the file is written, reloadGalaxy() gives the other instances, see galaxies(), what it holds now.
 // It is either edited or running, as its components are. While it runs, it is not assembled: its components, and those
@@ -83,13 +84,16 @@ class CORE_EXPORT Universe : public QObject
     // What the project file filePath tells of its galaxy, its name, its description and its plugins, without loading
     // it; nullopt, with error set, when read() cannot read it.
     [[nodiscard]] static std::optional<GalaxyInfo> readGalaxy(const QString& filePath, QString& error);
-    // The plugins of galaxy none of plugins() is, by id, in its order: it can be loaded when there are none. Unlike
-    // load(), which looks for a plugin it does not know in the file its project gives it, the file is not looked at.
+    // The plugins of galaxy none of plugins() is, by id, in its order: it can be loaded whole when there are none, and
+    // is placed without the components of those plugins otherwise, see instantiateGalaxy(). Unlike load(), which looks
+    // for a plugin it does not know in the file its project gives it, the file is not looked at.
     [[nodiscard]] QStringList missingPlugins(const GalaxyInfo& galaxy) const;
     // Replaces its components with those of project, as save() wrote it, and its description with the one of project:
     // loads its plugins, instantiates its components, sets their properties, places its galaxies, see
-    // instantiateGalaxy(), binds their interfaces and adds its settings files. Returns what could not be restored, a
-    // sentence each, those of its galaxies included: none when everything was.
+    // instantiateGalaxy(), binds their interfaces and adds its settings files. What cannot be is left out: a component
+    // no loaded plugin provides, a binding of an interface that is gone, a property that does not take its value...
+    // Returns what could not be restored, a sentence each, then what its galaxies miss, see Galaxy::problems(): none
+    // when everything was.
     QStringList load(const QJsonObject& project);
     // load() of the project the file filePath holds, from then on its filePath(). Returns false, with errorString()
     // set, when the file cannot be read, nothing being changed then, and when anything could not be restored.
@@ -108,16 +112,16 @@ class CORE_EXPORT Universe : public QObject
     // galaxy holds: its components and settings files are destroyed, see Galaxy::aboutToBeReloaded(), then those of
     // its file are placed in it, see instantiateGalaxy(). It keeps its name, the values of the properties it exposes
     // that it still exposes, and what is bound to its interfaces, and what they are bound to, under the names they
-    // still have. Returns what could not be restored, a sentence each, those of Galaxy::problems() included: none when
-    // everything was. Nothing is changed while it runs, nor when its file cannot be read, or one of its plugins is
-    // unknown or cannot be loaded, which is told.
+    // still have. What of its file cannot be is left out, as instantiateGalaxy() leaves it out. Returns what could not
+    // be restored, a sentence each, those of Galaxy::problems() included: none when everything was. Nothing is changed
+    // while it runs, nor when its file cannot be read, which is told.
     QStringList reloadGalaxy(Galaxy& galaxy);
     // Gives galaxy what project, as saveGalaxy() wrote it, holds, in place of what it holds, as reloadGalaxy() gives
     // it what its file holds: what was saved of it before it changed, say, to undo the change. Unlike reloadGalaxy(),
     // the values of what it exposes are those of project; what is bound to its interfaces, and what they are bound to,
     // stay as reloadGalaxy() keeps them. Its file is neither read nor written. Returns what could not be restored, a
-    // sentence each: none when everything was. Nothing is changed while it runs, nor when project would have it hold
-    // itself, or needs a plugin that is unknown or cannot be loaded, which is told.
+    // sentence each, a plugin of project that is unknown or cannot be loaded say: none when everything was. Nothing is
+    // changed while it runs, nor when project would have it hold itself, which is told.
     QStringList restoreGalaxy(Galaxy& galaxy, const QJsonObject& project);
 
     // The project file it is read from and saved to, absolute; empty until it is set, or opened. The file of a galaxy
@@ -141,11 +145,13 @@ class CORE_EXPORT Universe : public QObject
     // among plugins(), not by their file, and loaded when they are not yet; the galaxies it holds, at a path relative
     // to its file, are placed in it the same way. Its settings files are among those of the application, named after
     // it, as each instance of the galaxy has them: settings.json of Clock1 is Clock1.settings.json, and the one of a
-    // galaxy Clock1 in Home1 is Home1.Clock1.settings.json. What could not be restored is told by Galaxy::problems().
+    // galaxy Clock1 in Home1 is Home1.Clock1.settings.json. What of its file cannot be is left out, as load() leaves it
+    // out of a project: the components of a plugin that is unknown or cannot be loaded, and what is bound to them, a
+    // galaxy whose file cannot be read... Galaxy::problems() tells it.
     // It is placed in galaxy, one of its galaxies or of those they hold, as instantiate() places a component.
     // Returns nullptr, with errorString() set, while it runs, when galaxy is not one of its galaxies, when the file
-    // cannot be read, when one of its plugins is unknown or cannot be loaded, and when it would hold itself, the file
-    // of the application, or the file of a galaxy it is placed in, directly or not.
+    // cannot be read, and when it would hold itself, the file of the application, or the file of a galaxy it is placed
+    // in, directly or not.
     // The galaxy provides and consumes what its stargates expose, and its properties are those they expose, see
     // Galaxy::exposedProperties(): the ones of its file until they are set on it.
     Galaxy* instantiateGalaxy(const QString& filePath, const QString& name = {}, Galaxy* galaxy = nullptr);
@@ -177,10 +183,11 @@ class CORE_EXPORT Universe : public QObject
     // ends with, and the first number after that one no other instance has, Counter3 for Counter2, from 2 when it ends
     // with none. Their plugins are found by their id among plugins(), not by their file, and loaded when they are not
     // yet, as those of a galaxy. Returns them, in the order instances holds them; problems tells what could not be
-    // restored of them, a property say, a sentence each. Returns none, placing nothing, with errorString() set, while
-    // it runs, when galaxy is not one of its galaxies, when instances holds none, when one of their plugins is unknown
-    // or cannot be loaded, and when one of them cannot be placed: a galaxy that would hold itself, or the file of the
-    // application, directly or not, say.
+    // restored of them, a property say, a sentence each, then what the galaxies among them miss, see
+    // Galaxy::problems(): a galaxy is placed without what of its file cannot be. Returns none, placing nothing, with
+    // errorString() set, while it runs, when galaxy is not one of its galaxies, when instances holds none, when one of
+    // their plugins is unknown or cannot be loaded, and when one of them cannot be placed: a galaxy that would hold
+    // itself, or the file of the application, directly or not, say.
     QList<Component*> insertInstances(const QJsonObject& instances, Galaxy* galaxy, QStringList& problems);
     // In the order they were instantiated, its galaxies among them: not the components they hold.
     [[nodiscard]] const std::vector<std::unique_ptr<Component>>& components() const;
@@ -248,6 +255,10 @@ class CORE_EXPORT Universe : public QObject
     void settingsFilesChanged();
     // A settings file could not be read or written, see SettingsFile::failed(); why is a sentence to show.
     void settingsFileFailed(const QString& why);
+    // What one of its galaxies misses, see Galaxy::problems(), may have changed while its own components did not, see
+    // componentsChanged(): a galaxy was read again or restored, see reloadGalaxy() and restoreGalaxy(), or a galaxy
+    // that misses something was placed in another one, removed from it or renamed there.
+    void problemsChanged();
 
   private:
     // The properties a project holds of one of its components, or of one of their objects, with the values they had
@@ -325,6 +336,12 @@ class CORE_EXPORT Universe : public QObject
     // Tells that the settings files of the application changed when component is a galaxy that has some: they come or
     // go with it.
     void tellSettingsFilesOf(const Component* component);
+    // Tells, when scope is a galaxy, that what the galaxies miss changed when component is a galaxy that misses
+    // something, which comes into scope, goes from it, or is renamed there: see problemsChanged().
+    void tellProblemsOf(const Scope& scope, const Component* component);
+    // Tells what removed, removed from scope, changes: the components of the application, its settings files, and what
+    // its galaxies miss.
+    void tellRemoved(const Scope& scope, const Component* removed);
     // Destroys its components, out of components() first, as remove() does.
     void removeComponents();
     // Removes the instances of the plugin pluginId, and the galaxies that hold one.
@@ -379,23 +396,19 @@ class CORE_EXPORT Universe : public QObject
     // under that name otherwise; not valid when there is none.
     [[nodiscard]] QMetaType interfaceType(const Scope& scope, const QString& typeName) const;
 
-    // The project of the galaxy of filePath, read for it to be placed in parent, whose plugins are loaded; nullopt,
-    // with error set, when it cannot be placed there, see instantiateGalaxy().
+    // The project of the galaxy of filePath, read for it to be placed in parent; nullopt, with error set, when it
+    // cannot be read, or would hold itself there, see instantiateGalaxy().
     std::optional<QJsonObject> readGalaxyProject(const QString& filePath, const Scope& parent, QString& error);
-    // Whether the galaxy of info, whose file is nativePath, can be placed in parent: it does not hold itself, and its
-    // plugins are known and loaded. error tells why otherwise.
-    bool canPlace(const QString& nativePath, const GalaxyInfo& info, const Scope& parent, QString& error);
     // Whether the galaxy of the file nativePath, canonicalPath canonical, would hold itself in parent, directly or
     // not; error and the cycle of parent tell it then.
     static bool isCycle(const QString& nativePath, const QString& canonicalPath, const Scope& parent, QString& error);
     // Tells the galaxy of parent that one it holds would hold itself, as cycle tells: it is refused as well.
     static void tellCycle(const Scope& parent, const QString& cycle);
-    // Whether the application knows the plugins of the galaxy of info, whose file is nativePath; error tells those it
-    // does not.
-    bool knowsPlugins(const QString& nativePath, const GalaxyInfo& info, QString& error) const;
-    // Loads the plugins of the galaxy of info, whose file is nativePath; false, with error set, at the first that
-    // cannot be.
-    bool loadPlugins(const QString& nativePath, const GalaxyInfo& info, QString& error);
+    // Loads the plugins of project, the one of a galaxy, found by their id among plugins(); returns those that could
+    // not be, a sentence each: the galaxy is placed without their components.
+    QStringList loadGalaxyPlugins(const QJsonObject& project);
+    // Loads the plugin pluginId, one of a galaxy, unless it is loaded already; why it could not, empty when it could.
+    QString loadGalaxyPlugin(const QString& pluginId);
     // The galaxy of filePath, named name in parent, see instantiateGalaxy(); nullptr, with error set, when it cannot
     // be placed there. Not added to parent yet.
     std::unique_ptr<Galaxy> createGalaxy(const QString& filePath, const QString& name, const Scope& parent,
@@ -419,9 +432,9 @@ class CORE_EXPORT Universe : public QObject
     // The project of the file of galaxy, read again for it to be filled again in parent; nullopt, with error set, when
     // it can no longer be placed there.
     std::optional<QJsonObject> readAgain(const Galaxy& galaxy, const Scope& parent, QString& error);
-    // Whether galaxy, placed in parent, can be given project in place of what it holds: it would not hold itself, and
-    // the plugins of project are known and loaded. error tells why otherwise.
-    bool canRestore(const Galaxy& galaxy, const QJsonObject& project, const Scope& parent, QString& error);
+    // Whether galaxy, placed in parent, can be given another content in place of what it holds: it would not hold
+    // itself there. error tells why otherwise.
+    static bool canRestore(const Galaxy& galaxy, const Scope& parent, QString& error);
     // Fills galaxy again with project, the one of its file, in parent, keeping what is bound to its interfaces, either
     // way, and, when keepValues tells, the values of what it exposes; returns what is lost.
     QStringList reload(Galaxy& galaxy, const QJsonObject& project, const Scope& parent, bool keepValues);

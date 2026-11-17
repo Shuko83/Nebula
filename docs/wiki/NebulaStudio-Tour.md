@@ -40,14 +40,16 @@ the Qt and the compiler NebulaStudio was built with, for two seconds or until it
 - **The edition zone**, on the left, takes most of the room: the application being assembled. Above it, the path to
   the galaxy shown, when one is opened, and on the right the field that finds instances (Ctrl+Shift+F).
 - **The problems**, under it: one row for each interface an instance cannot do without and that is bound to nothing,
-  with how to fix it. Double-click a row to show its instance.
+  then one for each thing a galaxy placed misses of its file, with how to fix it. Double-click a row to show its
+  instance.
 - **The tabs**, on the right:
   - **Components**: the components of the plugins loaded, with a viewer of the one selected, its description and its
     properties. The search bar (Ctrl+F) keeps those whose name holds what is typed; the list next to it searches their
     **Description** or their **Category** instead. Drag a component into the edition zone to place it.
   - **Galaxies**: the project files of a directory, `scene/` next to NebulaStudio until **Choose directory...** gives
     another one. A galaxy is **Loadable**, misses some plugins (**Missing plugins**), or cannot be read
-    (**Unreadable**); the viewer tells why. Drag one into the edition zone to place it, or **Open** it.
+    (**Unreadable**); the viewer tells why. Drag one into the edition zone to place it, or **Open** it: one that misses
+    plugins is placed or opened without their components.
   - **Plugins**: the plugins found in `plugins/` and in each `--plugin-dir`, with their version and their state.
     NebulaStudio loads only those it needs, its own and those of the projects and galaxies it opens: **Load** the one
     selected to have its components in the **Components** tab, **Unload** it to take them away. **Open plugin...**

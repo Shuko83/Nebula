@@ -698,7 +698,18 @@ void EditionZone::saveGalaxy()
 
 bool EditionZone::writeGalaxy(const EditionScene& scene)
 {
-    return writeProjectFile(this, tr("Save galaxy"), scene.galaxy()->filePath(), scene.save());
+    return confirmLosing(*scene.galaxy()) &&
+           writeProjectFile(this, tr("Save galaxy"), scene.galaxy()->filePath(), scene.save());
+}
+
+bool EditionZone::confirmLosing(const Nebula::Galaxy& galaxy)
+{
+    const QStringList& lost = galaxy.ownProblems();
+    return lost.isEmpty() ||
+           confirmSaving(this, tr("Save galaxy"),
+                         tr("%1 was placed without what could not be restored of its file:\n%2\nSaving it writes %3 "
+                            "without it, and each of its instances is read again from it then.")
+                             .arg(galaxy.objectName(), lost.join(u'\n'), QDir::toNativeSeparators(galaxy.filePath())));
 }
 
 void EditionZone::readInstancesAgain(const QString& filePath)

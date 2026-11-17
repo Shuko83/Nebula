@@ -20,8 +20,25 @@ to it.
   the galaxy once it is loaded, and refused as a galaxy that cannot be loaded when it cannot be, and `failureBox`,
   which has `exec()` tell in a box why the galaxy does not run. `NebulaApplication::failed()` is emitted with the
   reason before that box.
+- What a galaxy misses of its file is shown while it is mended (#167): in NebulaStudio, the item of a galaxy placed
+  without part of its file, or that holds such a galaxy, carries the amber mark of an instance that does not work, its
+  tooltip telling what it misses, and the list of problems has a row for each thing a galaxy of the application
+  misses. Saving such a galaxy, with **Save Galaxy** or as it is left, asks first, telling what its file is about to
+  lose. In Core, `Galaxy::ownProblems()` tells what could not be restored of the file of a galaxy itself, and
+  `Universe::problemsChanged()` when what a galaxy misses may have changed.
 
 ### Changed
+
+- A galaxy one of whose plugins is unknown, or cannot be loaded, is placed without the components of that plugin
+  rather than refused whole (#167), as a project already was: by `Universe::instantiateGalaxy()`, in a project or in
+  another galaxy, pasted, read again by `reloadGalaxy()` or restored by `restoreGalaxy()`. Its problems tell the plugin
+  first, then what is missing without it. Only a file that cannot be read, and a galaxy that would hold itself, are
+  still refused. In NebulaStudio, a galaxy of the **Galaxies** tab that misses plugins is opened and dragged into the
+  edition zone as the others are, no longer dimmed. A `NebulaApplication` still runs a galaxy only when all of it is
+  loaded.
+- `Galaxy::problems()` returns a copy, read again at each call (#167): what could not be restored of its own file,
+  then what the galaxies it holds miss now, which a galaxy read again since no longer misses. The problems
+  `Universe::load()` returns tell those of its galaxies after its own.
 
 - `NebulaApplication` reads its command line without a `QCommandLineParser` (#165): the `main` of an application is
   `Nebula::NebulaApplication app(argc, argv, QStringLiteral("Clock.nbp")); return app.exec();`. The constructor that

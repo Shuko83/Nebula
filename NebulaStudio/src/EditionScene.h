@@ -78,7 +78,9 @@ class SettingsFile;
 // dropped, moved, linked, renamed, recolored, added, pasted or removed until it is stopped.
 // A galaxy dragged from a GalaxyModel is placed in the application the same way, see Universe::instantiateGalaxy();
 // double-clicking it below its name asks for it to be opened, see galaxyOpened(), in another scene that shows it, and
-// where it is edited as the application is.
+// where it is edited as the application is. One placed without what could not be restored of its file, or that holds
+// such a galaxy, is marked as an instance that does not work, and its tooltip tells what it misses, as it misses it
+// now: see Universe::problemsChanged().
 // The links it shows are those of the bindings of the components, drawn again whenever they change from here, in the
 // style it is given: curves until another one is chosen. A link drawn again keeps its anchors, see LinkAnchors.
 // Each edit it does, from its mouse, its menus, its keys or the dialogs it opens, and those done through edit(), is a
@@ -466,7 +468,11 @@ class EditionScene : public QGraphicsScene
     // A new item that shows component as what it is: a stargate, a galaxy or a component of a plugin.
     [[nodiscard]] ComponentItem* newItem(Nebula::Component& component);
     [[nodiscard]] ComponentItem* newStargateItem(Nebula::Stargate& stargate);
+    // The item of galaxy, marked with what it misses, see Nebula::Galaxy::problems(), and which asks for it to be
+    // opened.
     [[nodiscard]] ComponentItem* newGalaxyItem(Nebula::Galaxy& galaxy);
+    // Marks the items of the galaxies shown with what they miss now: see Nebula::Universe::problemsChanged().
+    void refreshProblems();
     // The component shown at position, or whose interface is; nullptr when there is none.
     [[nodiscard]] ComponentItem* componentAt(const QPointF& position) const;
     // Names component name, as typed in place of its name, one step of the history; tells why through refused() when it

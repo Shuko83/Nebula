@@ -29,16 +29,20 @@ struct ListedGalaxy
     QString error;                          // Why it cannot be
     QStringList missingPlugins;             // Those of its plugins the application does not know
 
-    // Whether it can be opened: its file can be read, and the application knows each of its plugins.
+    // Whether it can be opened, and placed: its file can be read. Without the components of the plugins it misses
+    // then, see Nebula::Universe::instantiateGalaxy().
     [[nodiscard]] bool isLoadable() const;
+    // Whether it is loaded whole: its file can be read, and the application knows each of its plugins.
+    [[nodiscard]] bool isWhole() const;
 };
 
 using GalaxyRows = RowsModel<ListedGalaxy, &ListedGalaxy::filePath>;
 
 // The galaxies of a directory, its project files (*.nbp), one row per file, sorted by name whatever its case. A galaxy
-// can be loaded when its file can be read and the application knows each of its plugins: the others are dimmed, and
-// their state tells why, with a mark, and cannot be dragged into the edition zone as the others are. It follows the
-// directory, and its files, as they are added, removed, renamed or written.
+// is loaded whole when its file can be read and the application knows each of its plugins: the state of the others
+// tells why not, with a mark. One that misses plugins is still loaded, and dragged into the edition zone, without the
+// components of those plugins; one whose file cannot be read is dimmed, and is not dragged. It follows the directory,
+// and its files, as they are added, removed, renamed or written.
 class GalaxyModel : public GalaxyRows
 {
     Q_OBJECT
@@ -58,11 +62,12 @@ class GalaxyModel : public GalaxyRows
 
     using Galaxy = ListedGalaxy;
 
-    // Lists nothing until it is given a directory. A galaxy can be loaded with the plugins application knows.
+    // Lists nothing until it is given a directory. A galaxy is loaded whole with the plugins application knows.
     explicit GalaxyModel(const Nebula::Universe& application, QObject* parent = nullptr);
 
     [[nodiscard]] QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
-    // A galaxy that can be loaded can be dragged, to be placed in the edition zone; the others cannot.
+    // A galaxy that can be loaded, whole or not, can be dragged, to be placed in the edition zone; one that cannot be
+    // read cannot.
     [[nodiscard]] Qt::ItemFlags flags(const QModelIndex& index) const override;
     [[nodiscard]] QStringList mimeTypes() const override;
     [[nodiscard]] QMimeData* mimeData(const QModelIndexList& indexes) const override;
@@ -112,5 +117,5 @@ class GalaxyModel : public GalaxyRows
     QString m_directory;
     QFileSystemWatcher* m_watcher = nullptr; // Of m_directory and of the files of the galaxies listed
     QIcon m_galaxyIcon;                      // Beside each name
-    QIcon m_warningIcon;                     // Beside the state of a galaxy that cannot be loaded
+    QIcon m_warningIcon;                     // Beside the state of a galaxy that cannot be loaded whole
 };

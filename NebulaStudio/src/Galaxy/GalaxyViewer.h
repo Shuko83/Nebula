@@ -14,8 +14,9 @@ class GalaxyModel;
 struct ListedGalaxy;
 
 // Shows a galaxy of a GalaxyModel: its name, its description, its file, its plugins and its state, with a button to
-// open it. When it cannot be loaded, an error tells why, in the warning color: the plugins it misses, and how to make
-// them known, or why its file cannot be read. It follows the model.
+// open it. When it cannot be loaded whole, a warning tells why, in the warning color: the plugins it misses, whose
+// components are left out when it is opened or placed, and how to make them known, or why its file cannot be read,
+// which keeps it from being opened. It follows the model.
 class GalaxyViewer : public Inspector
 {
     Q_OBJECT
@@ -25,8 +26,8 @@ class GalaxyViewer : public Inspector
 
     // Shows the galaxy of the file filePath; nothing when it is empty or not listed.
     void setFilePath(const QString& filePath);
-    // Whether a galaxy that can be loaded can be opened now: it can until told otherwise. Its Open button tells why
-    // not, in its tooltip.
+    // Whether a galaxy that can be loaded, whole or not, can be opened now: it can until told otherwise. Its Open
+    // button tells why not, in its tooltip.
     void setOpenAllowed(bool allowed);
 
   signals:
@@ -43,7 +44,7 @@ class GalaxyViewer : public Inspector
     // What the placeholder tells when there is no galaxy to show.
     [[nodiscard]] QString placeholderText() const;
     void showGalaxy(const ListedGalaxy& galaxy);
-    // Enables the Open button when a galaxy that can be loaded can be opened now.
+    // Enables the Open button when a galaxy that can be loaded, whole or not, can be opened now.
     void showOpenButton(bool loadable);
 
     const GalaxyModel& m_model;
@@ -55,6 +56,6 @@ class GalaxyViewer : public Inspector
     QLabel* m_file = nullptr;
     QLabel* m_plugins = nullptr;
     QLabel* m_state = nullptr;
-    WarningLabel* m_error = nullptr; // Why it cannot be loaded
+    WarningLabel* m_error = nullptr; // Why it cannot be loaded whole
     QPushButton* m_openButton = nullptr;
 };

@@ -32,3 +32,9 @@ nebula_add_test(TestSettingsDialog LINK_LIBRARIES NebulaStudioClasses TestCompon
 # The dialog of a stargate, with the items whose names it shows.
 nebula_add_test(TestStargateDialog LINK_LIBRARIES NebulaStudioClasses TestComponents ${_resources})
 nebula_add_test(TestGalaxyModel LINK_LIBRARIES NebulaStudioClasses ${_resources})
+# The Galaxies tab, with the viewer of the galaxy selected: which galaxies it opens.
+nebula_add_test(TestGalaxyPanel LINK_LIBRARIES NebulaStudioClasses ${_resources})
+# The list of the problems: the interfaces bound to nothing, and what the galaxies miss.
+nebula_add_test(TestProblemList LINK_LIBRARIES NebulaStudioClasses TestComponents)
+# The edition zone, which asks before it saves a galaxy placed without what could not be restored of its file.
+nebula_add_test(TestEditionZone LINK_LIBRARIES NebulaStudioClasses TestComponents ${_resources})

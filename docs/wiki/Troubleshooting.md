@@ -41,12 +41,21 @@ again, and its file cannot be replaced meanwhile, which fails the build. Close N
 
 In the **Galaxies** tab, a galaxy is:
 
-- **Missing plugins**: NebulaStudio knows none of its plugins with that id. Open them with **Open plugin...**, or start
-  NebulaStudio with their directory in `--plugin-dir`. Only the id counts here, not the file the project names.
-- **Unreadable**: its file is not a project, or not of this version. The viewer tells why.
+- **Missing plugins**: NebulaStudio knows none of its plugins with that id. It is opened and placed all the same,
+  without the components of those plugins. Open them with **Open plugin...**, or start NebulaStudio with their
+  directory in `--plugin-dir`. Only the id counts here, not the file the project names.
+- **Unreadable**: its file is not a project, or not of this version. The viewer tells why; it is neither opened nor
+  placed.
 
 A galaxy that would hold itself, directly or through another one, or the project it is dropped into, is refused, which
 the status bar says.
+
+## A galaxy is marked in amber
+
+It was placed without part of its file: a plugin NebulaStudio does not know, a component its plugin no longer has, a
+link to an interface that is gone, or a galaxy inside it that misses one of these. Its tooltip, and the list of
+problems, tell what it misses. Make it known and open the project again; or open the galaxy, mend what is left, and
+**Save Galaxy**: NebulaStudio asks first, as what is missing is then left out of its file for good.
 
 ## An instance is marked in amber
 

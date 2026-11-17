@@ -483,15 +483,26 @@ QString galaxyFilePath(const QDir& directory, const QJsonObject& json)
     return QDir::cleanPath(directory.absoluteFilePath(json.value(u"galaxy").toString()));
 }
 
-// The problems of galaxy, each saying it is in it.
-QStringList galaxyProblems(const Galaxy& galaxy)
+// The galaxies among components, in their order.
+QList<const Galaxy*> galaxiesAmong(const QList<Component*>& components)
 {
-    QStringList problems;
-    for(const QString& problem : galaxy.problems())
+    QList<const Galaxy*> galaxies;
+    for(const Component* component : components)
     {
-        problems.append(QStringLiteral("In %1: %2").arg(galaxy.objectName(), problem));
+        if(const auto* galaxy = qobject_cast<const Galaxy*>(component))
+        {
+            galaxies.append(galaxy);
+        }
     }
-    return problems;
+    return galaxies;
+}
+
+// The ids of the plugins of project, each once, in their order.
+QStringList pluginIdsOf(const QJsonObject& project)
+{
+    QStringList pluginIds = galaxyInfo({}, project).plugins;
+    pluginIds.removeDuplicates();
+    return pluginIds;
 }
 
 // files, then those of the galaxies among components and of those they hold, in the order they start.
@@ -650,14 +661,6 @@ void setExposedValues(const Galaxy& galaxy, const QJsonObject& values, QStringLi
     tellUnset(unset, galaxy.objectName(), problems);
 }
 
-// Gives galaxy, just loaded, values, those of its instance in place of those of its file; problems tells the problems
-// of galaxy, then the values it could not be given.
-void giveInstanceValues(const Galaxy& galaxy, const QJsonObject& values, QStringList& problems)
-{
-    problems.append(galaxyProblems(galaxy));
-    setExposedValues(galaxy, values, problems);
-}
-
 // The names among values of what galaxy no longer exposes.
 QStringList unexposed(const Galaxy& galaxy, const QJsonObject& values)
 {
@@ -791,6 +794,7 @@ QStringList Universe::load(const QJsonObject& project)
     m_description = project.value(u"description").toString();
     QStringList problems = loadProjectPlugins(project.value(u"plugins").toArray());
     problems.append(loadScope(applicationScope(), project));
+    problems.append(problemsIn(componentsOfType<const Galaxy>(m_components))); // After its own
     return problems;
 }
 
@@ -841,7 +845,7 @@ QStringList Universe::restoreGalaxy(Galaxy& galaxy, const QJsonObject& project)
     const Scope parent = *scopeOf(galaxy);
     QString error;
     // Those of project, rather than those of this instance: what it saved of them.
-    return canRestore(galaxy, project, parent, error) ? reload(galaxy, project, parent, false) : QStringList{error};
+    return canRestore(galaxy, parent, error) ? reload(galaxy, project, parent, false) : QStringList{error};
 }
 
 QString Universe::description() const
@@ -916,8 +920,7 @@ bool Universe::remove(Component& instance)
     }
     // Out of components() before it is destroyed: what its links falling tell can look at the others.
     const std::unique_ptr<Component> removed = take(scopeComponents(*where), instance);
-    tellComponentsChanged(*where);
-    tellSettingsFilesOf(removed.get()); // Its files are no longer among those of the application
+    tellRemoved(*where, removed.get());
     return true;
 }
 
@@ -1209,6 +1212,7 @@ void Universe::setName(Component& instance, const QString& name, const Scope& sc
     if(auto* galaxy = qobject_cast<Galaxy*>(&instance))
     {
         nameSettingsFiles(*galaxy, scope.prefix + name + u'.'); // Its files are named after it
+        tellProblemsOf(scope, galaxy);                          // As the galaxy that holds it tells them
     }
 }
 
@@ -1251,6 +1255,7 @@ Galaxy* Universe::placeGalaxy(const Scope& scope, std::unique_ptr<Galaxy> galaxy
     {
         tellSettingsFilesOf(placed); // As adopt() tells it in the application: its files are among its own
     }
+    tellProblemsOf(scope, placed);
     return placed;
 }
 
@@ -1278,6 +1283,22 @@ void Universe::tellSettingsFilesOf(const Component* component)
     {
         emit settingsFilesChanged();
     }
+}
+
+void Universe::tellProblemsOf(const Scope& scope, const Component* component)
+{
+    const auto* galaxy = qobject_cast<const Galaxy*>(component);
+    if(scope.galaxy != nullptr && galaxy != nullptr && !galaxy->problems().isEmpty())
+    {
+        emit problemsChanged(); // Those of the galaxies that hold it
+    }
+}
+
+void Universe::tellRemoved(const Scope& scope, const Component* removed)
+{
+    tellComponentsChanged(scope);
+    tellSettingsFilesOf(removed); // Its files are no longer among those of the application
+    tellProblemsOf(scope, removed);
 }
 
 void Universe::removeComponents()
@@ -1387,7 +1408,7 @@ Galaxy* Universe::loadGalaxy(const Scope& scope, const QJsonObject& json, QStrin
         problems.append(QStringLiteral("%1 is missing: %2").arg(name, error));
         return nullptr;
     }
-    giveInstanceValues(*galaxy, json.value(u"properties").toObject(), problems);
+    setExposedValues(*galaxy, json.value(u"properties").toObject(), problems); // Those of this instance
     return adoptGalaxy(scope, std::move(galaxy));
 }
 
@@ -1536,14 +1557,7 @@ std::optional<QJsonObject> Universe::readGalaxyProject(const QString& filePath, 
         return std::nullopt;
     }
     // Its own file, as the files of the galaxies it is placed in are: a link to it is the same file.
-    const GalaxyInfo info = galaxyInfo(QFileInfo(filePath).canonicalFilePath(), *project);
-    return canPlace(nativePath, info, parent, error) ? project : std::nullopt;
-}
-
-bool Universe::canPlace(const QString& nativePath, const GalaxyInfo& info, const Scope& parent, QString& error)
-{
-    return !isCycle(nativePath, info.filePath, parent, error) && knowsPlugins(nativePath, info, error) &&
-           loadPlugins(nativePath, info, error);
+    return isCycle(nativePath, QFileInfo(filePath).canonicalFilePath(), parent, error) ? std::nullopt : project;
 }
 
 bool Universe::isCycle(const QString& nativePath, const QString& canonicalPath, const Scope& parent, QString& error)
@@ -1565,27 +1579,25 @@ void Universe::tellCycle(const Scope& parent, const QString& cycle)
     }
 }
 
-bool Universe::knowsPlugins(const QString& nativePath, const GalaxyInfo& info, QString& error) const
+QStringList Universe::loadGalaxyPlugins(const QJsonObject& project)
 {
-    const QStringList missing = missingPlugins(info);
-    if(!missing.isEmpty())
+    QStringList problems;
+    for(const QString& pluginId : pluginIdsOf(project))
     {
-        error = QStringLiteral("%1 needs plugins the application does not know: %2")
-                    .arg(nativePath, missing.join(QStringLiteral(", ")));
+        appendProblem(problems, loadGalaxyPlugin(pluginId));
     }
-    return missing.isEmpty();
+    return problems;
 }
 
-bool Universe::loadPlugins(const QString& nativePath, const GalaxyInfo& info, QString& error)
+QString Universe::loadGalaxyPlugin(const QString& pluginId)
 {
-    const std::optional<QString> unloadable = firstUnloadable(info.plugins);
-    if(!unloadable)
+    if(!m_plugins.plugin(pluginId)) // Found by its id only: its file is not looked at
     {
-        return true;
+        return QStringLiteral("The plugin %1 is not loaded: the application does not know it").arg(pluginId);
     }
-    error = QStringLiteral("%1 needs the plugin %2, which cannot be loaded: %3")
-                .arg(nativePath, *unloadable, m_plugins.errorString());
-    return false;
+    return loadPlugin(pluginId)
+               ? QString()
+               : QStringLiteral("The plugin %1 is not loaded: %2").arg(pluginId, m_plugins.errorString());
 }
 
 std::optional<QString> Universe::firstUnloadable(const QStringList& pluginIds)
@@ -1635,7 +1647,9 @@ QString Universe::loadGalaxyContent(Galaxy& galaxy, const QJsonObject& project, 
     galaxy.m_description = project.value(u"description").toString();
     galaxy.m_project = project;
     QString cycle; // Why it would hold itself, which a galaxy it holds tells
-    galaxy.m_problems = loadScope(innerScope(galaxy, parent, &cycle), project);
+    // Its plugins first: without one of them, its components from it are missing.
+    galaxy.m_problems = loadGalaxyPlugins(project);
+    galaxy.m_problems.append(loadScope(innerScope(galaxy, parent, &cycle), project));
     return cycle;
 }
 
@@ -1694,10 +1708,9 @@ std::optional<QJsonObject> Universe::readAgain(const Galaxy& galaxy, const Scope
     return project;
 }
 
-bool Universe::canRestore(const Galaxy& galaxy, const QJsonObject& project, const Scope& parent, QString& error)
+bool Universe::canRestore(const Galaxy& galaxy, const Scope& parent, QString& error)
 {
-    const QString nativePath = QDir::toNativeSeparators(galaxy.filePath());
-    if(canPlace(nativePath, galaxyInfo(galaxy.filePath(), project), parent, error))
+    if(!isCycle(QDir::toNativeSeparators(galaxy.filePath()), galaxy.filePath(), parent, error))
     {
         return true;
     }
@@ -1726,7 +1739,7 @@ QStringList Universe::refill(Galaxy& galaxy, const QJsonObject& project, const S
     {
         return {QStringLiteral("%1 is left empty: %2").arg(galaxy.objectName(), error)};
     }
-    return galaxyProblems(galaxy);
+    return problemsIn({&galaxy});
 }
 
 void Universe::tellReloaded(Galaxy& galaxy, bool hadSettingsFiles)
@@ -1736,6 +1749,7 @@ void Universe::tellReloaded(Galaxy& galaxy, bool hadSettingsFiles)
     {
         emit settingsFilesChanged(); // Its files are others
     }
+    emit problemsChanged(); // Its own, and those of the galaxies that hold it
 }
 
 QJsonObject Universe::exposedValues(const Galaxy& galaxy) const
@@ -1806,7 +1820,7 @@ QList<Component*> Universe::insert(const Scope& scope, const QJsonObject& instan
         return withdraw(inserted, loaded);
     }
     settleInserted(scope, inserted);
-    problems.append(loaded);
+    problems.append(loaded + problemsIn(galaxiesAmong(inserted))); // What the galaxies among them miss, after the rest
     return inserted;
 }
 
@@ -1823,9 +1837,13 @@ QList<Component*> Universe::withdraw(const QList<Component*>& inserted, const QS
 void Universe::settleInserted(const Scope& scope, const QList<Component*>& inserted)
 {
     m_errorString.clear();
-    if(scope.galaxy != nullptr) // adopt() tells it in the application
+    for(const Component* instance : inserted)
     {
-        std::ranges::for_each(inserted, [this](const Component* instance) { tellSettingsFilesOf(instance); });
+        if(scope.galaxy != nullptr) // adopt() tells it in the application
+        {
+            tellSettingsFilesOf(instance);
+        }
+        tellProblemsOf(scope, instance);
     }
 }
 

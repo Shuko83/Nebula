@@ -651,6 +651,7 @@ EditionScene::EditionScene(Nebula::Universe& application, const Nebula::Componen
     : QGraphicsScene(SceneRect, parent), m_application(application), m_factory(factory)
 {
     connect(&m_application, &Nebula::Universe::runningChanged, this, [this] { setEditable(isEditable()); });
+    connect(&m_application, &Nebula::Universe::problemsChanged, this, &EditionScene::refreshProblems);
 }
 
 EditionScene::EditionScene(Nebula::Universe& application, const Nebula::ComponentFactory& factory,
@@ -1962,8 +1963,21 @@ ComponentItem* EditionScene::newGalaxyItem(Nebula::Galaxy& galaxy)
     auto* item = new ComponentItem(galaxy, componentNameOf(galaxy, m_factory));
     item->setIcon(componentIconOf(galaxy));
     item->setOpenable(aboutGalaxy(galaxy), tr("Double-click below its name to open it"));
+    item->setProblems(galaxy.problems()); // Marked when it misses something, as one missing an interface
     connect(item, &ComponentItem::openRequested, this, [this, opened = &galaxy] { emit galaxyOpened(*opened); });
     return item;
+}
+
+void EditionScene::refreshProblems()
+{
+    const QList<ComponentItem*> shown = objectsAmong<ComponentItem>(items());
+    for(ComponentItem* item : shown)
+    {
+        if(const auto* galaxy = qobject_cast<const Nebula::Galaxy*>(&item->component()))
+        {
+            item->setProblems(galaxy->problems());
+        }
+    }
 }
 
 ComponentItem* EditionScene::componentAt(const QPointF& position) const

@@ -41,8 +41,9 @@ class Project : public QObject
     // it, whether to save them. Returns false when what was about to replace it is given up: the answer was to
     // cancel, or it could not be saved.
     bool saveChanges();
-    // Opens the galaxy of the file filePath, one whose plugins the application knows, once the changes of the
-    // application are saved or given up. Does nothing while the application runs.
+    // Opens the galaxy of the file filePath, one whose file can be read, once the changes of the application are saved
+    // or given up, as openProjectFile() opens it: what of it cannot be, a plugin the application does not know say, is
+    // left out and told. Does nothing while the application runs.
     void openGalaxy(const QString& filePath);
 
   signals:

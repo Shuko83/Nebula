@@ -54,8 +54,14 @@ class CORE_EXPORT Galaxy : public Component
     // The project its file holds, as it was read when the galaxy was placed, or read again: what NebulaStudio adds to
     // it tells where its components are shown.
     [[nodiscard]] const QJsonObject& project() const;
-    // What could not be restored of its file, and of the galaxies it holds, a sentence each: none when everything was.
-    [[nodiscard]] const QStringList& problems() const;
+    // What it misses, a sentence each: none when nothing is. First what could not be restored of its file, see
+    // ownProblems(), then what the galaxies it holds miss now, each saying which, "In Clock1: ...": read again at each
+    // call, a galaxy it holds read again since tells what it misses then. See Universe::problemsChanged().
+    [[nodiscard]] QStringList problems() const;
+    // What could not be restored of its own file when it was read, a sentence each, a plugin of it that is unknown or
+    // cannot be loaded first: what saving it, see Universe::saveGalaxy(), leaves out of its file. None when everything
+    // was; what the galaxies it holds miss is in their own.
+    [[nodiscard]] const QStringList& ownProblems() const;
 
     // In the order of its file.
     [[nodiscard]] const std::vector<std::unique_ptr<Component>>& components() const;
@@ -98,7 +104,7 @@ class CORE_EXPORT Galaxy : public Component
     QString m_filePath;
     QString m_description;
     QJsonObject m_project;
-    QStringList m_problems;
+    QStringList m_problems; // Of its own file: see ownProblems()
     std::vector<std::unique_ptr<Component>> m_components;
     std::vector<std::unique_ptr<SettingsFile>> m_settingsFiles; // Destroyed first: their entries are of m_components
 };

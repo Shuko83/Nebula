@@ -15,6 +15,7 @@
 #include "InterfaceItem.h"
 #include "Nebula/Application/Universe.h"
 #include "Nebula/Component/Component.h"
+#include "Nebula/Galaxy/Galaxy.h"
 #include "PlaceholderStack.h"
 
 namespace
@@ -100,9 +101,11 @@ ProblemList::ProblemList(const Nebula::Universe& application, QWidget* parent)
       m_stack(new PlaceholderStack(m_tree, *this))
 {
     connect(&m_application, &Nebula::Universe::componentsChanged, this, &ProblemList::scheduleRefresh);
+    connect(&m_application, &Nebula::Universe::problemsChanged, this, &ProblemList::scheduleRefresh);
     connect(m_tree, &QTreeWidget::itemActivated, this,
             [this](const QTreeWidgetItem* item) { emit componentActivated(item->text(ComponentColumn)); });
-    m_stack->placeholder()->setText(tr("Every component of the application has the interfaces it needs"));
+    m_stack->placeholder()->setText(
+        tr("Every component of the application has the interfaces it needs, and every galaxy what its file holds"));
     m_stack->placeholder()->setForegroundRole(QPalette::PlaceholderText);
     refresh();
 }
@@ -138,6 +141,15 @@ void ProblemList::follow(const Nebula::Component& component)
 
 void ProblemList::addProblems(const Nebula::Component& component)
 {
+    addUnbound(component);
+    if(const auto* galaxy = qobject_cast<const Nebula::Galaxy*>(&component))
+    {
+        addMissing(*galaxy);
+    }
+}
+
+void ProblemList::addUnbound(const Nebula::Component& component)
+{
     const QStringList unbound = component.unboundMandatoryInterfaces();
     const QList<Nebula::InterfaceInfo> consumed = component.consumedInterfaces();
     for(const Nebula::InterfaceInfo& info : consumed)
@@ -153,15 +165,27 @@ void ProblemList::addProblem(const Nebula::Component& component, const Nebula::I
 {
     const QString type = InterfaceItem::typeName(consumed.type);
     const QStringList providers = providersOf(m_application, consumed.type, component);
-    addRow(component.objectName(), tr("%1 (%2) is bound to nothing").arg(consumed.name, type),
-           fixText(consumed.name, type, providers));
+    const QString problem = tr("%1 (%2) is bound to nothing").arg(consumed.name, type);
+    addRow(component.objectName(), problem, fixText(consumed.name, type, providers),
+           tr("%1: the component does not work without it").arg(problem));
 }
 
-void ProblemList::addRow(const QString& component, const QString& problem, const QString& fix)
+void ProblemList::addMissing(const Nebula::Galaxy& galaxy)
+{
+    const QString fix =
+        tr("Make what it misses known, a plugin say, then open the project again; or open the galaxy to "
+           "mend it, and save it: what it misses is left out of its file");
+    for(const QString& problem : galaxy.problems())
+    {
+        addRow(galaxy.objectName(), problem, fix, tr("%1: the galaxy is placed without it").arg(problem));
+    }
+}
+
+void ProblemList::addRow(const QString& component, const QString& problem, const QString& fix, const QString& why)
 {
     auto* item = new QTreeWidgetItem(m_tree, {component, problem, fix});
     item->setIcon(ComponentColumn, style()->standardIcon(QStyle::SP_MessageBoxWarning));
     // The whole of it, should the columns be narrow.
-    item->setToolTip(ProblemColumn, tr("%1: the component does not work without it").arg(problem));
+    item->setToolTip(ProblemColumn, why);
     item->setToolTip(FixColumn, fix);
 }

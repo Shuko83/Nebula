@@ -131,11 +131,28 @@ QList<InterfaceItem::Key> keysOf(const QList<InterfaceItem*>& items)
     return keys;
 }
 
-// What the tooltip of an item tells of unbound, the interfaces it misses.
+// What the tooltip of an item tells of unbound, the interfaces it misses; nothing when it misses none.
 QString unboundText(const QStringList& unbound)
 {
+    if(unbound.isEmpty())
+    {
+        return {};
+    }
     return ComponentItem::tr("Does not work: %1 bound to nothing").arg(unbound.join(QStringLiteral(", "))) + u'\n' +
            ComponentItem::tr("Drag from the dot of each to an interface of its type another component provides");
+}
+
+// What the tooltip of an item tells of problems, see ComponentItem::setProblems(); nothing when it has none.
+QString problemsText(const QStringList& problems)
+{
+    return problems.isEmpty() ? QString()
+                              : ComponentItem::tr("Misses what could not be restored:") + u'\n' + problems.join(u'\n');
+}
+
+// text, with line under it unless line is empty.
+QString withLine(const QString& text, const QString& line)
+{
+    return line.isEmpty() ? text : text + u'\n' + line;
 }
 
 } // namespace
@@ -315,6 +332,23 @@ void ComponentItem::setRows(const QList<Row>& rows)
     update();
 }
 
+void ComponentItem::setProblems(const QStringList& problems)
+{
+    m_problems = problems;
+    setToolTip(toolTipText());
+    update(); // Its mark
+}
+
+const QStringList& ComponentItem::problems() const
+{
+    return m_problems;
+}
+
+bool ComponentItem::isMarked() const
+{
+    return !m_unbound.isEmpty() || !m_problems.isEmpty();
+}
+
 void ComponentItem::setInterfacesRenamable(bool renamable)
 {
     m_interfacesRenamable = renamable;
@@ -389,7 +423,7 @@ void ComponentItem::paintStateMark(QPainter& painter, const QColor& ink) const
 
 void ComponentItem::paintWarningMark(QPainter& painter, const QPalette& palette, const QFont& font) const
 {
-    if(m_unbound.isEmpty())
+    if(!isMarked())
     {
         return;
     }
@@ -660,25 +694,18 @@ void ComponentItem::refreshUnbound()
     {
         consumed->setMissing(unbound.contains(consumed->name()));
     }
-    setToolTip(toolTipText(unbound));
     if(std::exchange(m_unbound, unbound) != unbound)
     {
         update(); // Its mark
     }
+    setToolTip(toolTipText());
 }
 
-QString ComponentItem::toolTipText(const QStringList& unbound) const
+QString ComponentItem::toolTipText() const
 {
-    QString toolTip = m_about.isEmpty() ? m_component.componentId() : m_about;
-    if(m_openable)
-    {
-        toolTip += u'\n' + m_howToOpen;
-    }
-    if(!unbound.isEmpty())
-    {
-        toolTip += u'\n' + unboundText(unbound);
-    }
-    return toolTip;
+    const QString about = m_about.isEmpty() ? m_component.componentId() : m_about;
+    const QString opening = withLine(about, m_openable ? m_howToOpen : QString());
+    return withLine(withLine(opening, unboundText(m_unbound)), problemsText(m_problems));
 }
 
 qreal ComponentItem::rowsTop() const
