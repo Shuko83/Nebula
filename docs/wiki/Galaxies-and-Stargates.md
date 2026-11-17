@@ -77,14 +77,21 @@ place, link, set, add stargates and settings files. Click **Application** in the
   what it exposes, and what is bound to its interfaces under the names they still have; what one could not keep, a link
   to an interface no longer exposed, is told in a message box.
 - Leaving a galaxy you changed asks: **Save** saves it, **Discard** reads it again from its file, **Cancel** stays.
+- A galaxy placed without part of its file, see below, asks again before it is saved, telling what its file is about
+  to lose: saved, it no longer holds what it missed.
 - A stargate changed in a galaxy opened changes that instance at once; the other instances get it once it is saved.
 - While the application runs, nothing is edited in a galaxy.
 
 ## What to know
 
 - **A galaxy finds its plugins by their id**, among those NebulaStudio lists. In the **Galaxies** tab, one whose
-  plugins are not all known is **Missing plugins**, and cannot be placed: open them with **Open plugin...**, or give
-  their directory with `--plugin-dir`.
+  plugins are not all known is **Missing plugins**: open them with **Open plugin...**, or give their directory with
+  `--plugin-dir`. It is opened and placed all the same, without the components of those plugins.
+- **A galaxy opens with all of its file that can be.** A component its plugin no longer provides is left out, with its
+  links; a link whose interface is gone is left out, its instances shown without it; a galaxy inside whose file cannot
+  be read is left out. What it misses is told when it is placed, its item is marked as an instance that does not work,
+  its tooltip telling what it misses, and the list of problems has a row for each thing. To fix it, make what it misses
+  known and open the project again, or open the galaxy, mend it and save it.
 - **A galaxy cannot hold itself**, directly or through another one, nor the project it is placed in: NebulaStudio
   refuses it, and the status bar says so.
 - **Each instance has its own settings files.** A settings file added inside a galaxy is named after each instance:
