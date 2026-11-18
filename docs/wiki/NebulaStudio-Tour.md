@@ -68,13 +68,15 @@ The **status bar** tells what was just done, refused or found, and the zoom leve
 | --- | --- |
 | **File** | **New** (Ctrl+N), **Open...** (Ctrl+O), **Save** (Ctrl+S), **Save As...** (Ctrl+Shift+S), **Save Galaxy** (Ctrl+Alt+S), **Description...** |
 | **Edit** | **Undo** (Ctrl+Z), **Redo** (Ctrl+Shift+Z, or Ctrl+Y), **Cut** (Ctrl+X), **Copy** (Ctrl+C), **Paste** (Ctrl+V), **Duplicate** (Ctrl+D) |
-| **View** | **Find Instances** (Ctrl+Shift+F), **Zoom In** (Ctrl++), **Zoom Out** (Ctrl+-), **Actual Size** (Ctrl+0), **Links** (the style of the links), **Theme**, **Overview** |
+| **View** | **Find Instances** (Ctrl+Shift+F), **Zoom In** (Ctrl++), **Zoom Out** (Ctrl+-), **Actual Size** (Ctrl+0), **Links** (the style of the links), **Theme**, **Language**, **Overview** |
 | **Run** | **Start** (F5), **Stop** (Shift+F5) |
 
 Each area has a context menu as well: right-click the edition zone, an instance, the dot of an interface, a link, a
 zone, a settings file or a stargate. [Keyboard and mouse](Keyboard-and-Mouse.md) lists every shortcut.
 
 ## Its theme and its preferences
+
+**View** > **Language** chooses **English**, **Français**, or **System**, the first language of the system NebulaStudio has, else English. The choice applies the next time NebulaStudio starts. If a language is not available, NebulaStudio tells you which one it shows instead, and why.
 
 **View** > **Theme** chooses **Light**, **Dark**, or **System**, which follows the system as it changes. NebulaStudio
 keeps that choice, the style of the links (**View** > **Links**) and whether the overview is shown, for the user who

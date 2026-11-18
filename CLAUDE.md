@@ -13,7 +13,7 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
 | `Core/cmake/` | — | `nebula_add_plugin()` et les gabarits `plugin.h.in` / `plugin.json.in`, livrés avec `Core` dans le paquet |
 | `Plugins/Standard/` | `Nebula::Standard` (INTERFACE, en-têtes seuls) | Issue #130 : les interfaces des composants standard, dans `include/Nebula/Standard/` (`LogLevel.h`, `ILog.h`, `ILogControl.h`, et issue #132 `Command.h`, `IHistory.h`), qu'un plugin lie pour les consommer ; composant du paquet, `find_package(Nebula COMPONENTS Core Standard)`. Voir Plugins standard |
 | `Plugins/StandardPlugin/` | `.nbdl` dans `bin/plugins` | Issue #130 : le premier plugin standard, livré avec Nebula pour toute application, à la version de Nebula : `LogComponent` (fournit `log` : `ILog`, et `logControl` : `ILogControl`), qui pilote pendant l'exécution le log de tout le processus, et `HistoryComponent` (issue #132, fournit `history` : `IHistory`), l'historique de ce qui se défait |
-| `NebulaStudio/` | `NebulaStudio` (exe Widgets), `NebulaStudioClasses` (statique), `NebulaStudioResources` (objets) | L'éditeur graphique : son `main.cpp` est une `NebulaApplication` qui fait tourner la galaxy de `StudioPlugin/` (issue #73) ; le code de ses parties est dans `NebulaStudio/src/`, sans namespace, la bibliothèque statique `NebulaStudioClasses` (issue #146, voir Build, sans `main.cpp` ni `SplashScreen`), celui des fichiers de réglages dans `NebulaStudio/src/Settings/`, celui des galaxies (`GalaxyModel`, `GalaxyViewer`, `GalaxyPanel`) dans `NebulaStudio/src/Galaxy/`, le logo de Nebula, les icônes du glossaire et la police des titres dans `NebulaStudio/resources/` |
+| `NebulaStudio/` | `NebulaStudio` (exe Widgets), `NebulaStudioClasses` (statique), `NebulaStudioResources` et `NebulaStudioTranslations` (objets) | L'éditeur graphique : son `main.cpp` est une `NebulaApplication` qui fait tourner la galaxy de `StudioPlugin/` (issue #73) ; le code de ses parties est dans `NebulaStudio/src/`, sans namespace, la bibliothèque statique `NebulaStudioClasses` (issue #146, voir Build, sans `main.cpp` ni `SplashScreen`), celui des fichiers de réglages dans `NebulaStudio/src/Settings/`, celui des galaxies (`GalaxyModel`, `GalaxyViewer`, `GalaxyPanel`) dans `NebulaStudio/src/Galaxy/`, le logo de Nebula, les icônes du glossaire et la police des titres dans `NebulaStudio/resources/` |
 | `StudioPlugin/` | `.nbdl` dans `bin/plugins` | Issue #103 : les parties de NebulaStudio, chacune un composant (`src/`, voir NebulaStudio), faites de ses classes, que le plugin lie (`NebulaStudioClasses`, et `NebulaStudioResources` pour `nebulastudio.qrc`), et `NebulaStudio.nbp`, la galaxy qui les assemble en la fenêtre de NebulaStudio, copiée dans `<build>/bin[/<config>]/scene/` à chaque build (cible `StudioGalaxy`) |
 | `exemple/ExamplePlugin` | `.nbdl` dans `bin/plugins` | Composant `Greeter` (fournit `greeter` : `IGreeter`) |
 | `exemple/WidgetsPlugin` | `.nbdl` dans `bin/plugins` | L'exemple de la bonne pratique (issue #79) : des composants nommés `<Nom>Component`, chacun créant ses objets (membres) dans son constructeur. `MainWindowComponent` (fournit `mainWindow` : la `QMainWindow`, montrée pendant l'exécution ; consomme `centralWidget` : `QWidget`), `TopBarComponent` (une `QToolBar` ; consomme `mainWindow`, `Mandatory`, les listes `actions` : `QAction` et `widgets` : `QWidget`, montrés dans l'ordre de leurs liaisons, issue #67), `ActionComponent` (fournit `action` : `QAction`), `CounterComponent` (consomme `action`, `Mandatory`, compte pendant l'exécution ; fournit `display` : son `QLabel`) et `LabelsComponent` (issue #86 : fournit `label1`… autant de `QWidget` que son `count`, 1 au départ, de 0 à `MaxCount` = 10, chacun le `QLabel` d'un `Label`, objet dont le `text` est édité dans le groupe de son nom ; régler `count` ajoute les suivants ou retire les derniers par `removeProvidedInterface()`) |
@@ -87,6 +87,11 @@ Le [README](README.md) documente l'API publique en détail ; ce fichier résume 
   qui montrent ses icônes ou sa police (voir Pièges). `main.cpp` et `SplashScreen`, qui incluent `NebulaStudio_info.h`,
   n'en sont pas : `cmu_add_executable` donne à l'exécutable tout `src/`, dont il ne garde qu'eux (sa propriété
   `SOURCES` réécrite sans les sources de la bibliothèque).
+- Traductions de NebulaStudio (issue #169, Qt LinguistTools) : `NebulaStudio/resources/translations/nebulastudio_<langue>.ts` (`NEBULA_STUDIO_TS_FILES`), compilés par `qt_add_lrelease`
+  et embarqués, avec le `qtbase_<langue>.qm` de Qt (absent : la configuration s'arrête), dans `NebulaStudioTranslations`,
+  bibliothèque d'objets que seul `StudioPlugin` lie (et `TestLanguage`) : rien à déployer, windeployqt reste
+  `--no-translations`. La cible `NebulaStudioUpdateTranslations` (`qt_add_lupdate`, dans `StudioPlugin/`) réécrit les `.ts`
+  d'après les sources.
 - `add_dependencies(NebulaStudio ExamplePlugin WidgetsPlugin ExternalPlugin StudioPlugin StudioGalaxy StandardPlugin)`,
   de même pour `ExampleUniverseApp` (et `ExampleApp` pour ceux de `plugins/`), dans `exemple/CMakeLists.txt` :
   construire l'un reconstruit les plugins du dépôt, et recopie la galaxy de NebulaStudio dans `scene/`.
@@ -611,7 +616,7 @@ zones.
 | Composant | Rôle |
 | --- | --- |
 | `StudioPartComponent` | Base, non enregistrée, des parties faites d'un widget autour du `Studio` consommé (`studio`, `Mandatory`) : `createPart(studio)` (virtuelle pure) le construit quand le studio est là, fourni comme `widget` ; `withdrawPart()` retire ce que la sous-classe en fournit d'autre, puis la partie est détruite quand le studio part, ceux à qui elle était fournie l'ayant rendue ; `part()` |
-| `StudioComponent` | Possède le `Studio` (préférences de `NebulaStudio`), fourni aussitôt (`studio`) ; à sa construction, `applyTheme()` une fois par processus, dans le schéma de ses préférences, `chooseColorScheme()` sur `colorSchemeChanged` de son `Studio` (la palette est celle du processus : le dernier choisi, dans n'importe quel `Studio`) et `applyCommandLine()` sur `QCoreApplication::arguments()` (les options d'`Universe`, `parse()` laissant de côté les autres) ; `onStop()` arrête l'application assemblée |
+| `StudioComponent` | Possède le `Studio` (préférences de `NebulaStudio`), fourni aussitôt (`studio`) ; à sa construction, `applyLanguage()` une fois par processus (issue #169 : premier composant de la galaxy, avant tout ce qui se traduit ; `Studio::setLanguageChoice()` garde le résultat, que `StudioWindowComponent` dit par `tellLanguage()` une fois montrée, `takeLanguageChoice()`), `applyTheme()` une fois par processus, dans le schéma de ses préférences, `chooseColorScheme()` sur `colorSchemeChanged` de son `Studio` (la palette est celle du processus : le dernier choisi, dans n'importe quel `Studio`) et `applyCommandLine()` sur `QCoreApplication::arguments()` (les options d'`Universe`, `parse()` laissant de côté les autres) ; `onStop()` arrête l'application assemblée |
 | `EditionZoneComponent` | `EditionZone` (`widget`, et `zone`), ses menus **Edit** (`editMenu`), **View** (`viewMenu`) et **Run** (`runMenu`), refaits avec elle, et `createZoomLabel()` (`zoomLabel`) ; consomme `history` (`Nebula::IHistory`, Optional, issue #132), donné à la zone (`giveHistory()`, `nullptr` quand il part : `onUnavailable` vient avant que le membre soit remis à `nullptr`) |
 | `ProjectComponent` | Consomme `studio` et `zone` (`Mandatory` tous deux) : le `Project` (`project`) et son menu **File** (`fileMenu`), créés quand il a les deux, détruits quand l'un part ; propriété `file` (issue #73) : le projet ouvert à chaque démarrage (`onStart()`, puis `QTimer::singleShot(0)` : une fois la fenêtre montrée, qui démarre après lui), par `Project::openProjectFile()` après `saveChanges()`, s'il tourne encore et a son projet ; `main.cpp` lui donne celui de la ligne de commande |
 | `PluginListComponent`, `GalaxyListComponent`, `ComponentListComponent` | `PluginPanel` (son `removing` → `EditionZone::remove()` de la `zone` consommée, s'il y en a une), `GalaxyPanel` (`openRequested` → `Project::openGalaxy()` du `project` consommé ; propriété `directory`, donnée au panneau, que `directoryChosen` change pendant l'exécution) et `ComponentPanel` |
@@ -620,7 +625,9 @@ zones.
 | `StudioWindowComponent` | Sa `QMainWindow`, montrée pendant l'exécution (`width`, `height`, 1440×800), icône du logo, `createPluginDirectoryLabel()` ; consomme `centralWidget` (`Mandatory`), les listes `menus` (barre de menus refaite, `QMenuBar::clear()` ne détruisant que ses propres actions) et `statusWidgets` (widgets permanents, retirés puis remis dans l'ordre), `studio` (`told` → `tell()`) et `project` (titre, `titleChanged`) ; un filtre d'événements refuse la fermeture tant que `Project::saveChanges()` dit non |
 | `SplitterComponent`, `TabsComponent`, `GroupComponent` | Mise en page de widgets quelconques, rendus sans parent à leur départ : `QSplitter` (liste `widgets`, `vertical`, `sizes` « 1080, 360 », `stretched` : l'index dont le facteur d'étirement vaut 1), `QTabWidget` (liste `pages`, `insertPage()`, `documentMode` ; la première page insérée est montrée), `QGroupBox` (`content`, `Mandatory`, `title` ; la galaxy ne s'en sert plus) ; `hiddenWhileDragging` du splitter et des onglets (issue #104) : leur `DragAside`, sur leur widget |
 
-Les chaînes affichées passent par `tr()`, en anglais.
+Les chaînes affichées passent par `tr()`, en anglais dans le code.
+
+**Langue** (`Language.h`, fonctions libres, issue #169) : `Languages` (`en`, `fr`, chacune nommée dans sa langue), `availableLanguages()` (l'anglais et celles dont la traduction est dans les ressources, `:/translations/`), `chooseLanguage(préférence, langues du système, disponibles)` : la préférence, sinon la première langue disponible du système (`fr-CA` donne `fr`, `C` donne `en`), sinon l'anglais, dans un `LanguageChoice {shown, preferred, system, shownBySystem}` (`preferred` et `system` : ce qui n'est pas disponible) ; `languageWarning()` le dit dans la langue affichée ; `applyLanguage()` installe les `QTranslator` (enfants de l'application, ceux de NebulaStudio et de Qt) et écrit l'avertissement dans le journal (`nebula.studio.language`) ; `tellLanguage()` le montre : une boîte pour une préférence non suivie, la barre d'état pour le système. **View** > **Language** (`EditionZone::addLanguageMenu()`) écrit la préférence (`Studio::setLanguage()`), pour le lancement suivant.
 
 **Logo et icônes** (`NebulaStudio/resources/`) : `nebula.svg`, le logo de Nebula (une nébuleuse traversée de trois
 astres liés), et `icons/{universe,galaxy,astre,comet,stargate}.svg`, une icône par terme du glossaire, sont des SVG aux couleurs
@@ -648,7 +655,7 @@ inconnu = courbes), et le schéma du thème (issue #118), `readColorScheme()` / 
 `appearance/colorScheme` : `system`, `light`, `dark` ; absent ou inconnu = `system`, `Qt::ColorScheme::Unknown`), par
 `readNamed()` / `writeNamed()` sur une table de `Named<Valeur>`, et si la vue d'ensemble est montrée (issue #64),
 `readOverviewShown()` / `writeOverviewShown()` (clé `edition/overview`, un booléen : seul `false` la masque, tout le
-reste vaut montrée). `preferencesFormat()` est un format JSON de
+reste vaut montrée), et la langue demandée (issue #169), `readLanguage()` / `writeLanguage()` (clé `appearance/language` : `system`, ou un code gardé tel quel, connu ou non ; absent = `system`). `preferencesFormat()` est un format JSON de
 `QSettings` (`registerFormat()`, une fois par copie du code : celle de l'exécutable et celle de `StudioPlugin`) : un
 objet, chaque groupe de clés un objet à lui (`addSetting()`, `withMember()`) ; un fichier qui n'est pas un objet n'est
 pas lu (`FormatError`). Celui de NebulaStudio est `Studio::m_preferences`, construit dans ce format, en `UserScope`,
@@ -729,6 +736,10 @@ ini, celui des formats qui n'ont pas le leur).
 - Style des liens (#84) : un seul pour toutes les scènes ; les pointillés des fichiers de réglages et des stargates
   restent droits. Aucun style n'évite les
   composants : un trait droit, ou un lien à angles droits entre deux composants à la même hauteur, peut passer dessous.
+- Langue (#169) : anglais et français seulement ; elle change au lancement suivant, rien ne retraduit ce qui est montré. Le
+  `--help` et les messages de Core, d'`Application` et des plugins standard restent en anglais, comme les descriptions
+  des composants (`Q_CLASSINFO`) et les dialogues natifs, dans la langue du système. La date et les nombres suivent le
+  système, pas la langue choisie. La boîte d'une préférence non suivie peut passer un instant sous le splash.
 - Thème (#118) : clair, sombre ou celui du système, rien d'autre (ni couleurs ni police à choisir), et seulement par
   **View** > **Theme** : pas de fenêtre de préférences. Il vaut pour tout le processus : choisi dans la galaxy de
   NebulaStudio lancée depuis NebulaStudio (**Start**), il change aussi la fenêtre qui l'édite, dont le menu ne coche
@@ -1022,6 +1033,11 @@ ini, celui des formats qui n'ont pas le leur).
   échouer la quality gate de la PR de l'issue #165, et son contenu est passé dans `load()`. Une fonction de l'espace
   de noms anonyme inlinée, elle, n'a plus de lignes du tout. Cela se voit en local sans OpenCppCoverage :
   `dumpbin -exports` donne l'adresse de la méthode, `dumpbin -disasm` montre si un `call` y mène.
+- Un texte ajouté par `tr()` n'est traduit qu'une fois `NebulaStudioUpdateTranslations` lancée et le `.ts` complété :
+  `TestTranslations` échoue tant qu'il y reste un texte à traduire. Un test qui cherche un menu par son texte a besoin de
+  l'anglais : `TestStudioPlugin` l'écrit dans ses préférences, sans quoi il suivrait la langue du système qui le lance.
+  La langue n'est choisie qu'une fois par processus : ce qui se traduit se crée après le `StudioComponent`, en tête de
+  la galaxy.
 - `NebulaApplication::exec()` cache `QCoreApplication::exec()`, statique : un appel par la classe de base
   (`QApplication::exec()`) fait tourner la boucle sans démarrer la galaxy. Ce qu'une `NebulaApplication` donne à
   `QCoreApplication` (nom, version, organisation) et le gestionnaire de messages sont globaux au processus : ils
