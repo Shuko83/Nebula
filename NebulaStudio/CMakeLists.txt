@@ -28,6 +28,36 @@ add_library(NebulaStudioResources OBJECT resources/nebulastudio.qrc)
 target_link_libraries(NebulaStudioResources PUBLIC Qt6::Core)
 set_target_properties(NebulaStudioResources PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# Its translations (#169), one .ts file per language other than English, the language of its sources, compiled to .qm
+# files and embedded with those of Qt, for its standard dialogs: nothing to deploy next to it, and windeployqt stays
+# without translations. In their own object library, which StudioPlugin links: it is what applies the language, see
+# StudioComponent, and neither the executable nor the tests need their size. The target NebulaStudioUpdateTranslations,
+# in StudioPlugin/, brings the .ts files up to date with the sources.
+find_package(Qt6 REQUIRED COMPONENTS LinguistTools)
+set(NEBULA_STUDIO_TS_FILES "${CMAKE_CURRENT_SOURCE_DIR}/resources/translations/nebulastudio_fr.ts"
+    CACHE INTERNAL "The translations of NebulaStudio")
+qt_add_lrelease(TS_FILES ${NEBULA_STUDIO_TS_FILES} LRELEASE_TARGET NebulaStudioTranslationFiles NO_GLOBAL_TARGET
+    QM_OUTPUT_DIRECTORY translations QM_FILES_OUTPUT_VARIABLE _qm_files)
+set(_qt_translations "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_TRANSLATIONS}")
+set(_translation_entries "")
+foreach(_qm IN LISTS _qm_files)
+    get_filename_component(_name "${_qm}" NAME)
+    string(REPLACE "nebulastudio_" "qtbase_" _qt_name "${_name}")
+    if(NOT EXISTS "${_qt_translations}/${_qt_name}")
+        message(FATAL_ERROR "Nebula: ${_qt_name} is not in ${_qt_translations}: install the translations of Qt")
+    endif()
+    string(APPEND _translation_entries "<file alias=\"${_name}\">${_qm}</file>\n"
+        "<file alias=\"${_qt_name}\">${_qt_translations}/${_qt_name}</file>\n")
+endforeach()
+set(_translations_qrc "${CMAKE_CURRENT_BINARY_DIR}/translations/translations.qrc")
+file(CONFIGURE OUTPUT "${_translations_qrc}" @ONLY CONTENT
+    "<RCC><qresource prefix=\"/translations\">\n@_translation_entries@</qresource></RCC>\n")
+qt_add_resources(_translations_source "${_translations_qrc}")
+add_library(NebulaStudioTranslations OBJECT ${_translations_source})
+target_link_libraries(NebulaStudioTranslations PUBLIC Qt6::Core)
+set_target_properties(NebulaStudioTranslations PROPERTIES POSITION_INDEPENDENT_CODE ON AUTOMOC OFF AUTORCC OFF)
+add_dependencies(NebulaStudioTranslations NebulaStudioTranslationFiles)
+
 # Its icons and the logo of Nebula are SVG files: Qt Svg draws the logo on the splash screen, and its icon engine,
 # deployed with it, reads the icons.
 find_package(Qt6 REQUIRED COMPONENTS Svg)

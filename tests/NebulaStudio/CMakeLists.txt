@@ -16,6 +16,10 @@ nebula_add_test(TestSceneOverview LINK_LIBRARIES NebulaStudioClasses)
 # What makes room as rows are dragged from a list.
 nebula_add_test(TestDragAside LINK_LIBRARIES NebulaStudioClasses)
 nebula_add_test(TestPreferences LINK_LIBRARIES NebulaStudioClasses)
+# The language it is displayed in, with the translations StudioPlugin embeds, and that all of them are translated.
+nebula_add_test(TestLanguage LINK_LIBRARIES NebulaStudioClasses NebulaStudioTranslations)
+add_test(NAME TestTranslations
+    COMMAND ${CMAKE_COMMAND} "-DTS_FILES=${NEBULA_STUDIO_TS_FILES}" -P "${CMAKE_CURRENT_SOURCE_DIR}/TestTranslations.cmake")
 # The edition zone, with its items, the dialogs it opens and the steps of its history.
 nebula_add_test(TestEditionScene LINK_LIBRARIES NebulaStudioClasses TestComponents ${_resources})
 # The steps of the history of the edition zone: each edit undone, then done again.

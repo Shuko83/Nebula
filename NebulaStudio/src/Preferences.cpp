@@ -15,6 +15,8 @@
 #include <array>
 #include <cstddef>
 
+#include "Language.h"
+
 namespace
 {
 
@@ -22,6 +24,7 @@ using namespace Qt::Literals::StringLiterals;
 
 constexpr QLatin1StringView LinkStyleKey = "edition/linkStyle"_L1;
 constexpr QLatin1StringView ColorSchemeKey = "appearance/colorScheme"_L1;
+constexpr QLatin1StringView LanguageKey = "appearance/language"_L1;
 constexpr QLatin1StringView OverviewKey = "edition/overview"_L1;
 
 // A value of a preference, under the name the settings hold it by.
@@ -136,6 +139,16 @@ Qt::ColorScheme readColorScheme(const QSettings& settings)
 void writeColorScheme(QSettings& settings, Qt::ColorScheme scheme)
 {
     writeNamed(settings, ColorSchemeKey, ColorSchemeNames, scheme);
+}
+
+QString readLanguage(const QSettings& settings)
+{
+    return settings.value(LanguageKey, QString(SystemLanguage)).toString();
+}
+
+void writeLanguage(QSettings& settings, const QString& language)
+{
+    settings.setValue(LanguageKey, language);
 }
 
 bool readOverviewShown(const QSettings& settings)

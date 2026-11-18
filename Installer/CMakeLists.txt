@@ -45,8 +45,8 @@ if(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
 endif()
 
 # Qt, once NebulaStudio is in place: the DLLs of the modules it uses, which its plugins use as well, and the plugins of
-# Qt they need. Neither translations, NebulaStudio being in English, nor what draws with OpenGL or Direct3D, which
-# widgets do not.
+# Qt they need. Neither translations, those NebulaStudio needs being in StudioPlugin, nor what draws with OpenGL or
+# Direct3D, which widgets do not.
 set(_deploy_options --no-compiler-runtime --no-translations --no-opengl-sw --no-system-d3d-compiler
     --no-system-dxc-compiler)
 install(CODE "

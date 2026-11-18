@@ -7,6 +7,7 @@
 #include <QSettings>
 #include <QString>
 
+#include "Language.h"
 #include "LinkStyle.h"
 #include "Nebula/Application/Universe.h"
 #include "Preferences.h"
@@ -44,6 +45,14 @@ class Studio : public QObject
     [[nodiscard]] Qt::ColorScheme colorScheme() const;
     // Has NebulaStudio in scheme from now on, and at the next launch; see colorSchemeChanged().
     void setColorScheme(Qt::ColorScheme scheme);
+    // The language the user asks for, see readLanguage().
+    [[nodiscard]] QString language() const;
+    // Asks for language at the next launch: what is displayed now is not translated again.
+    void setLanguage(const QString& language);
+    // Keeps how the language was chosen as NebulaStudio started, for its window to tell it once it is shown.
+    void setLanguageChoice(const LanguageChoice& choice);
+    // How the language was chosen, once: nothing is left to tell afterwards.
+    [[nodiscard]] LanguageChoice takeLanguageChoice();
     // Whether the overview of the edition zone is shown, as the user chose it last, from one launch to the next.
     [[nodiscard]] bool isOverviewShown() const;
     // Shows the overview, or hides it, from now on, and at the next launch; see overviewShownChanged().
@@ -74,5 +83,7 @@ class Studio : public QObject
     QSettings m_preferences;        // Of the user, kept from one launch to the next
     LinkStyle m_linkStyle = readLinkStyle(m_preferences);
     Qt::ColorScheme m_colorScheme = readColorScheme(m_preferences);
+    QString m_language = readLanguage(m_preferences);
+    LanguageChoice m_languageChoice; // Until the window tells it
     bool m_overviewShown = readOverviewShown(m_preferences);
 };

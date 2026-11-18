@@ -31,6 +31,9 @@ class TestPreferences : public QObject
     void colorScheme_data();
     void colorScheme();
     void unknownColorScheme();
+    void languageByDefault();
+    void language_data();
+    void language();
     void overviewShownByDefault();
     void overviewShown_data();
     void overviewShown();
@@ -158,6 +161,29 @@ void TestPreferences::unknownColorScheme()
     QCOMPARE(readColorScheme(*settings()), Qt::ColorScheme::Unknown);
 }
 
+// The language of the system is followed until another one is asked for.
+void TestPreferences::languageByDefault()
+{
+    QCOMPARE(readLanguage(*settings()), u"system"_s);
+}
+
+void TestPreferences::language_data()
+{
+    QTest::addColumn<QString>("language");
+    QTest::newRow("system") << u"system"_s;
+    QTest::newRow("known") << u"fr"_s;
+    QTest::newRow("unknown") << u"klingon"_s; // Kept as it is: the user is told it is not available
+}
+
+// A language is written under the group of the appearance, and read back as it is.
+void TestPreferences::language()
+{
+    QFETCH(QString, language);
+    writeLanguage(*settings(), language);
+    QCOMPARE(readLanguage(*settings()), language);
+    QCOMPARE(written().value(u"appearance"_s).toObject().value(u"language"_s).toString(), language);
+}
+
 // The overview of the edition zone is shown until it is hidden.
 void TestPreferences::overviewShownByDefault()
 {
@@ -234,8 +260,8 @@ void TestPreferences::othersKept()
                           {u"appearance"_s, QJsonObject{{u"colorScheme"_s, u"light"_s}}}}));
 }
 
-// A file that is not a JSON object, written by hand say, is not read: the preferences are those by default, and the file
-// is written again with the one chosen then.
+// A file that is not a JSON object, written by hand say, is not read: the preferences are those by default, and the
+// file is written again with the one chosen then.
 void TestPreferences::unreadableFile()
 {
     write("{ not json");

@@ -5,7 +5,9 @@
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <utility>
 
+#include "Language.h"
 #include "StudioPlugin.h"
 #include "StudioPlugin_info.h"
 #include "Theme.h"
@@ -29,11 +31,23 @@ void applyThemeOnce(Qt::ColorScheme scheme)
     }();
 }
 
+// Gives the application the language studio asks for, once: the translations are those of the process, and its first
+// studio, the first component of the galaxy, comes before all that is translated. That studio tells how it went.
+void applyLanguageOnce(Studio& studio)
+{
+    static bool applied = false;
+    if(!std::exchange(applied, true))
+    {
+        studio.setLanguageChoice(applyLanguage(studio.language()));
+    }
+}
+
 } // namespace
 
 StudioComponent::StudioComponent()
     : m_studio(QString::fromUtf8(StudioPluginInfo::organization), QString::fromUtf8(PreferencesName))
 {
+    applyLanguageOnce(m_studio);
     applyThemeOnce(m_studio.colorScheme());
     // The palette is the one of the application: the scheme chosen in any of its studios.
     connect(&m_studio, &Studio::colorSchemeChanged, this, &chooseColorScheme);

@@ -246,6 +246,7 @@ class TestStudioPlugin : public QObject
     void projectFileOpensAsItStarts();
     void instancesFoundInGalaxies();
     void themeChosenInTheViewMenu();
+    void languageChosenInTheViewMenu();
     void overviewShownFromTheViewMenu();
     void galaxyDirectory_data();
     void galaxyDirectory();
@@ -279,6 +280,11 @@ void TestStudioPlugin::initTestCase()
     QVERIFY(m_settings.isValid());
     // The directory of the user settings in any format, that of the preferences of NebulaStudio included.
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_settings.path());
+    // In English, whatever the language of the system that runs the tests: they find what they use by its text.
+    QVERIFY(QDir(m_settings.path()).mkpath(u"FabienDG"_s));
+    QFile preferences(m_settings.filePath(u"FabienDG/NebulaStudio.json"_s));
+    QVERIFY(preferences.open(QIODevice::WriteOnly));
+    preferences.write(R"({"appearance": {"language": "en"}})");
 }
 
 void TestStudioPlugin::init()
@@ -644,14 +650,38 @@ void TestStudioPlugin::themeChosenInTheViewMenu()
     cleanup(); // Its preferences written as it goes
     QFile file(m_settings.filePath(u"FabienDG/NebulaStudio.json"_s));
     QVERIFY(file.open(QIODevice::ReadOnly));
-    QCOMPARE(QJsonDocument::fromJson(file.readAll()).object().value(u"appearance"_s),
-             QJsonObject({{u"colorScheme"_s, u"dark"_s}}));
+    QCOMPARE(QJsonDocument::fromJson(file.readAll()).object().value(u"appearance"_s).toObject().value(u"colorScheme"_s),
+             u"dark"_s);
 
     init(); // Its next launch
     theme = startedThemeMenu();
     QVERIFY(theme != nullptr);
     QVERIFY(actionOf(*theme, u"&Dark"_s)->isChecked());
     actionOf(*theme, u"&System"_s)->trigger(); // Of the system again, for the tests after this one
+}
+
+// The language chosen in View > Language is for the next launch, which the status bar tells: nothing is translated
+// now, and the preferences of the user of NebulaStudio keep it.
+void TestStudioPlugin::languageChosenInTheViewMenu()
+{
+    const QMenu* view = startedViewMenu();
+    QVERIFY(view != nullptr);
+    const QMenu* language = actionOf(*view, u"Lan&guage"_s)->menu();
+    QVERIFY(language != nullptr);
+    QCOMPARE(language->actions().size(), 3);
+    QVERIFY(actionOf(*language, u"English"_s)->isChecked()); // As the preferences of the tests ask
+    actionOf(*language, u"Français"_s)->trigger();
+    QCOMPARE(shownWindow()->statusBar()->currentMessage(),
+             u"The language will change the next time NebulaStudio starts."_s);
+    QCOMPARE(menuTitles(*shownWindow()).first(), u"&File"_s);
+
+    cleanup(); // Its preferences written as it goes
+    init();    // Its next launch: this process keeps its language, not its preference
+    language =
+        startedViewMenu() != nullptr ? actionOf(*menuOf(*shownWindow(), u"&View"_s), u"Lan&guage"_s)->menu() : nullptr;
+    QVERIFY(language != nullptr);
+    QVERIFY(actionOf(*language, u"Français"_s)->isChecked());
+    actionOf(*language, u"English"_s)->trigger(); // In English again, for the tests after this one
 }
 
 // Overview, at the end of the View menu, shows or hides the overview of the edition zone, under the property editor,

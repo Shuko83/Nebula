@@ -10,3 +10,12 @@ target_compile_definitions(TestStudioPlugin PRIVATE
     "NEBULA_STUDIO_GALAXY=\"${PROJECT_SOURCE_DIR}/StudioPlugin/NebulaStudio.nbp\"")
 # The galaxy keeps its history in a HistoryComponent of StandardPlugin, next to StudioPlugin.
 add_dependencies(TestStudioPlugin StudioPlugin StandardPlugin)
+
+# The language of the window, chosen once per process: a test executable for each case.
+foreach(_test TestStudioInFrench TestStudioLanguageNotAvailable)
+    nebula_add_test(${_test} SOURCES StudioLanguageTest.h LINK_LIBRARIES Nebula::Core Qt6::Widgets)
+    target_compile_definitions(${_test} PRIVATE
+        "NEBULA_STUDIO_PLUGINS_DIR=\"$<TARGET_FILE_DIR:StudioPlugin>\""
+        "NEBULA_STUDIO_GALAXY=\"${PROJECT_SOURCE_DIR}/StudioPlugin/NebulaStudio.nbp\"")
+    add_dependencies(${_test} StudioPlugin StandardPlugin)
+endforeach()

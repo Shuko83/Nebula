@@ -9,9 +9,11 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QStatusBar>
+#include <QTimer>
 #include <QWidget>
 #include <utility>
 
+#include "Language.h"
 #include "Messages.h"
 #include "Project.h"
 #include "Studio.h"
@@ -104,7 +106,17 @@ bool StudioWindowComponent::onStart()
 {
     m_window.resize(m_width, m_height);
     m_window.show();
+    // Once it is on the screen, and what starts after it has started: a box waits for the user.
+    QTimer::singleShot(0, this, &StudioWindowComponent::tellLanguageChoice);
     return true;
+}
+
+void StudioWindowComponent::tellLanguageChoice()
+{
+    if(m_studio != nullptr && m_window.isVisible())
+    {
+        tellLanguage(m_window, m_studio->takeLanguageChoice());
+    }
 }
 
 void StudioWindowComponent::onStop()
