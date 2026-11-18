@@ -157,6 +157,9 @@ class EditionZone : public QWidget
     void addLinkStyleMenu(QMenu& menu);
     // Theme: the color schemes of ColorSchemes, one of them checked, the one the studio has.
     void addThemeMenu(QMenu& menu);
+    // Language: the system and the languages NebulaStudio knows, the one the studio asks for checked. A choice is for
+    // the next launch, which it tells.
+    void addLanguageMenu(QMenu& menu);
     // Follows what the application of its studio tells, whether it runs and its components, and the style of the
     // links.
     void followStudio();

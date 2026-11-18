@@ -3,6 +3,8 @@
 
 #include "Studio.h"
 
+#include <utility>
+
 Studio::Studio(const QString& organization, const QString& name, QObject* parent)
     : QObject(parent), m_preferences(preferencesFormat(), QSettings::UserScope, organization, name)
 {
@@ -49,6 +51,27 @@ void Studio::setColorScheme(Qt::ColorScheme scheme)
     m_colorScheme = scheme;
     writeColorScheme(m_preferences, scheme);
     emit colorSchemeChanged(scheme);
+}
+
+QString Studio::language() const
+{
+    return m_language;
+}
+
+void Studio::setLanguage(const QString& language)
+{
+    m_language = language;
+    writeLanguage(m_preferences, language);
+}
+
+void Studio::setLanguageChoice(const LanguageChoice& choice)
+{
+    m_languageChoice = choice;
+}
+
+LanguageChoice Studio::takeLanguageChoice()
+{
+    return std::exchange(m_languageChoice, {});
 }
 
 bool Studio::isOverviewShown() const

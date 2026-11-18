@@ -64,6 +64,8 @@ class StudioWindowComponent : public Nebula::Component
     void showStatusWidgets();
     // Gives widget back as it was provided, without a parent, which would delete it, unless it has it twice.
     void hideStatusWidget(QWidget* widget);
+    // Tells why the language displayed is not the one asked for, if so: the studio has it once.
+    void tellLanguageChoice();
     // Tells in the status bar what the studio tells, from now on.
     void followStudio();
     // Titles the window after the project, from now on.

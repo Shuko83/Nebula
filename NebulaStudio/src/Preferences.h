@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QSettings>
+#include <QString>
 
 #include "LinkStyle.h"
 
@@ -25,6 +26,12 @@ void writeLinkStyle(QSettings& settings, LinkStyle style);
 [[nodiscard]] Qt::ColorScheme readColorScheme(const QSettings& settings);
 // Writes scheme by its name: system for Qt::ColorScheme::Unknown, light or dark.
 void writeColorScheme(QSettings& settings, Qt::ColorScheme scheme);
+
+// The language asked for: SystemLanguage, the one of the system, until another one is written, or the code written,
+// known or not: whether it is available is seen as NebulaStudio starts, see chooseLanguage().
+[[nodiscard]] QString readLanguage(const QSettings& settings);
+// Writes language, SystemLanguage or the code of a language.
+void writeLanguage(QSettings& settings, const QString& language);
 
 // Whether the overview of the edition zone is shown: until false is written, a boolean, whatever else is.
 [[nodiscard]] bool readOverviewShown(const QSettings& settings);

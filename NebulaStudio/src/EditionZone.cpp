@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <iterator>
 #include <memory>
 #include <utility>
 
@@ -29,6 +30,7 @@
 #include "CopiedInstances.h"
 #include "EditionScene.h"
 #include "EditionView.h"
+#include "Language.h"
 #include "Messages.h"
 #include "Nebula/Component/ComponentFactory.h"
 #include "Nebula/Standard/IHistory.h"
@@ -44,8 +46,8 @@ namespace
 // One of the choices of a submenu of the View menu, and what it chooses.
 template <typename Value> struct Choice
 {
-    const char* name; // Translated in the context of EditionZone
-    Value value;
+    const char* name = nullptr; // Translated in the context of EditionZone
+    Value value{};
 };
 
 // The ways of drawing the links.
@@ -61,6 +63,16 @@ constexpr std::array ColorSchemes{
     Choice<Qt::ColorScheme>{.name = QT_TRANSLATE_NOOP("EditionZone", "&Light"), .value = Qt::ColorScheme::Light},
     Choice<Qt::ColorScheme>{.name = QT_TRANSLATE_NOOP("EditionZone", "&Dark"), .value = Qt::ColorScheme::Dark},
 };
+
+// The languages to ask for: the one of the system first, then each one under its own name.
+std::array<Choice<QString>, Languages.size() + 1> languageChoices()
+{
+    std::array<Choice<QString>, Languages.size() + 1> choices;
+    choices.front() = {.name = QT_TRANSLATE_NOOP("EditionZone", "&System"), .value = SystemLanguage};
+    std::ranges::transform(Languages, std::next(choices.begin()), [](const Language& language)
+                           { return Choice<QString>{.name = language.name, .value = language.code}; });
+    return choices;
+}
 
 // Adds to group the action of choice, what it chooses in its data; checked when it is current.
 template <typename Value> void addChoice(QActionGroup& group, const Choice<Value>& choice, Value current)
@@ -382,6 +394,7 @@ void EditionZone::addViewActions(QMenu& menu)
     menu.addSeparator();
     addLinkStyleMenu(menu);
     addThemeMenu(menu);
+    addLanguageMenu(menu);
 }
 
 void EditionZone::addLinkStyleMenu(QMenu& menu)
@@ -396,6 +409,17 @@ void EditionZone::addThemeMenu(QMenu& menu)
     const QActionGroup& schemes = addChoiceMenu(menu, tr("&Theme"), ColorSchemes, m_studio.colorScheme());
     connect(&schemes, &QActionGroup::triggered, this,
             [this](const QAction* action) { m_studio.setColorScheme(action->data().value<Qt::ColorScheme>()); });
+}
+
+void EditionZone::addLanguageMenu(QMenu& menu)
+{
+    const QActionGroup& languages = addChoiceMenu(menu, tr("Lan&guage"), languageChoices(), m_studio.language());
+    connect(&languages, &QActionGroup::triggered, this,
+            [this](const QAction* action)
+            {
+                m_studio.setLanguage(action->data().toString());
+                m_studio.tell(tr("The language will change the next time NebulaStudio starts."));
+            });
 }
 
 void EditionZone::addRunActions(QMenu& menu)
